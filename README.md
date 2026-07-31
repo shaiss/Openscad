@@ -5,9 +5,10 @@ Parametric, 3D-printable designs written in [OpenSCAD](https://openscad.org/).
 ## Layout
 
 - `designs/<name>/<name>.scad` — one directory per design; the matching `.scad` file is the entry point
-- `lib/` — shared modules reused across designs
+- `lib/` — shared modules: `printability.scad` (FDM fastener/chamfer helpers) and vendored [BOSL2](https://github.com/BelfrySCAD/BOSL2)
 - `build/` — generated STL/PNG outputs (gitignored)
-- `scripts/render.sh` — render one design (`./scripts/render.sh <name>`) or all of them (no args)
+- `scripts/render.sh` — render one design (`./scripts/render.sh <name>`) or all of them (no args); produces an STL and a 4-view preview sheet
+- `scripts/check.sh` — fast syntax/geometry validation of every `.scad` file
 
 ## Rendering
 
