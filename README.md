@@ -9,6 +9,9 @@ Parametric, 3D-printable designs written in [OpenSCAD](https://openscad.org/).
 - `build/` — generated STL/PNG outputs (gitignored)
 - `scripts/render.sh` — render one design (`./scripts/render.sh <name>`) or all of them (no args); produces an STL and a 4-view preview sheet
 - `scripts/check.sh` — fast syntax/geometry validation of every `.scad` file
+- `templates/design.scad` — starting point for new designs
+
+Each design directory contains the parametric source plus a `NOTES.md` recording its requirements, measurements, and print orientation.
 
 ## Rendering
 

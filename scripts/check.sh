@@ -28,7 +28,7 @@ check() {
 }
 
 shopt -s nullglob
-for f in designs/*/*.scad lib/*.scad; do
+for f in designs/*/*.scad lib/*.scad templates/*.scad; do
   check "$f"
 done
 
