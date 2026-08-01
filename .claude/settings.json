@@ -12,7 +12,12 @@
       "Bash(python3 scripts/gate-summary.py:*)",
       "Bash(printcheck:*)",
       "Bash(prusa-slicer:*)",
-      "Bash(montage:*)"
+      "Bash(montage:*)",
+      "Bash(shellcheck:*)",
+      "Bash(actionlint:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python3 -m pytest:*)"
     ]
   },
   "hooks": {
