@@ -160,6 +160,31 @@ top). Before committing to the full board:
   the smaller break leaves ~0.5 mm of landing under the door's long
   edges (the old 0.8 mm chamfer left exactly zero — chamfer mouth
   equalled `door_w` to the hundredth).
+- **Wedge-cut lengths are chosen for mesh validity, not just coverage.**
+  The old shared `opening + 2*d + 2` wedge length put each side wedge's
+  end face exactly where the rear wedge's 45° underside crosses the
+  side wedge's apex height (`chamfer_rear − chamfer_side` =
+  `chamfer_side + 1`, i.e. 1.3 = 1.3 — an equality the round-A
+  `chamfer_rear` 0.8→1.6 change created): the two cut volumes touched
+  at a single point per rear window corner, and CGAL exported such a
+  kiss as a zero-volume two-triangle shell — a non-manifold STL that
+  failed printcheck's watertight gate. Side wedges now end at
+  `opening/2 + (min(front, rear) − side)/2` — past the window wall but
+  short of the apex-height crossing — so each end face is strictly
+  contained inside the front/rear chamfer cuts instead of touching
+  their boundaries; an assert enforces `chamfer_side <
+  min(chamfer_front, chamfer_rear)` (a side break with a zero
+  front/rear chamfer is no longer supported). Bonus: the old length
+  also overshot the front chamfer mouth by 0.5 mm, shaving a 0.3 mm
+  groove into the door's bridge-anchor landing at both front corners
+  of every window — that material is back (visible in
+  shutter-closeup.png with the door slid open; regenerated).
+  Regression caveat: the point contact only degenerates where the
+  rounded global cell coordinates collide exactly — on this board only
+  row 2 produced slivers, and the 1×1 coupon renders the *old* code
+  watertight — so the full-top render (what CI gates via `ci.parts`)
+  is the only reliable regression check for this bug class, not the
+  coupon.
 - Doors are engraved with their coordinate and an arrow showing the slide
   direction; grip bar for pushing/pulling.
 - Tray/lid fit: lid drops into a 3.4 mm rebate (0.35 mm/side clearance);
