@@ -75,8 +75,15 @@ clr_v    = 0.4;
 // mm, air gap under the door: stays >= 2 air layers at any layer
 // height up to 0.3 mm (see the quantization table in NOTES.md)
 gap_z    = 0.6;
-// mm, sacrificial layer under each window - punch out after printing
-membrane = 0.3;
+// mm, sacrificial layer under each window - punch out after printing.
+// 0.2 sits on the layer grid: exactly one printed layer at the common
+// presets (0.3 landed mid-layer and could coin-flip into two layers)
+membrane = 0.2;
+// mm, door-only fit adjustment: shrinks the door body and tabs
+// symmetrically (+ = looser, - = tighter). Tune in +-0.1 steps on the
+// coupon or a spare door; the lid and tray are untouched, so a tuned
+// door drops straight into an already-printed board
+door_fit = 0;
 // mm, window lead-in chamfer on the rear (slide-crossing) edge: ramps
 // a sagged door belly over the edge instead of jamming against it
 chamfer_rear  = 1.6;
@@ -128,12 +135,15 @@ tray_h   = ledge_z + rim_h;        // total tray height
 
 tabspan  = opening - 10;                       // tabs stay inside this
 tab_c    = (tabspan - tab_len)/2;              // outer tab centres
-grip_w   = min(18, door_w - 10);               // grip bar width
 
 assert(slide - tab_len >= 1, "slide travel too short to free the tabs");
 assert(lip_d - clr_h >= 2,     "not enough lip engagement");
 assert(tab_c >= slide + tab_len + 0.5,
        "tabs would hit the lips at full slide; enlarge roll_d or shorten tab_len");
+assert(door_fit >= -0.2 && door_fit <= 0.5,
+       "door_fit outside the safe range (-0.2 .. 0.5)");
+assert(lip_d - clr_h - max(door_fit, 0) >= 1.5,
+       "door_fit too loose; tabs would barely engage the lips");
 
 echo(str("Cell pitch: ", pitch, " mm, window: ", opening, " mm"));
 echo(str("Lid footprint: ", lid_x, " x ", lid_y, " mm"));
@@ -151,19 +161,24 @@ function cell_cy(j) = (j - (grid_y - 1)/2) * pitch;
 //  SHUTTER DOOR (origin = cell centre, z = 0 at lid plate top)
 // ============================================================
 module door(label = "A1") {
+    // door_fit shrinks (+) or grows (-) the door symmetrically; the
+    // lid geometry never changes, so a re-tuned door stays a drop-in
+    dw = door_w - 2*door_fit;      // effective body width
+    dl = door_l - 2*door_fit;      // effective body length
+    gw = min(18, dw - 10);         // grip bar width
     difference() {
         union() {
             // body
-            translate([-door_w/2, -door_l/2, gap_z])
-                cube([door_w, door_l, door_t]);
+            translate([-dw/2, -dl/2, gap_z])
+                cube([dw, dl, door_t]);
             // 3 locking tabs per side (bottom slab sticking out sideways)
             for (s = [-1, 1], c = [-tab_c, 0, tab_c])
-                translate([s*door_w/2 - (s < 0 ? tab_w : 0),
+                translate([s*dw/2 - (s < 0 ? tab_w : 0),
                            c - tab_len/2, gap_z])
                     cube([tab_w, tab_len, tab_t]);
             // grip bar near the front edge
-            translate([-grip_w/2, -door_l/2 + 2, gap_z + door_t - eps])
-                cube([grip_w, 3.2, 2.4]);
+            translate([-gw/2, -dl/2 + 2, gap_z + door_t - eps])
+                cube([gw, 3.2, 2.4]);
         }
         // engraved coordinate
         translate([0, -1, gap_z + door_t - 0.6])
@@ -171,7 +186,7 @@ module door(label = "A1") {
                 text(label, size = 9, halign = "center", valign = "center",
                      font = "DejaVu Sans:style=Bold");
         // engraved "push this way" arrow
-        translate([0, door_l/2 - 9, gap_z + door_t - 0.6])
+        translate([0, dl/2 - 9, gap_z + door_t - 0.6])
             linear_extrude(0.7)
                 polygon([[-3.5, 0], [3.5, 0], [0, 4.5]]);
     }

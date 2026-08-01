@@ -35,6 +35,16 @@ xvfb-run -a openscad -o $PRE/shutter-closeup.png --imgsize=1400,1000 \
   --camera=72,-95,0,60,0,30,150 -D 'part="top_open"' $SRC
 ```
 
+**coupon.png** — the 1×1 test coupon (full production lid at
+`grid_x = grid_y = 1`): one complete door with rails, lips, ridges,
+membrane and chamfers. Note this shot renders the coupon wrapper, not
+`$SRC`:
+
+```bash
+xvfb-run -a openscad -o $PRE/coupon.png --imgsize=1000,800 \
+  --camera=0,0,6,55,0,25,230 designs/sushi-battleship/sushi-battleship-coupon.scad
+```
+
 **cutaway.png** — X-Z section through the middle tab of cell B1
 (row 1): gap_z air gap under the door, tab/lip stack, membrane at bed
 level, side-edge chamfers:

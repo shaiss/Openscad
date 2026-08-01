@@ -43,9 +43,14 @@ Round A previews minimum: ridge-zone close-up (gap visible), door
 cross-section showing the gap_z stack, window-edge chamfer profile,
 standard contact sheet. Verify 18 CGAL volumes still hold.
 
+## Round B — first-print tooling (landed)
+
+Coupon (`sushi-battleship-coupon.scad`, the production lid at 1×1),
+door-only `door_fit` knob with range/engagement asserts, membrane on
+the layer grid (0.2), and the honest per-printer print-settings page —
+decisions in NOTES.md; summary on the PR.
+
 ## Later rounds (assigned by coach on the PR — do not pre-empt)
 
-- Round B: 1-cell test coupon part, door-only clearance knob, membrane on
-  the layer grid, honest print-settings page (bed-fit table correction).
 - Round C: closed-position detent, re-lock lead-in chamfers, on-record
   locking-mechanism options analysis.
