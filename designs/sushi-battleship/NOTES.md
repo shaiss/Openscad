@@ -94,8 +94,12 @@ Battleship played with real sushi. Two printed parts:
   above the plate. The door's first layer bridges its window in free
   air, anchored by the 1.2 mm plate strip under its front edge, the
   0.4 mm strip under its rear edge, ~0.5 mm under each long edge, and
-  the six tab pads over the rails — so bridge strands run along the
-  slide axis between the end strips. After printing: free each door
+  the six tab pads over the rails — so bridge strands *should* run
+  along the slide axis between the end strips. The bridge angle is
+  ultimately the slicer's choice, though: pin it (Bambu/Orca "Bridge
+  direction" = 90° with the top as modeled; PrusaSlicer
+  "Bridging angle") to make the slide-axis run a guarantee instead of
+  a bet. After printing: free each door
   with one firm push toward the arrow, then punch the membranes out
   with a fingertip or knife.
 - **Membrane role and punch-out aftermath** (comment corrected in PR #3

@@ -44,20 +44,24 @@ xvfb-run -a openscad --render -o $PRE/cutaway.png --imgsize=1600,400 \
   --projection=o --camera=-29,-160,5,90,0,0,80 -D 'part="cutaway"' $SRC
 ```
 
-**slide-section.png** — Y-Z section through the centre of column B:
-rear 1.6 mm vs front 0.8 mm window chamfers, end-stop ridge with its
-0.5 mm gap to the door face, grip bar profile:
+**slide-section.png** — Y-Z section through the centre of column B,
+framed on the row-1/row-2 boundary: rear 1.6 mm vs front 0.8 mm window
+chamfers, end-stop ridge with its 0.5 mm gap to the door face, grip
+bar profile (re-framed once on reviewer request before the camera
+freeze, 2026-08-01):
 
 ```bash
-xvfb-run -a openscad --render -o $PRE/slide-section.png --imgsize=1600,500 \
-  --projection=o --camera=-29,-87,4,90,0,-90,100 -D 'part="cutaway_slide"' $SRC
+xvfb-run -a openscad --render -o $PRE/slide-section.png --imgsize=1600,320 \
+  --projection=o --camera=-29,-58,4,90,0,-90,55 -D 'part="cutaway_slide"' $SRC
 ```
 
-**ridge-closeup.png** — top view onto the row-1/row-2 boundary of
-column B: the end-stop ridge runs parallel to door B2's leading edge
-with the 0.5 mm ridge_gap channel between them:
+**ridge-closeup.png** — view onto the row-1/row-2 boundary of column B
+with both neighbouring doors in frame for scale: door B1's rear edge
+(bottom, arrow visible), the end-stop ridge, the 0.5 mm ridge_gap
+channel, and door B2's leading edge and grip (top). Re-framed once on
+reviewer request before the camera freeze, 2026-08-01:
 
 ```bash
 xvfb-run -a openscad -o $PRE/ridge-closeup.png --imgsize=1400,1000 \
-  --camera=-29,-55,3,45,0,20,45 -D 'part="top"' $SRC
+  --camera=-29,-58,3,45,0,20,85 -D 'part="top"' $SRC
 ```
