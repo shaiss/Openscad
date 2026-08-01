@@ -193,9 +193,15 @@ module door(label = "A1") {
 }
 
 // 45-degree lead-in wedge cut along the +Y window edge (rotate into
-// place for the other edges); cell-local coordinates, z = plate bottom
-module window_wedge(d) {
-    len = opening + 2*d + 2;
+// place for the other edges); cell-local coordinates, z = plate bottom.
+// ext = how far each end runs past the window corner. The side wedges
+// must use ext = 0 (ends flush with the window walls, where they meet
+// the front/rear wedge voids face-on-face): a square overshoot can land
+// its bottom tip exactly tangent to the crossing wedge's 45-degree ramp
+// (it does at the defaults: 2*chamfer_side + 1 == chamfer_rear), and
+// that point contact makes the union non-manifold.
+module window_wedge(d, ext) {
+    len = opening + 2*(is_undef(ext) ? d + 1 : ext);
     if (d > 0)
         translate([-len/2, 0, 0])
             rotate([90, 0, 90])
@@ -262,7 +268,7 @@ module lid_body() {
                 rotate([0, 0, 0])   window_wedge(chamfer_rear);
                 rotate([0, 0, 180]) window_wedge(chamfer_front);
                 for (r = [90, 270])
-                    rotate([0, 0, r]) window_wedge(chamfer_side);
+                    rotate([0, 0, r]) window_wedge(chamfer_side, ext = 0);
             }
 
         // column letters on the front border

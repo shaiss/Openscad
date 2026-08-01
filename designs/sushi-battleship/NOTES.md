@@ -164,6 +164,13 @@ top). Before committing to the full board:
   direction; grip bar for pushing/pulling.
 - Tray/lid fit: lid drops into a 3.4 mm rebate (0.35 mm/side clearance);
   thumb notches on left/right rim expose the lid edge for lifting it out.
+- Window side wedges end flush with the window walls (`ext = 0`) instead
+  of overshooting the corners: with the default chamfers the square
+  overshoot's bottom tip landed exactly tangent to the rear wedge's 45°
+  ramp (`2*chamfer_side + 1 == chamfer_rear`), and those point contacts
+  made the exported top non-manifold (printcheck CRITICAL, not
+  watertight). Flush ends meet the front/rear wedge voids face-on-face,
+  which booleans cleanly; the top now exports watertight.
 
 ## Print settings
 
