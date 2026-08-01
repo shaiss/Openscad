@@ -2,8 +2,8 @@
 # Render each design's printable STL(s) and gate them with printcheck
 # (tools/printcheck — pip install -e tools/printcheck).
 #   ./scripts/gate.sh                  # gate all designs under designs/
-#   ./scripts/gate.sh <name>           # gate one design
-#   ./scripts/gate.sh --slice [<name>] # additionally test-slice each gated
+#   ./scripts/gate.sh <name>...        # gate one or more designs
+#   ./scripts/gate.sh --slice [<name>...] # additionally test-slice each gated
 #                                      # STL with PrusaSlicer (ground truth:
 #                                      # slicing errors fail the gate; slicer
 #                                      # warnings and print time are surfaced)
@@ -94,7 +94,9 @@ gate_one() {
 }
 
 if [[ $# -ge 1 ]]; then
-  gate_one "$1"
+  for name in "$@"; do
+    gate_one "$name"
+  done
 else
   found=0
   for dir in designs/*/; do
