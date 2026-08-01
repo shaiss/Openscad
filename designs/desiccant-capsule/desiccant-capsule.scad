@@ -70,6 +70,12 @@ rib_d = 1.6;
 // Axial clearance between neck top and lid ceiling
 lid_clear_top = 0.4;
 
+/* [Bead containment] */
+// Smallest silica bead diameter the capsule must retain
+bead_min = 2.0;
+// Safety margin below bead_min (beads shed size over drying cycles)
+bead_margin = 0.2;
+
 /* [Quality] */
 $fa = 4;
 $fs = 0.4;
@@ -86,6 +92,29 @@ cone_h       = (body_id - mouth_id) / 2;     // 45 deg internal shoulder
 lid_bore     = thread_minor + 2 * thread_tol;              // slides over the neck core
 lid_od       = thread_major + 2 * thread_tol + 2 * lid_wall; // wall covers groove depth
 lid_h        = neck_h + lid_clear_top + lid_top_t;
+
+// Axial widening of the female groove so the flank-normal clearance equals
+// thread_tol exactly. The female profile is the male profile translated
+// radially by thread_tol and widened axially by flank_add/2 per side; both
+// displacements move a 45-degree flank along its normal:
+//   gap = (thread_tol + flank_add/2) / sqrt(2)  ==  thread_tol
+//   =>  flank_add = 2*(sqrt(2) - 1)*thread_tol      (~0.83*thread_tol)
+// Full derivation in NOTES.md.
+flank_add = 2 * (sqrt(2) - 1) * thread_tol;
+
+// ---- bead-containment guards: no opening may pass a worn (undersized) bead.
+// A bead passes an opening iff its diameter fits the opening's inscribed
+// circle: vertex-up hex -> vent_w*cos(30); slot width and round floor
+// holes -> vent_w.
+max_wall_opening = (vent_style == "hex") ? vent_w * cos(30) : vent_w;
+assert(max_wall_opening <= bead_min - bead_margin,
+    str("Wall vent opening ", max_wall_opening,
+        " mm can pass a worn ", bead_min, " mm bead; reduce vent_w (need <= ",
+        bead_min - bead_margin, " mm effective)."));
+assert(!floor_vents || vent_w <= bead_min - bead_margin,
+    str("Floor vent hole ", vent_w,
+        " mm can pass a worn ", bead_min, " mm bead; reduce vent_w or set ",
+        "floor_vents = false."));
 
 echo(str("Mouth opening: ", mouth_id, " mm"));
 echo(str("Lid OD (incl. ribs): ", lid_od + rib_d, " mm"));
@@ -154,7 +183,7 @@ module female_thread_cut() {
     intersection() {
         thread_helix(thread_major + 2 * thread_tol, thread_depth,
                      thread_pitch, thread_starts,
-                     neck_h + lid_clear_top, w_add = thread_tol);
+                     neck_h + lid_clear_top, w_add = flank_add);
         translate([0, 0, -ext])
             cylinder(d = thread_major + 4,
                      h = neck_h + lid_clear_top + ext);
