@@ -53,7 +53,12 @@ jobs:
             # Default-branch push: run everything, gate every design.
             scad=true; ptests=true; gate=true; designs=ALL
           else
-            mapfile -t files < <(git diff --name-only "origin/${BASE_REF}...HEAD")
+            # Capture via command substitution so a git failure fails the
+            # step: mapfile < <(git diff ...) would swallow the error and
+            # fail open — every job skipped, PR green having tested nothing.
+            changed="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+            files=()
+            [ -n "$changed" ] && mapfile -t files <<<"$changed"
             echo "changed files:"; printf '  %s\n' "${files[@]}"
             infra=false
             declare -A names=()
@@ -138,7 +143,9 @@ jobs:
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
           packages: openscad openscad-mcad xvfb
-          version: 1.0
+          # cache key; bump to pull fresh package versions (e.g. after a
+          # runner-image rollover or when apt security updates matter)
+          version: "2026-08"
       - name: Run check.sh
         run: ./scripts/check.sh
 
@@ -158,7 +165,8 @@ jobs:
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
           packages: openscad openscad-mcad xvfb prusa-slicer
-          version: 1.0
+          # cache key; bump to pull fresh package versions (see scad-check)
+          version: "2026-08"
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -205,7 +213,7 @@ jobs:
             }
             const sha = context.payload.pull_request.head.sha.slice(0, 7);
             const body = `${marker}\n${report}\n_Automated report for ${sha}._`;
-            const { data: comments } = await github.rest.issues.listComments({
+            const comments = await github.paginate(github.rest.issues.listComments, {
               ...context.repo, issue_number: context.issue.number, per_page: 100,
             });
             const prev = comments.find(c => c.body && c.body.startsWith(marker));

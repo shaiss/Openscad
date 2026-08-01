@@ -24,6 +24,7 @@ def main() -> int:
         return 2
 
     rows = []          # {stl, score, verdict, criticals, warnings, time, slice_fail}
+    pre_fails = []     # FAIL lines emitted before printcheck ran (render/missing)
     cur = None
     for line in lines:
         m = re.match(r"== .*: printcheck (\S+) ==", line)
@@ -31,6 +32,10 @@ def main() -> int:
             cur = {"stl": m.group(1), "score": "?", "verdict": "no report",
                    "criticals": 0, "warnings": 0, "time": "—", "slice_fail": False}
             rows.append(cur)
+            continue
+        m = re.match(r"FAIL\s+(.+: (?:render failed|\S+ not found))$", line)
+        if m:
+            pre_fails.append(m.group(1))
             continue
         if cur is None:
             continue
@@ -53,21 +58,33 @@ def main() -> int:
 
     print("### printcheck + slice results")
     print()
-    if not rows:
+    if not rows and not pre_fails:
         print("_no gate output captured_")
         return 0
-    print("| Part | Score | Verdict | Findings | Est. print time |")
-    print("|---|---|---|---|---|")
+    if rows:
+        print("| Part | Score | Verdict | Findings | Est. print time |")
+        print("|---|---|---|---|---|")
     for r in rows:
         findings = []
         if r["criticals"]:
             findings.append(f"{r['criticals']} critical")
         if r["warnings"]:
             findings.append(f"{r['warnings']} warning" + ("s" if r["warnings"] > 1 else ""))
+        # a row with no SCORE line means printcheck died mid-part — that must
+        # never render as a pass
+        no_report = r["score"] == "?"
         verdict = r["verdict"] + (" — **slice failed**" if r["slice_fail"] else "")
-        icon = "❌" if r["criticals"] or r["slice_fail"] else ("⚠️" if r["warnings"] else "✅")
+        if no_report:
+            verdict = "**no printcheck score — check the job log**"
+        icon = ("❌" if r["criticals"] or r["slice_fail"] or no_report
+                else ("⚠️" if r["warnings"] else "✅"))
         print(f"| `{r['stl']}` | {icon} {r['score']}/100 | {verdict} "
               f"| {', '.join(findings) or '—'} | {r['time']} |")
+    if pre_fails:
+        print()
+        print("**Failed before printcheck ran:**")
+        for p in pre_fails:
+            print(f"- ❌ {p}")
     return 0
 
 

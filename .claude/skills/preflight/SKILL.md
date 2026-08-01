@@ -20,17 +20,23 @@ Classify exactly like CI's `changes` job:
 
 - **Infra changed** (`lib/`, `scripts/`, `tools/printcheck/`, the CI
   workflow) → everything below runs, gate **all** designs.
-- **Only `designs/<name>/...` changed** → gate just those designs (skip
-  names whose `designs/<name>/<name>.scad` no longer exists).
-- **Only docs/skills/audits changed** → nothing to run; say so and stop.
+- **`designs/<name>/...` changed** (and no infra) → gate just those designs
+  (skip names whose `designs/<name>/<name>.scad` no longer exists).
+- **`templates/` changed** → run `check.sh` (templates are echo-checked),
+  no gate.
+- **Only docs/skills/audits changed** → the lint step below still applies
+  if `.claude/hooks/` changed; otherwise nothing to run — say so and stop.
 
 ## 2. Run (in this order — fastest failure first)
 
 ```bash
-shellcheck --severity=warning scripts/*.sh .claude/hooks/*.sh   # if scripts/hooks changed
-./scripts/check.sh                                              # syntax/eval of every .scad
-./scripts/gate.sh --slice <changed-names...>                    # or no args when infra changed
-python -m pytest tools/printcheck/tests -q                      # if tools/printcheck changed
+# lint (CI runs these on every PR; locally, run when scripts/hooks/workflow changed)
+shellcheck --severity=warning scripts/*.sh .claude/hooks/*.sh
+actionlint .github/workflows/*.yml   # if missing: install pinned, same as ci.yml's lint job
+
+./scripts/check.sh                                   # syntax/eval of every .scad
+./scripts/gate.sh --slice <changed-names...>         # or no args when infra changed
+python -m pytest tools/printcheck/tests -q           # if tools/printcheck or the workflow changed
 ```
 
 Missing tools (openscad, prusa-slicer, printcheck) mean the SessionStart
@@ -40,7 +46,8 @@ the gate.
 ## 3. Verdict
 
 Report a one-line verdict first: **"CI would pass"** or **"CI would fail:
-<step>"**, then per-part printcheck scores (pipe the gate output through
-`python3 scripts/gate-summary.py` for the same table CI posts). A gate
+<step>"**, then per-part printcheck scores (capture the gate output with
+`tee` to a log file and run `python3 scripts/gate-summary.py <log>` for the
+same table CI posts). A gate
 failure is a stop: fix and re-run preflight before pushing. Never soften a
 red result — a failed step with output beats a green summary that lies.

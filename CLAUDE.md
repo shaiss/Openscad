@@ -10,7 +10,7 @@ This repository holds 3D-printable designs co-designed in OpenSCAD. Each design 
 
 OpenSCAD (2021.01) runs headless here — there is no display, so every invocation must go through `xvfb-run -a`. Rendering with plain `openscad` will fail.
 
-The SessionStart hook (`.claude/hooks/session-start.sh`) installs the full toolchain: openscad, xvfb, imagemagick, prusa-slicer, and printcheck. If any of those commands is missing mid-session, run the hook manually rather than working around the gap — `gate.sh --slice` must be runnable locally.
+The SessionStart hook (`.claude/hooks/session-start.sh`) installs the full toolchain: openscad, xvfb, imagemagick, prusa-slicer, and printcheck (with pytest). If any of those commands is missing mid-session, run `.claude/hooks/session-start.sh --force` rather than working around the gap (`--force` is needed outside Claude Code on the web, where the hook otherwise no-ops) — `gate.sh --slice` must be runnable locally.
 
 Set `OPENSCADPATH="$PWD/lib"` (the scripts do this automatically) so library includes resolve. Available libraries:
 

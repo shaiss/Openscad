@@ -20,9 +20,15 @@
 set -euo pipefail
 
 SLICE=0
-if [[ "${1:-}" == "--slice" ]]; then
-  SLICE=1
-  shift
+names=()
+for arg in "$@"; do
+  case "$arg" in
+    --slice) SLICE=1 ;;
+    -*) echo "error: unknown flag $arg" >&2; exit 2 ;;
+    *) names+=("$arg") ;;
+  esac
+done
+if [[ "$SLICE" == 1 ]]; then
   command -v prusa-slicer >/dev/null || {
     echo "error: --slice needs prusa-slicer on PATH" >&2; exit 2; }
 fi
@@ -50,12 +56,16 @@ slice_one() {
   grep -m1 "estimated printing time" "$gcode" | sed 's/^; */      /' || true
 }
 
+# Failures inside gate_one set fail=1 and keep going (matching how the
+# printcheck step already aggregates) so one broken design never hides the
+# results of the designs after it — gate_one always returns 0.
 gate_one() {
   local name="$1"
   local src="designs/${name}/${name}.scad"
   if [[ ! -f "$src" ]]; then
-    echo "error: $src not found" >&2
-    return 1
+    echo "FAIL  ${name}: ${src} not found"
+    fail=1
+    return 0
   fi
 
   local stls=()
@@ -65,12 +75,20 @@ gate_one() {
       [[ -z "$part" || "$part" == \#* ]] && continue
       local stl="build/${name}-${part}.stl"
       echo "== ${name} (part=${part}): render =="
-      xvfb-run -a openscad -o "$stl" -D "part=\"${part}\"" "$src"
+      if ! xvfb-run -a openscad -o "$stl" -D "part=\"${part}\"" "$src"; then
+        echo "FAIL  ${name} (part=${part}): render failed"
+        fail=1
+        continue
+      fi
       stls+=("$stl")
     done < "designs/${name}/ci.parts"
   else
     echo "== ${name}: render =="
-    xvfb-run -a openscad -o "build/${name}.stl" "$src"
+    if ! xvfb-run -a openscad -o "build/${name}.stl" "$src"; then
+      echo "FAIL  ${name}: render failed"
+      fail=1
+      return 0
+    fi
     stls+=("build/${name}.stl")
   fi
 
@@ -82,7 +100,7 @@ gate_one() {
     args=($(grep -vE '^(#|$)' "designs/${name}/printcheck.args" || true))
   fi
   local stl
-  for stl in "${stls[@]}"; do
+  for stl in ${stls[@]+"${stls[@]}"}; do
     echo "== ${name}: printcheck ${stl} =="
     if ! printcheck "$stl" ${args[@]+"${args[@]}"}; then
       fail=1
@@ -93,8 +111,8 @@ gate_one() {
   done
 }
 
-if [[ $# -ge 1 ]]; then
-  for name in "$@"; do
+if [[ ${#names[@]} -ge 1 ]]; then
+  for name in "${names[@]}"; do
     gate_one "$name"
   done
 else
