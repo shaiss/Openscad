@@ -13,6 +13,12 @@
 #   4. show at least one preview image, and every local image it
 #      references must exist (relative to the design directory)
 #   5. contain non-empty "## Print settings" and "## Parameters" sections
+#      (### subheadings belong to their parent ## section; a section needs
+#      at least one line of real content — prose, list, or table)
+#
+# Fenced code blocks and HTML comments are ignored throughout: an example
+# snippet or commented-out line is not page content, so it neither
+# satisfies a requirement nor trips one.
 #
 # templates/README.md is a skeleton that passes once filled in.
 # NOTES.md remains the engineering log; README.md is the product page.
@@ -27,16 +33,51 @@ err() {
   fail=1
 }
 
-# Does the README have a "## <section>" heading (case-insensitive) with at
-# least one non-blank line of content before the next heading?
+# Strip fenced code blocks and HTML comments so example snippets are not
+# mistaken for real content (an image inside a ``` fence or <!-- --> comment
+# neither renders on the page nor satisfies the gate).
+strip_noise() {
+  awk '
+    BEGIN { fence = 0; incomment = 0 }
+    {
+      line = $0
+      if (fence) {
+        if (line ~ /^(```|~~~)/) fence = 0
+        next
+      }
+      if (!incomment && line ~ /^(```|~~~)/) { fence = 1; next }
+      out = ""
+      rest = line
+      while (length(rest) > 0) {
+        if (incomment) {
+          p = index(rest, "-->")
+          if (p == 0) { rest = ""; break }
+          rest = substr(rest, p + 3)
+          incomment = 0
+        } else {
+          p = index(rest, "<!--")
+          if (p == 0) { out = out rest; rest = ""; break }
+          out = out substr(rest, 1, p - 1)
+          rest = substr(rest, p + 4)
+          incomment = 1
+        }
+      }
+      print out
+    }
+  ' "$1"
+}
+
+# Does the (noise-stripped) README have a "## <section>" heading
+# (case-insensitive) with at least one non-blank line of content before the
+# next same-or-higher-level heading? Nested ### subheadings count as content.
 section_has_content() {
-  local readme="$1" section="$2"
+  local section="$1"
   awk -v want="$(tr '[:upper:]' '[:lower:]' <<<"$section")" '
     tolower($0) ~ ("^##[ \t]+" want "([ \t]|$)") { insec = 1; next }
-    insec && /^#/                                { exit }
+    insec && /^##?[ \t]/                         { exit }
     insec && !/^[ \t]*$/                         { found = 1; exit }
     END                                          { exit !found }
-  ' "$readme"
+  '
 }
 
 check_one() {
@@ -56,9 +97,15 @@ check_one() {
     return 0
   fi
 
+  # All content checks run on the noise-stripped text: fenced code blocks
+  # and HTML comments don't render as page content, so they neither satisfy
+  # a requirement nor trip one.
+  local cleaned
+  cleaned="$(strip_noise "$readme")"
+
   # 1. Title: the first non-blank line must be an H1.
   local first
-  first="$(grep -m1 -v '^[[:space:]]*$' "$readme" || true)"
+  first="$(grep -m1 -v '^[[:space:]]*$' <<<"$cleaned" || true)"
   if [[ ! "$first" =~ ^#[^#] ]]; then
     err "$name" "README.md must open with an H1 title (# <design name>)"
     ok=0
@@ -70,7 +117,7 @@ check_one() {
       /^## /                                        { exit }
       !/^#/ && !/^!\[/ && !/^\|/ && !/^[ \t]*$/     { found = 1; exit }
       END                                           { exit !found }
-    ' "$readme"; then
+    ' <<<"$cleaned"; then
     err "$name" "README.md needs an intro paragraph before the first ## section — pitch the design (what it is, who it is for)"
     ok=0
   fi
@@ -78,10 +125,10 @@ check_one() {
   # 3. Required sections, each non-empty.
   local section
   for section in "Print settings" "Parameters"; do
-    if ! grep -qiE "^##[[:space:]]+${section}([[:space:]]|$)" "$readme"; then
+    if ! grep -qiE "^##[[:space:]]+${section}([[:space:]]|$)" <<<"$cleaned"; then
       err "$name" "README.md is missing a \"## ${section}\" section"
       ok=0
-    elif ! section_has_content "$readme" "$section"; then
+    elif ! section_has_content "$section" <<<"$cleaned"; then
       err "$name" "README.md \"## ${section}\" section is empty"
       ok=0
     fi
@@ -89,7 +136,7 @@ check_one() {
 
   # 4. Images: at least one, and every local reference must resolve.
   local images
-  images="$(grep -oE '!\[[^]]*\]\([^)]+\)' "$readme" \
+  images="$(grep -oE '!\[[^]]*\]\([^)]+\)' <<<"$cleaned" \
             | sed -E 's/^!\[[^]]*\]\(([^) ]+).*$/\1/' || true)"
   if [[ -z "$images" ]]; then
     err "$name" "README.md needs at least one preview image (![...](previews/...))"
