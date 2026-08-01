@@ -34,8 +34,10 @@ Repo conventions to look for, with fallbacks — never hard-fail on layout:
 - `designs/<name>/<name>.scad` (or the directory's obvious entry point).
 - `scripts/check.sh` / `scripts/render.sh` / `scripts/gate.sh` — run what
   exists; if absent, fall back to direct renders (in this repo:
-  `xvfb-run -a openscad -o out.stl <src>`; elsewhere, whatever the project
-  README documents).
+  `OPENSCADPATH="$PWD/lib" xvfb-run -a openscad -o out.stl <src>` — the
+  scripts set `OPENSCADPATH` themselves, so a manual render must too or
+  library includes won't resolve; elsewhere, whatever the project README
+  documents).
 - `previews/` + `previews/CAMERAS.md` — if present, preview reproducibility
   (§4) is in scope; if absent, note it as a gap, don't invent one.
 
