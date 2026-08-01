@@ -1,5 +1,23 @@
 # sushi-battleship
 
+## Previews
+
+![4-view contact sheet](previews/contact-sheet.png)
+
+| Assembled (D1 opened) | Section through a shutter's middle tab |
+|---|---|
+| ![Assembly](previews/assembly.png) | ![Cutaway](previews/cutaway.png) |
+
+![Shutter close-up](previews/shutter-closeup.png)
+
+Close-up: shutter D1 slid fully open (7 mm) — its side tabs now sit in
+the gaps between the castellated rail lips, ready to lift straight out;
+the strip visible through the revealed slice of window is the
+sacrificial membrane. The cutaway faces a cut plane through a shutter's
+middle tab: door plate floating 0.4 mm above the lid plate, tabs under
+the 45°-chamfered lips (0.4 mm vertical / 0.5 mm horizontal clearance),
+membrane down at bed level.
+
 ## Goal
 
 Battleship played with real sushi. Two printed parts:
@@ -49,6 +67,13 @@ Battleship played with real sushi. Two printed parts:
   anything structural. After printing: work each door loose with one firm
   push toward the arrow, then punch the membranes out with a fingertip or
   knife.
+- **Membrane punch-out aftermath**: the membrane is fused to the window
+  walls at the lid's *bottom* face, ~2.7 mm below the door's slide plane
+  (the door rides 0.4 mm above the plate *top*), so punch-out burrs land
+  on the window's underside rim facing the tray and cannot reach the
+  slide path — cosmetic only. Printers with well-tuned bridging can set
+  `membrane = 0` to omit it entirely (verified: the top still exports as
+  18 free bodies).
 - Doors are engraved with their coordinate and an arrow showing the slide
   direction; grip bar for pushing/pulling.
 - Tray/lid fit: lid drops into a 3.4 mm rebate (0.35 mm/side clearance);
