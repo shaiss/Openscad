@@ -29,6 +29,16 @@ jobs:
       - name: Run tests
         run: python -m pytest tools/printcheck/tests -q
 
+  design-docs:
+    name: Design product pages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Every design ships a product-page README
+        run: ./scripts/readme-gate.sh
+
   scad-check:
     name: OpenSCAD syntax/geometry check
     runs-on: ubuntu-latest
