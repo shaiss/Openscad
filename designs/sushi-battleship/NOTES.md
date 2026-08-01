@@ -1,5 +1,7 @@
 # sushi-battleship
 
+## Goal
+
 Battleship played with real sushi. Two printed parts:
 
 - **bottom** — a tray with a 4×4 grid of cells (one cut roll piece per cell),

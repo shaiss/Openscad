@@ -1,7 +1,7 @@
-// ============================================================
-//  SUSHI BATTLESHIP BOARD
-// ============================================================
-//  Two-part game board for playing battleship with sushi rolls.
+// sushi-battleship — two-part game board for playing battleship
+// with sushi rolls.
+// Requirements and decisions: see NOTES.md next to this file.
+// All dimensions in millimeters.
 //
 //  * bottom : tray with a grid of cells (one sushi piece each),
 //             low dividers, tall raised outer walls and a rebate
@@ -18,6 +18,12 @@
 //  layer bridging cleanly - punch the membranes out afterwards
 //  and work each door loose with one firm slide.
 // ============================================================
+
+/* [Quality] */
+// Production values; the only curved features are the thumb notches,
+// so these are cheap enough to iterate with as well.
+$fs = 0.5;
+$fa = 4;
 
 /* [What to render] */
 // assembled = preview; bottom / top / door are the printable parts
@@ -115,9 +121,6 @@ echo(str("Lid footprint: ", lid_x, " x ", lid_y, " mm"));
 echo(str("Tray footprint: ", 2*tray_ox, " x ", 2*tray_oy, " x ", tray_h, " mm"));
 echo(str("Door slide travel: ", slide, " mm"));
 
-// production quality; the only curved features are the thumb notches
-$fs = 0.5;
-$fa = 4;
 eps = 0.01;
 
 // column letter + row number, e.g. "B3"
@@ -182,13 +185,12 @@ module lid_body() {
                  s = [-1, 1], c = [-tab_c, 0, tab_c])
                 translate([cell_cx(i) + s*(pitch/2 - rail_w/2),
                            cell_cy(j) + c + tab_len/2, plate_t])
-                    mirror([s > 0 ? 1 : 0, 0, 0])
-                        rotate([90, 0, 0])
-                            linear_extrude(tab_len)
-                                polygon([[0, lip_z],
-                                         [lip_d, lip_z + lip_d],
-                                         [lip_d, rail_h],
-                                         [0, rail_h]]);
+                    rotate([90, 0, 0])
+                        linear_extrude(tab_len)
+                            polygon([[0, lip_z],
+                                     [-s*lip_d, lip_z + lip_d],
+                                     [-s*lip_d, rail_h],
+                                     [0, rail_h]]);
 
             // door end-stop ridges on every row boundary
             for (i = [0 : grid_x - 1], j = [0 : grid_y])
