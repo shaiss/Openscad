@@ -14,6 +14,7 @@ OUT = Path(__file__).parent
 
 
 def good_bracket():
+    """Clean watertight L-bracket that should score 100/100."""
     base = trimesh.creation.box(extents=(40, 20, 4))
     base.apply_translation([0, 0, 2])
     rib = trimesh.creation.box(extents=(40, 4, 12))
@@ -24,6 +25,7 @@ def good_bracket():
 
 
 def bad_gadget():
+    """Deliberately broken model exercising several checks at once."""
     # Mushroom: ball on a skinny stalk (overhang + tip-over), with a
     # paper-thin fin (thin wall) and a hole ripped in the ball (open mesh).
     stalk = trimesh.creation.cylinder(radius=1.5, height=25)

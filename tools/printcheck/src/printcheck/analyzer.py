@@ -12,6 +12,7 @@ from .report import Report
 
 
 def load_mesh(path: str | Path) -> trimesh.Trimesh:
+    """Load a mesh file and merge duplicate vertices for topology checks."""
     loaded = trimesh.load(str(path), force="mesh", process=False)
     if not isinstance(loaded, trimesh.Trimesh):
         raise ValueError(f"{path}: no triangle mesh found in file")
@@ -25,6 +26,7 @@ def load_mesh(path: str | Path) -> trimesh.Trimesh:
 
 def analyze(path: str | Path, cfg: Config | None = None,
             orientation: bool = True) -> Report:
+    """Run every printability check on a mesh file and return the Report."""
     cfg = cfg or Config()
     mesh = load_mesh(path)
 

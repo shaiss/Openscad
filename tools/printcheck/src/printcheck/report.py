@@ -27,6 +27,7 @@ class Finding:
     metrics: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
+        """Return the finding as a JSON-serializable dict."""
         return {
             "check": self.check,
             "severity": self.severity.value,
@@ -52,6 +53,7 @@ class Report:
 
     @property
     def verdict(self) -> str:
+        """One-line printability verdict derived from the worst finding."""
         if any(f.severity is Severity.CRITICAL for f in self.findings):
             return "NOT PRINTABLE AS-IS"
         if any(f.severity is Severity.WARNING for f in self.findings):
@@ -59,6 +61,7 @@ class Report:
         return "PRINTABLE"
 
     def to_dict(self) -> dict:
+        """Return the full report as a JSON-serializable dict."""
         return {
             "source": self.source,
             "score": self.score,
@@ -70,9 +73,11 @@ class Report:
         }
 
     def to_json(self, indent: int = 2) -> str:
+        """Render the report as pretty-printed JSON."""
         return json.dumps(self.to_dict(), indent=indent)
 
     def to_text(self) -> str:
+        """Render the report as a human-readable terminal summary."""
         icon = {
             Severity.INFO: "·",
             Severity.WARNING: "⚠",

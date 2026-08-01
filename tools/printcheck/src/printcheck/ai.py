@@ -30,6 +30,11 @@ Report JSON:
 
 
 def summarize(report: Report, model: str = "claude-sonnet-5") -> str:
+    """Return a short AI-written assessment of the report's findings.
+
+    Raises RuntimeError when the API key, dependency, or API call fails,
+    so callers can treat the summary as strictly optional.
+    """
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise RuntimeError(
             "ANTHROPIC_API_KEY is not set; run without --ai or export a key.")
@@ -41,12 +46,17 @@ def summarize(report: Report, model: str = "claude-sonnet-5") -> str:
             "pip install 'printcheck[ai]'") from e
 
     client = anthropic.Anthropic()
-    msg = client.messages.create(
-        model=model,
-        max_tokens=600,
-        messages=[{
-            "role": "user",
-            "content": _PROMPT.format(json=report.to_json()),
-        }],
-    )
+    try:
+        msg = client.messages.create(
+            model=model,
+            max_tokens=600,
+            messages=[{
+                "role": "user",
+                "content": _PROMPT.format(json=report.to_json()),
+            }],
+        )
+    except anthropic.APIError as e:
+        # Normalize to RuntimeError so the CLI treats API failures like any
+        # other optional-summary failure instead of crashing.
+        raise RuntimeError(f"Anthropic API error: {e}") from e
     return "".join(b.text for b in msg.content if b.type == "text").strip()

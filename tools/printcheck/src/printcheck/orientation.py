@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 import trimesh
 
-from .checks import Config
+from .checks import Config, overhang_faces, plate_contact_faces
 
 # Rotations bringing each principal axis to point down (+Z up convention).
 _CANDIDATES = [
@@ -24,18 +24,16 @@ _CANDIDATES = [
 
 
 def _support_score(mesh: trimesh.Trimesh, cfg: Config) -> tuple[float, float]:
-    """Return (overhang_area, contact_area) for a plate-resting mesh."""
-    normals = mesh.face_normals
-    down = -normals[:, 2]
-    threshold = np.cos(np.radians(cfg.overhang_deg))
-    face_z = mesh.triangles[:, :, 2].max(axis=1)
-    on_plate = face_z < (cfg.layer_height_mm * 1.5)
-    overhang = float(mesh.area_faces[(down > threshold) & ~on_plate].sum())
-    contact = float(mesh.area_faces[on_plate & (normals[:, 2] < -0.5)].sum())
+    """Return (overhang_area, contact_area) for a plate-resting mesh,
+    using the same face masks as the overhang and stability checks."""
+    overhang = float(mesh.area_faces[overhang_faces(mesh, cfg)].sum())
+    contact = float(mesh.area_faces[plate_contact_faces(mesh, cfg)].sum())
     return overhang, contact
 
 
 def suggest_orientation(mesh: trimesh.Trimesh, cfg: Config) -> dict:
+    """Score six axis-aligned poses and suggest one if it clearly reduces
+    unsupported overhang versus the current orientation."""
     results = []
     for name, xf in _CANDIDATES:
         m = mesh.copy()

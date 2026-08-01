@@ -34,10 +34,33 @@ class Config:
 
 
 # --------------------------------------------------------------------------
+# Shared geometry masks (also used by the orientation advisor)
+# --------------------------------------------------------------------------
+
+def plate_contact_faces(mesh: trimesh.Trimesh, cfg: Config) -> np.ndarray:
+    """Boolean mask of down-facing faces resting on the build plate."""
+    face_z = mesh.triangles[:, :, 2].max(axis=1)
+    down_facing = mesh.face_normals[:, 2] < -0.5
+    return (face_z < cfg.layer_height_mm * 1.5) & down_facing
+
+
+def overhang_faces(mesh: trimesh.Trimesh, cfg: Config) -> np.ndarray:
+    """Boolean mask of faces steeper than the support threshold, excluding
+    faces near enough to the plate to be supported by the bed."""
+    down = -mesh.face_normals[:, 2]          # 1.0 = facing straight down
+    threshold = np.cos(np.radians(cfg.overhang_deg))
+    face_z = mesh.triangles[:, :, 2].max(axis=1)
+    on_plate = face_z < (cfg.layer_height_mm * 1.5)
+    return (down > threshold) & ~on_plate
+
+
+# --------------------------------------------------------------------------
 # Mesh integrity
 # --------------------------------------------------------------------------
 
 def check_integrity(mesh: trimesh.Trimesh, cfg: Config):
+    """Report topology problems: holes, non-manifold edges, bad normals,
+    duplicate/degenerate faces, and stray disconnected shells."""
     if mesh.is_empty or len(mesh.faces) == 0:
         yield Finding(
             "integrity", Severity.CRITICAL, "Empty mesh",
@@ -115,21 +138,10 @@ def check_integrity(mesh: trimesh.Trimesh, cfg: Config):
 # --------------------------------------------------------------------------
 
 def check_overhangs(mesh: trimesh.Trimesh, cfg: Config):
+    """Quantify downward-facing surface that would need support material."""
     if len(mesh.faces) == 0:
         return
-    normals = mesh.face_normals
-    # Angle of the face from the horizontal plane: a face whose normal
-    # points straight down (0,0,-1) is a 90° overhang (bridge/ceiling).
-    down = -normals[:, 2]                      # 1.0 = facing straight down
-    threshold = np.cos(np.radians(cfg.overhang_deg))
-    overhanging = down > threshold
-
-    # Faces resting on the plate (z ~ 0) are supported by the bed.
-    face_z = mesh.triangles[:, :, 2].max(axis=1)
-    on_plate = face_z < (cfg.layer_height_mm * 1.5)
-    overhanging &= ~on_plate
-
-    area = float(mesh.area_faces[overhanging].sum())
+    area = float(mesh.area_faces[overhang_faces(mesh, cfg)].sum())
     total = float(mesh.area)
     frac = area / total if total else 0.0
     if frac > 0.001:
@@ -149,6 +161,7 @@ def check_overhangs(mesh: trimesh.Trimesh, cfg: Config):
 # --------------------------------------------------------------------------
 
 def check_walls(mesh: trimesh.Trimesh, cfg: Config):
+    """Estimate wall thickness by casting rays inward from sampled faces."""
     if len(mesh.faces) == 0 or not mesh.is_watertight:
         return  # thickness rays are meaningless on an open surface
     areas = mesh.area_faces
@@ -192,11 +205,10 @@ def check_walls(mesh: trimesh.Trimesh, cfg: Config):
 # --------------------------------------------------------------------------
 
 def check_stability(mesh: trimesh.Trimesh, cfg: Config):
+    """Check first-layer bed adhesion and tip-over risk."""
     if len(mesh.faces) == 0:
         return
-    face_z = mesh.triangles[:, :, 2].max(axis=1)
-    down_facing = mesh.face_normals[:, 2] < -0.5
-    on_plate = (face_z < cfg.layer_height_mm * 1.5) & down_facing
+    on_plate = plate_contact_faces(mesh, cfg)
     contact = float(mesh.area_faces[on_plate].sum())
     footprint = mesh.extents[0] * mesh.extents[1]
 
@@ -241,6 +253,7 @@ def check_stability(mesh: trimesh.Trimesh, cfg: Config):
 # --------------------------------------------------------------------------
 
 def check_size(mesh: trimesh.Trimesh, cfg: Config):
+    """Check build-volume fit and flag unit mix-ups / sub-nozzle features."""
     if len(mesh.faces) == 0:
         return
     ext = mesh.extents

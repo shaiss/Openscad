@@ -8,12 +8,18 @@ on:
     branches: [claude/3d-printable-openscad-5341we]
   pull_request:
 
+# No job pushes commits or comments; the token only needs to read the repo.
+permissions:
+  contents: read
+
 jobs:
   printcheck-tests:
     name: printcheck unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -28,6 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Install OpenSCAD
         run: |
           sudo apt-get update
@@ -41,6 +49,8 @@ jobs:
     needs: [scad-check, printcheck-tests]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Install OpenSCAD and PrusaSlicer
         run: |
           sudo apt-get update

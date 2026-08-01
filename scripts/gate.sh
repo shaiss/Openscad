@@ -76,8 +76,9 @@ gate_one() {
 
   local args=()
   if [[ -f "designs/${name}/printcheck.args" ]]; then
-    # shellcheck disable=SC2207 — word-splitting the flag file is intended;
-    # `|| true` keeps set -e from aborting on a comment-only file
+    # Word-splitting the flag file is intended; `|| true` keeps set -e from
+    # aborting on a comment-only file.
+    # shellcheck disable=SC2207
     args=($(grep -vE '^(#|$)' "designs/${name}/printcheck.args" || true))
   fi
   local stl

@@ -14,6 +14,7 @@ _D_BUILD_VOLUME = "x".join(f"{v:g}" for v in _D.build_volume_mm)
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the printcheck argument parser."""
     p = argparse.ArgumentParser(
         prog="printcheck",
         description="Analyze an STL (or OBJ/3MF/PLY) for FDM printability.",
@@ -45,6 +46,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point; returns the process exit code (0 ok, 1 gate
+    failure, 2 usage/load error)."""
     args = build_parser().parse_args(argv)
     try:
         bv = tuple(float(x) for x in args.build_volume.lower().split("x"))
