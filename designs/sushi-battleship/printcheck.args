@@ -1,0 +1,2 @@
+# This design targets a 256 mm bed (Bambu X1/P1, Prusa CORE One) — see NOTES.md.
+--build-volume 256x256x256

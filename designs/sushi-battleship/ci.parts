@@ -1,0 +1,5 @@
+# Printable parts to render and gate in CI (the default render is the
+# assembled preview, which is not a printable deliverable).
+bottom
+top
+door

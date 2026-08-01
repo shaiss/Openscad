@@ -1,8 +1,10 @@
 name: CI
 
+# push covers direct pushes to the default branch; pull_request covers PR
+# branches — scoping push this way avoids double-running every PR commit.
 on:
   push:
-    branches: ['**']
+    branches: [claude/3d-printable-openscad-5341we]
   pull_request:
 
 jobs:
@@ -48,19 +50,8 @@ jobs:
           cache: pip
       - name: Install printcheck
         run: pip install -e tools/printcheck
-      - name: Render all designs to STL
-        run: |
-          mkdir -p build
-          export OPENSCADPATH="$PWD/lib"
-          for dir in designs/*/; do
-            name="$(basename "$dir")"
-            src="designs/${name}/${name}.scad"
-            [ -f "$src" ] || continue
-            echo "== rendering ${name}"
-            xvfb-run -a openscad -o "build/${name}.stl" "$src"
-          done
-      - name: Gate STLs with printcheck
-        run: printcheck build/*.stl
+      - name: Render printable parts and gate with printcheck
+        run: ./scripts/gate.sh
       - name: Upload STLs
         if: always()
         uses: actions/upload-artifact@v4
