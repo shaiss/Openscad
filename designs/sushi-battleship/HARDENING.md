@@ -8,7 +8,8 @@ coach reviews each round on the PR; standing requirement: every round ships
 `previews/` close-ups of each changed region, with exact render commands
 recorded in `previews/CAMERAS.md` (fixed cameras across rounds).
 
-## Round A — print-physics defects (open)
+## Round A — print-physics defects (landed — decisions and margin math
+## recorded in NOTES.md "Key decisions"; summary on the PR)
 
 **A1 (killer) — end-stop ridge welds to doors.** The ridge sits 0.2 mm from
 every closed door's leading face by construction (ridge at

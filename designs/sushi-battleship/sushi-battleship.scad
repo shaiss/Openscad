@@ -8,15 +8,19 @@
 //             the lid drops into.
 //  * top    : lid with one print-in-place sliding shutter per
 //             cell.  On a "hit", slide the shutter toward the
-//             high row numbers (~7 mm) until it stops, then lift
-//             it out to reveal (and eat!) the sushi below.
-//             Closed shutters are locked and cannot be lifted.
+//             high row numbers (~6.7 mm at defaults) until it
+//             stops, then lift it out to reveal (and eat!) the
+//             sushi below.  Closed shutters are locked and
+//             cannot be lifted.
 //
 //  Printing: both parts print flat, no supports.
-//  The top prints with all doors captive in place; a one-layer
-//  sacrificial membrane under each window keeps the first door
-//  layer bridging cleanly - punch the membranes out afterwards
-//  and work each door loose with one firm slide.
+//  The top prints with all doors captive in place.  Each door's
+//  first layer bridges its window in free air; the one-layer
+//  sacrificial membrane at the bottom of each window only
+//  catches drooped strands (it sits ~3 mm below the door and
+//  does NOT support the bridge).  After printing, free each
+//  door with one firm push toward its arrow, then punch the
+//  membranes out.
 // ============================================================
 
 /* [Quality] */
@@ -68,10 +72,20 @@ rail_ext = 0.8;
 clr_h    = 0.5;
 // mm, vertical print-in-place clearance
 clr_v    = 0.4;
-// mm, gap under the door (bridge height)
-gap_z    = 0.4;
+// mm, air gap under the door: stays >= 2 air layers at any layer
+// height up to 0.3 mm (see the quantization table in NOTES.md)
+gap_z    = 0.6;
 // mm, sacrificial layer under each window - punch out after printing
 membrane = 0.3;
+// mm, window lead-in chamfer on the rear (slide-crossing) edge: ramps
+// a sagged door belly over the edge instead of jamming against it
+chamfer_rear  = 1.6;
+// mm, window chamfer on the front edge (kept small to preserve the
+// 1.2 mm bridge-anchor strip under the door's front edge)
+chamfer_front = 0.8;
+// mm, edge break on the window side edges (door never crosses these;
+// smaller chamfer leaves a wider landing under the door's long edges)
+chamfer_side  = 0.3;
 
 /* [Tray] */
 // mm, cell divider height above the floor
@@ -91,7 +105,9 @@ pitch    = opening + rail_w + 2*clr_h + 2*tab_w + 1.6; // cell pitch
 door_w   = opening + 1.6;                             // door body width
 door_l   = opening + 4;                               // door length
 m_y      = (pitch - door_l)/2;                        // door end margin
-slide    = 2*m_y - 1;                                 // opening travel
+ridge_w   = 0.8;                                      // end-stop ridge width
+ridge_gap = clr_h;    // ridge to closed-door face; printable, not weldable
+slide    = 2*m_y - ridge_w - ridge_gap;               // opening travel
 rail_h   = gap_z + tab_t + clr_v - clr_h + lip_d + rail_ext; // above plate
 lip_z    = gap_z + tab_t + clr_v - clr_h;             // lip root height
 
@@ -114,7 +130,7 @@ tabspan  = opening - 10;                       // tabs stay inside this
 tab_c    = (tabspan - tab_len)/2;              // outer tab centres
 grip_w   = min(18, door_w - 10);               // grip bar width
 
-assert(slide >= tab_len + 1.2, "slide travel too short to free the tabs");
+assert(slide - tab_len >= 1, "slide travel too short to free the tabs");
 assert(lip_d - clr_h >= 2,     "not enough lip engagement");
 assert(tab_c >= slide + tab_len + 0.5,
        "tabs would hit the lips at full slide; enlarge roll_d or shorten tab_len");
@@ -161,6 +177,20 @@ module door(label = "A1") {
     }
 }
 
+// 45-degree lead-in wedge cut along the +Y window edge (rotate into
+// place for the other edges); cell-local coordinates, z = plate bottom
+module window_wedge(d) {
+    len = opening + 2*d + 2;
+    if (d > 0)
+        translate([-len/2, 0, 0])
+            rotate([90, 0, 90])
+                linear_extrude(len)
+                    polygon([[opening/2,     plate_t - d],
+                             [opening/2,     plate_t + 1],
+                             [opening/2 + d, plate_t + 1],
+                             [opening/2 + d, plate_t]]);
+}
+
 // ============================================================
 //  LID (origin = board centre, z = 0 at plate bottom)
 // ============================================================
@@ -196,22 +226,28 @@ module lid_body() {
                                      [0, rail_h]]);
 
             // door end-stop ridges on every row boundary (kept narrower than
-            // the door body so they never reach the tab/lip zone)
+            // the door body so they never reach the tab/lip zone, and a full
+            // ridge_gap away from the closed door face so the door's first
+            // layer cannot weld to them)
             for (i = [0 : grid_x - 1], j = [0 : grid_y])
                 translate([cell_cx(i) - (door_w/2 - 2.8),
-                           -play_y/2 + j*pitch + m_y - 1, plate_t])
-                    cube([door_w - 5.6, 0.8, 1.4]);
+                           -play_y/2 + j*pitch + m_y - ridge_w - ridge_gap,
+                           plate_t])
+                    cube([door_w - 5.6, ridge_w, 1.4]);
         }
 
-        // windows (with chamfered top edge)
+        // windows, with per-edge 45-degree lead-in chamfers (deep ramp on
+        // the rear edge the sliding door crosses, small front chamfer to
+        // keep the bridge-anchor strip, edge break only on the sides)
         for (i = [0 : grid_x - 1], j = [0 : grid_y - 1])
             translate([cell_cx(i), cell_cy(j), 0]) {
                 translate([0, 0, membrane])
                     linear_extrude(plate_t)
                         square(opening, center = true);
-                translate([0, 0, plate_t - 0.8])
-                    linear_extrude(0.81, scale = (opening + 1.6)/opening)
-                        square(opening, center = true);
+                rotate([0, 0, 0])   window_wedge(chamfer_rear);
+                rotate([0, 0, 180]) window_wedge(chamfer_front);
+                for (r = [90, 270])
+                    rotate([0, 0, r]) window_wedge(chamfer_side);
             }
 
         // column letters on the front border
@@ -301,6 +337,25 @@ if (part == "bottom") {
     lid_assembly();
 } else if (part == "door") {
     translate([0, 0, -gap_z]) door("A1");
+} else if (part == "top_open") {
+    // lid only, shutter D1 slid fully open (tabs aligned with lip gaps)
+    lid_assembly(open_i = grid_x - 1, open_j = 0, open_lift = 0);
+} else if (part == "cutaway") {
+    // X-Z section through the middle tab of cell B1: tab/lip stack,
+    // gap_z air gap, membrane, side-edge chamfers
+    intersection() {
+        lid_assembly();
+        translate([-lid_x/2 - 1, cell_cy(0) - 2, -1])
+            cube([lid_x + 2, 4, 40]);
+    }
+} else if (part == "cutaway_slide") {
+    // Y-Z section through the centre of column B: rear/front window
+    // chamfers, end-stop ridge gap, grip bar profile
+    intersection() {
+        lid_assembly();
+        translate([cell_cx(1) - 2, -lid_y/2 - 1, -1])
+            cube([4, lid_y + 2, 40]);
+    }
 } else { // assembled
     color("LightSteelBlue") tray();
     translate([0, 0, ledge_z]) {

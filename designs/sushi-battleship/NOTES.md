@@ -8,15 +8,20 @@
 |---|---|
 | ![Assembly](previews/assembly.png) | ![Cutaway](previews/cutaway.png) |
 
+| Slide-axis section (chamfers + ridge) | End-stop ridge gap close-up |
+|---|---|
+| ![Slide section](previews/slide-section.png) | ![Ridge close-up](previews/ridge-closeup.png) |
+
 ![Shutter close-up](previews/shutter-closeup.png)
 
-Close-up: shutter D1 slid fully open (7 mm) — its side tabs now sit in
+Close-up: shutter D1 slid fully open (6.7 mm) — its side tabs now sit in
 the gaps between the castellated rail lips, ready to lift straight out;
 the strip visible through the revealed slice of window is the
 sacrificial membrane. The cutaway faces a cut plane through a shutter's
-middle tab: door plate floating 0.4 mm above the lid plate, tabs under
+middle tab: door plate floating 0.6 mm above the lid plate, tabs under
 the 45°-chamfered lips (0.4 mm vertical / 0.5 mm horizontal clearance),
-membrane down at bed level.
+membrane down at bed level. Exact render commands for every preview are
+in `previews/CAMERAS.md`; cameras stay fixed across review rounds.
 
 ## Goal
 
@@ -27,7 +32,7 @@ Battleship played with real sushi. Two printed parts:
   rebated rim the lid drops into. Cell coordinates are engraved in each
   cell floor so ships can be placed by call-out.
 - **top** — a lid with one **print-in-place sliding shutter per cell**
-  (A1–D4). On a "hit" you slide the shutter ~7 mm toward the high row
+  (A1–D4). On a "hit" you slide the shutter ~6.7 mm toward the high row
   numbers until it stops, then lift it straight out to reveal (and eat)
   the piece below. Closed shutters are locked and cannot be lifted.
 
@@ -51,29 +56,68 @@ Battleship played with real sushi. Two printed parts:
   A shutter that slides fully open needs parking space equal to its own
   window, which would roughly double the board depth per row (a 4×4 board
   would exceed 400 mm). Instead each door carries 3 tabs per side that sit
-  under castellated rail lips; sliding the door 7 mm lines the tabs up with
-  the gaps between lips, and the door lifts out. Opening a cell = slide +
-  lift, and the removed tile doubles as a hit marker. Doors drop back in at
-  the open position and slide forward to re-lock.
+  under castellated rail lips; sliding the door lines the tabs up with
+  the gaps between lips, and the door lifts out (6.7 mm travel at
+  defaults; tab escape margin `slide − tab_len` = 1.2 mm, slid-tab
+  clearance to the next lip `tab_c − tab_len − slide` = 3.05 mm).
+  Opening a cell = slide + lift, and the removed tile doubles as a hit
+  marker. Doors drop back in at the open position and slide forward to
+  re-lock.
 - **Lift lock**: lips have 45° chamfered undersides (self-supporting, no
   drooping overhangs); tabs engage them with 2.7 mm of horizontal overlap
   and 0.4 mm vertical clearance.
-- **End stops**: 1.4 mm ridges on every row boundary stop each door at
-  full-open (so it doesn't hit the next row's door) and stop the next row's
-  door from over-travelling forward past closed.
-- **Print-in-place strategy for the top**: doors print closed, 0.4 mm above
-  the plate. Each window keeps a 0.3 mm sacrificial membrane at bed level,
-  so the door's first layer bridges over air/membrane and cannot fuse to
-  anything structural. After printing: work each door loose with one firm
-  push toward the arrow, then punch the membranes out with a fingertip or
-  knife.
-- **Membrane punch-out aftermath**: the membrane is fused to the window
-  walls at the lid's *bottom* face, ~2.7 mm below the door's slide plane
-  (the door rides 0.4 mm above the plate *top*), so punch-out burrs land
-  on the window's underside rim facing the tray and cannot reach the
-  slide path — cosmetic only. Printers with well-tuned bridging can set
-  `membrane = 0` to omit it entirely (verified: the top still exports as
-  18 free bodies).
+- **End stops** (hardened in PR #3 round A): 1.4 mm ridges on every row
+  boundary stop each door at full-open (so it doesn't hit the next row's
+  door) and stop the next row's door from over-travelling forward past
+  closed. The ridge sits a full `ridge_gap = clr_h` (0.5 mm) from the
+  closed door's leading face — the original 0.2 mm construction gap was
+  under one extrusion width, so every door's draped first-layer
+  perimeter would spot-weld to it. Travel is derived as
+  `slide = 2·m_y − ridge_w − ridge_gap` = 6.7 mm; the slid door's rear
+  edge lands exactly on the ridge face, and the asserts track the
+  formula (escape margin floor is 1 mm; defaults give 1.2 mm).
+- **Under-door air gap `gap_z = 0.6`** (hardened in PR #3 round A; was
+  0.4): the gap must survive slicer layer quantization with ≥ 2 air
+  layers on *any* common preset, not just 0.2 mm. Guaranteed air layers
+  (`floor(gap_z / layer_h)`):
+
+  | layer height | 0.12 | 0.16 | 0.20 | 0.24 | 0.28 | 0.30 |
+  |---|---|---|---|---|---|---|
+  | `gap_z = 0.4` (old) | 3 | 2 | 2 | **1** | **1** | **1** |
+  | `gap_z = 0.6` (now) | 5 | 3 | 3 | 2 | 2 | 2 |
+
+  At one air layer the draped door first layer fuses on all 16 cells.
+  Cost of 0.6: the freed door seats 0.6 mm lower than printed, so
+  closed vertical rattle grows from 0.8 to 1.0 mm — accepted; a
+  first print that works beats 0.2 mm less rattle.
+- **Print-in-place strategy for the top**: doors print closed, `gap_z`
+  above the plate. The door's first layer bridges its window in free
+  air, anchored by the 1.2 mm plate strip under its front edge, the
+  0.4 mm strip under its rear edge, ~0.5 mm under each long edge, and
+  the six tab pads over the rails — so bridge strands run along the
+  slide axis between the end strips. After printing: free each door
+  with one firm push toward the arrow, then punch the membranes out
+  with a fingertip or knife.
+- **Membrane role and punch-out aftermath** (comment corrected in PR #3
+  round A): the 0.3 mm membrane at the lid's *bottom* face does **not**
+  support the door bridge — it sits ~3.3 mm below the door bottom. Its
+  job is to catch drooped bridge strands so they can't wrap the window
+  walls or dangle into the tray. Punch-out burrs land on the window's
+  underside rim facing the tray and cannot reach the slide path —
+  cosmetic only. Printers with well-tuned bridging can set
+  `membrane = 0` to omit it entirely (verified: the top still exports
+  as 18 free bodies).
+- **Window lead-in chamfers are per-edge** (hardened in PR #3 round A;
+  was a uniform 0.8 mm): the rear edge — the one the door's frozen
+  bridge sag crosses when sliding — gets a 1.6 mm 45° ramp (tolerates
+  sag to 2.2 mm below the door bottom before anything can jam). The
+  front edge keeps 0.8 mm so the bridge-anchor strip under the door's
+  front edge stays 1.2 mm wide (a uniform 1.6 mm chamfer would cut it
+  to 0.4 mm and starve the bridge of its main anchor). The side edges
+  get only a 0.3 mm edge break: the door never slides across them, and
+  the smaller break leaves ~0.5 mm of landing under the door's long
+  edges (the old 0.8 mm chamfer left exactly zero — chamfer mouth
+  equalled `door_w` to the hundredth).
 - Doors are engraved with their coordinate and an arrow showing the slide
   direction; grip bar for pushing/pulling.
 - Tray/lid fit: lid drops into a 3.4 mm rebate (0.35 mm/side clearance);
@@ -83,9 +127,11 @@ Battleship played with real sushi. Two printed parts:
 
 - Both parts print flat side down, no supports.
 - **top**: as modeled (plate on bed). Bridging fan on; the door undersides
-  bridge the 46 mm windows — slight sag is invisible and harmless.
+  bridge the 46 mm windows — sag is invisible, and frozen sag up to
+  2.2 mm still ramps over the rear window chamfer when sliding.
 - **bottom**: as modeled (floor on bed).
-- 0.2 mm layers assumed for the membrane/clearance numbers. PLA or PETG.
+- Layer height 0.12–0.30 mm all keep ≥ 2 air layers under the doors
+  (see the quantization table above). PLA or PETG.
 - Food contact: FDM prints are not dishwasher-safe or truly food-safe;
   serve pieces on nori/parchment squares or in silicone cups, or seal the
   tray with a food-safe epoxy if it will touch food directly.
