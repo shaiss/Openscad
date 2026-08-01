@@ -18,11 +18,12 @@ PRE=designs/sushi-battleship/previews
 ```
 
 **assembly.png** — assembled board, shutter D1 slid open and lifted
-(`demo_open`), preview sushi piece visible:
+(`demo_open`), preview sushi piece visible. Explicit camera (no
+auto-framing) so this shot stays aligned across rounds like the rest:
 
 ```bash
 xvfb-run -a openscad -o $PRE/assembly.png --imgsize=1400,1000 \
-  --autocenter --viewall -D 'part="assembled"' -D 'demo_open=true' $SRC
+  --camera=0,0,22,55,0,25,700 -D 'part="assembled"' -D 'demo_open=true' $SRC
 ```
 
 **shutter-closeup.png** — lid only, D1 slid fully open at plate level:
