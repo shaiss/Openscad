@@ -9,6 +9,8 @@ cannot be lifted, so nobody peeks. No supports, no hardware, no
 assembly — the shutters print captive in the lid and free up with one
 firm push each.
 
+![A hit on D1: the shutter slides to its end stop, lifts out, and reveals the piece](previews/shutter-slide.gif)
+
 ![4-view contact sheet](previews/contact-sheet.png)
 
 ## What you get
@@ -131,6 +133,8 @@ re-render before slicing.
 ## Assembly & use
 
 ![Assembled board with shutter D1 opened](previews/assembly.png)
+
+![Full-board turntable with shutter D1 opened](previews/turntable.gif)
 
 After printing the top: free each door with one firm push toward its
 engraved arrow, then punch each window's membrane out with a fingertip

@@ -35,6 +35,10 @@ All commands run from the repo root.
 # preview image, Print settings + Parameters sections). CI runs this.
 ./scripts/readme-gate.sh [<name>]
 
+# Render animated GIF previews (designs/<name>/animations.conf, if present)
+# into designs/<name>/previews/; commit the GIFs like the PNG previews
+./scripts/animate.sh [<name>]
+
 # Render a design to STL manually (full CGAL render, catches geometry errors)
 xvfb-run -a openscad -o build/<name>.stl designs/<name>/<name>.scad
 
@@ -52,6 +56,7 @@ xvfb-run -a openscad -o build/<name>.stl -D 'wall_thickness=2.4' designs/<name>/
 
 - `designs/<name>/<name>.scad` — one directory per design; the `.scad` file matching the directory name is the entry point. Notes, dimensions sketches, or variants live alongside it.
 - `designs/<name>/README.md` — the design's **product page**, required and CI-gated (`scripts/readme-gate.sh`): what it is, preview images, print settings, and the parameters worth tuning — everything a stranger needs to decide to print it and succeed. `NOTES.md` stays the engineering log (decisions, derivations, session-resume context); don't duplicate it here. Start from `templates/README.md`.
+- `designs/<name>/animations.conf` — optional GIF-preview manifest (format documented in `scripts/animate.sh`). Each entry renders to a committed `previews/<anim>.gif` showing a key feature in motion — a turntable needs no model changes (camera spin); mechanism animations drive model motion from `$t` via an `anim` parameter (see sushi-battleship's shutter). The gate checks every entry has its GIF, embedded in the README, within the size budget. Compute `$t`-dependent values inside a geometry block, not in top-level assignments — top-level assignments evaluate before a `-D '$t=...'` override lands.
 - `lib/` — shared OpenSCAD modules. With `OPENSCADPATH` set, designs reference them as `use <printability.scad>` / `include <BOSL2/std.scad>`. Anything used by two or more designs belongs here. `lib/BOSL2/` is vendored third-party code — never edit it.
 - `build/` — generated STLs and PNGs; gitignored. STLs are regenerated from source, never hand-edited or committed.
 - `scripts/` — `render.sh` and `check.sh`, described above.
