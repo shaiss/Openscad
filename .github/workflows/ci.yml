@@ -1,0 +1,86 @@
+name: CI
+
+# push covers direct pushes to the default branch (which in this repo is
+# claude/3d-printable-openscad-5341we, not main); pull_request covers PR
+# branches — scoping push this way avoids double-running every PR commit.
+on:
+  push:
+    branches: [claude/3d-printable-openscad-5341we]
+  pull_request:
+
+# No job pushes commits or comments; the token only needs to read the repo.
+permissions:
+  contents: read
+
+jobs:
+  printcheck-tests:
+    name: printcheck unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install printcheck
+        run: pip install -e 'tools/printcheck[test]'
+      - name: Run tests
+        run: python -m pytest tools/printcheck/tests -q
+
+  scad-check:
+    name: OpenSCAD syntax/geometry check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install OpenSCAD
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openscad openscad-mcad xvfb
+      - name: Run check.sh
+        run: ./scripts/check.sh
+
+  render-gate:
+    name: Render designs, gate STLs, test-slice
+    runs-on: ubuntu-latest
+    needs: [scad-check, printcheck-tests]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install OpenSCAD and PrusaSlicer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            openscad openscad-mcad xvfb prusa-slicer
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install printcheck
+        run: pip install -e tools/printcheck
+      - name: Render, gate with printcheck, test-slice with PrusaSlicer
+        # pipefail: the default Actions shell is `bash -e` WITHOUT pipefail,
+        # so without it tee would mask gate.sh failures.
+        run: |
+          set -o pipefail
+          ./scripts/gate.sh --slice | tee gate.log
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            echo "### printcheck + slice results"
+            echo '```'
+            grep -E "SCORE|estimated printing time|warning|FAIL|CRITICAL" gate.log || echo "no gate output captured"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload STLs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stls
+          path: build/*.stl
+          if-no-files-found: error
