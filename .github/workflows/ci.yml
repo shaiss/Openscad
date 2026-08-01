@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  printcheck-tests:
+    name: printcheck unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install printcheck
+        run: pip install -e 'tools/printcheck[test]'
+      - name: Run tests
+        run: python -m pytest tools/printcheck/tests -q
+
+  scad-check:
+    name: OpenSCAD syntax/geometry check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install OpenSCAD
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openscad xvfb
+      - name: Run check.sh
+        run: ./scripts/check.sh
+
+  render-gate:
+    name: Render designs & gate STLs with printcheck
+    runs-on: ubuntu-latest
+    needs: [scad-check, printcheck-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install OpenSCAD
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openscad xvfb
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install printcheck
+        run: pip install -e tools/printcheck
+      - name: Render all designs to STL
+        run: |
+          mkdir -p build
+          export OPENSCADPATH="$PWD/lib"
+          for dir in designs/*/; do
+            name="$(basename "$dir")"
+            src="designs/${name}/${name}.scad"
+            [ -f "$src" ] || continue
+            echo "== rendering ${name}"
+            xvfb-run -a openscad -o "build/${name}.stl" "$src"
+          done
+      - name: Gate STLs with printcheck
+        run: printcheck build/*.stl
+      - name: Upload STLs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stls
+          path: build/*.stl
+          if-no-files-found: error
