@@ -108,6 +108,18 @@ def test_cli(tmp_path, capsys):
     assert main([str(badpath)]) == 1
 
 
+def test_invalid_numeric_args_rejected(tmp_path):
+    from printcheck.cli import main
+    cube = trimesh.creation.box(extents=(10, 10, 10))
+    path = _save(tmp_path, cube, "cube.stl")
+    for bad in (["--nozzle", "0"], ["--nozzle", "-0.4"],
+                ["--layer-height", "nan"], ["--min-wall", "inf"],
+                ["--overhang-angle", "95"]):
+        with pytest.raises(SystemExit) as exc:
+            main([str(path), *bad])
+        assert exc.value.code == 2
+
+
 def test_fail_under_gate(tmp_path):
     from printcheck.cli import main
     ball = trimesh.creation.icosphere(subdivisions=3, radius=10)

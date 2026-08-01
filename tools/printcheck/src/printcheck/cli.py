@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 
 from .analyzer import analyze
@@ -11,6 +12,24 @@ from .checks import Config
 # Single source of truth for user-tunable defaults: the Config dataclass.
 _D = Config()
 _D_BUILD_VOLUME = "x".join(f"{v:g}" for v in _D.build_volume_mm)
+
+
+def _positive_mm(value: str) -> float:
+    """argparse type: a finite, strictly positive number."""
+    f = float(value)
+    if not math.isfinite(f) or f <= 0:
+        raise argparse.ArgumentTypeError(
+            f"{value!r} must be a positive number")
+    return f
+
+
+def _angle_deg(value: str) -> float:
+    """argparse type: an angle strictly between 0 and 90 degrees."""
+    f = float(value)
+    if not math.isfinite(f) or not 0 < f < 90:
+        raise argparse.ArgumentTypeError(
+            f"{value!r} must be an angle between 0 and 90 degrees")
+    return f
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,13 +41,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("model", nargs="+", help="mesh file(s) to analyze")
     p.add_argument("--json", action="store_true",
                    help="emit the report as JSON instead of text")
-    p.add_argument("--nozzle", type=float, default=_D.nozzle_mm,
+    p.add_argument("--nozzle", type=_positive_mm, default=_D.nozzle_mm,
                    help=f"nozzle diameter in mm (default {_D.nozzle_mm})")
-    p.add_argument("--layer-height", type=float, default=_D.layer_height_mm,
+    p.add_argument("--layer-height", type=_positive_mm,
+                   default=_D.layer_height_mm,
                    help=f"layer height in mm (default {_D.layer_height_mm})")
-    p.add_argument("--min-wall", type=float, default=None,
-                   help="minimum wall thickness in mm (default 2× nozzle)")
-    p.add_argument("--overhang-angle", type=float, default=_D.overhang_deg,
+    p.add_argument("--min-wall", type=_positive_mm, default=None,
+                   help="minimum wall thickness in mm (default 2x nozzle)")
+    p.add_argument("--overhang-angle", type=_angle_deg,
+                   default=_D.overhang_deg,
                    help="support threshold in degrees from vertical "
                         f"(default {_D.overhang_deg:g})")
     p.add_argument("--build-volume", type=str, default=_D_BUILD_VOLUME,
