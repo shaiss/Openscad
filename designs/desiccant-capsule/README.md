@@ -36,6 +36,11 @@ when sizing a dry-box slot; the `.scad` echoes the exact values
 - **Material:** PLA or PETG. If you regenerate the silica in a warm oven
   with the beads still inside the capsule, use PETG (or empty the beads
   out first).
+- **Layer height:** 0.2 mm works well — the 45° thread flanks and
+  vertical slot vents print cleanly at standard layer heights; finer
+  layers just cost time.
+- **Infill:** doesn't matter here — the part is nearly all walls, floor,
+  and threads, so any default is fine.
 - **Supports:** none needed, on either part. Thread flanks are 45°, the
   body's internal shoulder is a 45° cone, and each slot vent bridges
   only its own 0.8 mm width.

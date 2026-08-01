@@ -7,7 +7,7 @@ design demonstrating the parameter conventions.
 ## Key dimensions
 - 20 mm cube (parametric via `size`)
 - 0.6 mm 45° chamfer on bottom edges
-- Top face embossed with the edge length (0.4 mm deep)
+- Top face engraved with the edge length (0.4 mm deep)
 
 ## Decisions
 - Chamfer via `hull()` of a thin base slab and the upper body — keeps the

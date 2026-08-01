@@ -62,6 +62,10 @@ versus hours for the top. Before committing to the full board:
   is a sag lottery on a first print; if you must, start at
   `door_fit = +0.1` and max out bridge cooling). The tray can be any
   material.
+- **Infill:** your slicer's default is fine for both parts — nothing
+  here is load-bearing. The doors slice solid; the 3 mm plates and
+  ~4 mm tray walls get a sparse core with default profiles, which is
+  fine.
 - **Brim/skirt: none.** The board leaves ~1 mm of bed margin per side
   on 256-class beds — turn off Bambu Studio's Auto brim and
   OrcaSlicer's default skirt.
@@ -84,10 +88,10 @@ versus hours for the top. Before committing to the full board:
 | Prusa CORE One (250 × 220) | does not fit | 3×3 (192 mm) |
 | Generic 220-class (Ender 3 etc.) | does not fit | 3×3 (192 mm) |
 
-Shrinking `roll_d` is not a bed-fit escape hatch: `roll_d = 34` still
-yields a 226 mm lid on 4×4, and the shutter mechanism's margins run
-out around `roll_d ≈ 35` (an assert hard-stops anything below ~34.9).
-Drop `grid_x`/`grid_y` instead.
+Shrinking `roll_d` is not a bed-fit escape hatch: the lid is still too
+big long before the shutter mechanism's margins run out, and an assert
+stops you at the floor (margin math in [NOTES.md](NOTES.md)). Drop
+`grid_x`/`grid_y` instead.
 
 ## Parameters
 

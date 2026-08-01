@@ -10,8 +10,10 @@
 #   2. open with an H1 title (# <design name>)
 #   3. pitch the design in prose before the first ## section
 #      (what it is, who it is for)
-#   4. show at least one preview image, and every local image it
-#      references must exist (relative to the design directory)
+#   4. show at least one committed preview image — a local reference that
+#      resolves relative to the design directory (remote http(s) images
+#      are allowed but don't satisfy this); every local reference must
+#      exist
 #   5. contain non-empty "## Print settings" and "## Parameters" sections
 #      (### subheadings belong to their parent ## section; a section needs
 #      at least one line of real content — prose, list, or table)
@@ -103,10 +105,11 @@ check_one() {
   local cleaned
   cleaned="$(strip_noise "$readme")"
 
-  # 1. Title: the first non-blank line must be an H1.
+  # 1. Title: the first non-blank line must be an H1 with actual text
+  #    ("# Name" — markdown requires the space, and a bare "#" is no title).
   local first
   first="$(grep -m1 -v '^[[:space:]]*$' <<<"$cleaned" || true)"
-  if [[ ! "$first" =~ ^#[^#] ]]; then
+  if [[ ! "$first" =~ ^#[[:space:]]+[^[:space:]] ]]; then
     err "$name" "README.md must open with an H1 title (# <design name>)"
     ok=0
   fi
@@ -134,22 +137,26 @@ check_one() {
     fi
   done
 
-  # 4. Images: at least one, and every local reference must resolve.
-  local images
+  # 4. Images: at least one committed local preview, and every local
+  #    reference must resolve. Remote http(s) images are allowed but don't
+  #    satisfy the requirement — a dead URL is not a product page.
+  local images has_local=0
   images="$(grep -oE '!\[[^]]*\]\([^)]+\)' <<<"$cleaned" \
             | sed -E 's/^!\[[^]]*\]\(([^) ]+).*$/\1/' || true)"
-  if [[ -z "$images" ]]; then
-    err "$name" "README.md needs at least one preview image (![...](previews/...))"
-    ok=0
-  else
+  if [[ -n "$images" ]]; then
     local img
     while IFS= read -r img; do
       [[ "$img" =~ ^https?:// ]] && continue
+      has_local=1
       if [[ ! -f "${dir}/${img}" ]]; then
         err "$name" "README.md references a missing image: ${img}"
         ok=0
       fi
     done <<<"$images"
+  fi
+  if [[ "$has_local" == 0 ]]; then
+    err "$name" "README.md needs at least one committed preview image (![...](previews/...)); remote URLs don't count"
+    ok=0
   fi
 
   if [[ "$ok" == 1 ]]; then
