@@ -8,6 +8,11 @@
 |---|---|
 | ![Assembly](previews/assembly.png) | ![Cutaway](previews/cutaway.png) |
 
+![Vent close-up](previews/vents-closeup.png)
+
+Vent close-up at printable scale: 0.8 mm slots, 2.4 mm webs (3 x the
+0.8 mm minimum feature).
+
 The cutaway faces the cut plane: male ribs (body) interleave the female
 grooves (lid) with the thread_tol clearance visible as the zigzag gap;
 the lid rim seats on the body shoulder below the threads.
@@ -22,7 +27,9 @@ with dry-box gloves on. Must print on FDM with no supports on either part.
 ## Given measurements
 
 - Body: ~30 mm outer diameter, ~40 mm tall (defaults: 30 x 40).
-- Silica gel beads: 2-3 mm diameter — every opening must be < 2 mm.
+- Silica gel beads: originally 2-3 mm; **revised in PR review round 2 to
+  indicating silica gel, 1-3 mm** — every opening must retain a worn
+  1 mm bead (effective opening <= 0.8 mm at the default margin).
 
 ## Key decisions
 
@@ -30,11 +37,14 @@ with dry-box gloves on. Must print on FDM with no supports on either part.
   `assembly`, `cutaway`). Default is `print` (both parts laid out) so
   `render.sh` emits a directly sliceable STL. `assembly`/`cutaway` are
   review views; the cutaway shows thread engagement.
-- **Vents**: `vent_style="hex"` (default) or `"slot"`. Hexes are
-  vertex-up so wall openings print supportless (30 deg from vertical);
-  slots bridge only their own 1.8 mm width. Default opening `vent_w=1.8`
-  across corners → inscribed width ~1.56 mm, safely below 2 mm beads.
-  Floor is perforated too (`floor_vents=true`), plain first-layer holes.
+- **Vents**: `vent_style="slot"` (default) or `"hex"`. Default is
+  0.8 mm-wide vertical slots with 2.4 mm webs, in two staggered bands.
+  Slots became the default in review round 2 when the bead spec dropped
+  to 1 mm: sub-1 mm hex holes tend to seal shut on a 0.4 mm FDM nozzle,
+  while narrow vertical slots print crisply (each slot bridges only its
+  own 0.8 mm width). Hex (vertex-up, supportless) remains available for
+  coarser beads. Floor is perforated too (`floor_vents=true`), plain
+  first-layer holes.
 - **Threads**: custom trapezoidal helical polyhedron (2-start, 4 mm pitch
   → 8 mm lead, lid opens in ~1 turn; depth 1.2 mm). Flanks are exactly
   45 deg so the male thread prints supportless upright. BOSL2 screws.scad
@@ -88,9 +98,10 @@ form makes it exact.)
 
 ## Bead containment guard
 
-Openings are guarded by `assert()` against `bead_min = 2.0` minus
-`bead_margin = 0.2` (beads shed size over repeated drying cycles). A bead
-passes an opening iff it fits the opening's inscribed circle:
+Openings are guarded by `assert()` against `bead_min = 1.0` (indicating
+silica, 1-3 mm grade) minus `bead_margin = 0.2` (beads shed size over
+repeated drying cycles). A bead passes an opening iff it fits the
+opening's inscribed circle:
 
 - hex vents (vertex-up): inscribed width = `vent_w*cos(30)` ~= 0.87*vent_w
 - slot vents: slot width = `vent_w`
@@ -98,7 +109,24 @@ passes an opening iff it fits the opening's inscribed circle:
 
 Both wall styles and the floor holes are checked; a `vent_w` that could
 leak a worn bead fails the render with a message saying the allowed
-maximum. Defaults (hex 1.56 mm effective, slot/floor 1.8 mm) pass.
+maximum. Defaults (slot/floor 0.8 mm) pass at exactly the limit. The
+round-1 hex defaults (1.8 mm) correctly fail under this spec — that
+rejection is what forced the round-2 vent rework.
+
+## Vent open-area accounting
+
+Reported by `echo` at render time, computed from the same variables the
+geometry modules cut with (`vcols`, `slot_nseg`, `slot_seg`, `hex_rows`,
+`fl_counts`):
+
+| | Wall open area | % of vent band | Floor | Total |
+|---|---|---|---|---|
+| Round 1 (hex 1.8 / web 1.6) | 454.6 mm² | 20.1% | 53.4 mm² | 508.0 mm² |
+| Round 2 (slot 0.8 / web 2.4) | 501.1 mm² | 22.2% | 10.6 mm² | 511.7 mm² |
+
+Wall-only change: +10.2%; wall+floor: +0.7% — both within the 15%
+budget. The band is the 24 mm-tall perforated zone (pi * 30 * 24 =
+2262 mm²).
 
 ## Print orientation
 
@@ -114,4 +142,6 @@ Both parts and the closed assembly CGAL-render clean; thread engagement
 verified in the committed cutaway preview (uniform thread_tol gap at
 crests, roots, and flank normals; flanks interleaved). Review round 1
 (previews committed, clearance derivation, bead-containment asserts)
-addressed on the PR thread.
+and round 2 (1 mm bead spec: slot vent rework + open-area accounting)
+addressed on the PR thread. Thread, lid, and body envelope unchanged
+since round 1.

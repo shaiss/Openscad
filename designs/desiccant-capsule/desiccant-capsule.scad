@@ -6,8 +6,8 @@
 //   - Screw-on lid with real trapezoidal threads and grip ribs
 //
 // Designed for support-free FDM printing:
-//   - Body prints upright. Hex vents are point-up (30 deg walls),
-//     slot vents bridge only their own width.
+//   - Body prints upright. Slot vents bridge only their own width;
+//     hex vents are point-up (30 deg walls).
 //   - Threads use 45 deg flanks (2-start, coarse pitch).
 //   - Lid prints upside down (flat top on the bed); internal
 //     threads in a vertical bore need no support.
@@ -33,12 +33,14 @@ wall = 2.0;
 floor_t = 2.0;
 
 /* [Vents] */
-// Vent pattern on the side wall
-vent_style = "hex"; // [hex, slot]
-// Max opening size; keep below your smallest bead diameter (hex inscribed width is ~0.87x this)
-vent_w = 1.8;
+// Vent pattern on the side wall. Slots are the default: at sub-1 mm
+// openings FDM nozzles tend to seal hex holes shut, while narrow
+// vertical slots print crisply.
+vent_style = "slot"; // [hex, slot]
+// Max opening size; guarded against bead_min below (hex inscribed width is ~0.87x this)
+vent_w = 0.8;
 // Material web left between openings
-vent_web = 1.6;
+vent_web = 2.4;
 // Perforate the floor as well
 floor_vents = true;
 // Height of each slot segment (slot style only)
@@ -72,7 +74,8 @@ lid_clear_top = 0.4;
 
 /* [Bead containment] */
 // Smallest silica bead diameter the capsule must retain
-bead_min = 2.0;
+// (1.0 = indicating silica gel, 1-3 mm grade)
+bead_min = 1.0;
 // Safety margin below bead_min (beads shed size over drying cycles)
 bead_margin = 0.2;
 
@@ -116,9 +119,39 @@ assert(!floor_vents || vent_w <= bead_min - bead_margin,
         " mm can pass a worn ", bead_min, " mm bead; reduce vent_w or set ",
         "floor_vents = false."));
 
+// ---- vent pattern (shared by geometry modules and the area report,
+//      so the echoed numbers are computed from what actually gets cut)
+vband_lo  = floor_t + 2;                     // vent band z-range
+vband_hi  = z_sh - 3;
+vband_h   = vband_hi - vband_lo;
+vcols     = floor(PI * body_od / (vent_w + vent_web));
+hex_row_p = (vent_w + vent_web) * 0.85;
+hex_rows  = floor((vband_h - vent_w) / hex_row_p) + 1;
+slot_nseg = floor((vband_h + vent_web) / (slot_seg_h + vent_web));
+slot_seg  = (vband_h - (slot_nseg - 1) * vent_web) / slot_nseg;
+
+// floor hole rings
+fl_ring_p  = vent_w + vent_web + 0.6;
+fl_nrings  = floor((body_id / 2 - 2 - vent_w / 2) / fl_ring_p);
+fl_counts  = fl_nrings < 1 ? [] :
+    [for (i = [1:fl_nrings])
+        max(4, floor(2 * PI * i * fl_ring_p / (vent_w + vent_web)))];
+function _sum(v, i = 0) = i >= len(v) ? 0 : v[i] + _sum(v, i + 1);
+
+// open-area report (mm^2); hex area with across-corners d is 3*sqrt(3)/8*d^2
+wall_open  = (vent_style == "hex")
+    ? vcols * hex_rows * 3 * sqrt(3) / 8 * vent_w * vent_w
+    : vcols * slot_nseg * slot_seg * vent_w;
+vband_area = PI * body_od * vband_h;
+floor_open = floor_vents ? _sum(fl_counts) * PI * vent_w * vent_w / 4 : 0;
+
 echo(str("Mouth opening: ", mouth_id, " mm"));
 echo(str("Lid OD (incl. ribs): ", lid_od + rib_d, " mm"));
 echo(str("Closed height: ", z_sh + lid_h, " mm"));
+echo(str("Wall vent open area: ", wall_open, " mm2 (",
+         round(1000 * wall_open / vband_area) / 10, "% of the ",
+         vband_h, " mm vent band)"));
+echo(str("Floor vent open area: ", floor_open, " mm2"));
 
 // ============================================================
 // Thread: trapezoidal profile swept as a helical polyhedron.
@@ -194,38 +227,31 @@ module female_thread_cut() {
 // Vents
 // ============================================================
 module side_vents() {
-    band_lo = floor_t + 2;
-    band_hi = z_sh - 3;
-    ncols   = floor(PI * body_od / (vent_w + vent_web));
     if (vent_style == "hex") {
-        row_p = (vent_w + vent_web) * 0.85;
-        nrows = floor((band_hi - band_lo - vent_w) / row_p);
-        for (r = [0:nrows], c = [0:ncols - 1])
-            rotate([0, 0, c * 360 / ncols + (r % 2) * 180 / ncols])
-                translate([0, 0, band_lo + vent_w / 2 + r * row_p])
+        for (r = [0:hex_rows - 1], c = [0:vcols - 1])
+            rotate([0, 0, c * 360 / vcols + (r % 2) * 180 / vcols])
+                translate([0, 0, vband_lo + vent_w / 2 + r * hex_row_p])
                     rotate([0, 90, 0])
                         // vertex-up hexagon: printable in a vertical wall
                         cylinder(d = vent_w, h = body_od, $fn = 6);
     } else { // slot
-        nseg = floor((band_hi - band_lo + vent_web) / (slot_seg_h + vent_web));
-        seg  = (band_hi - band_lo - (nseg - 1) * vent_web) / nseg;
-        for (s = [0:nseg - 1], c = [0:ncols - 1])
-            rotate([0, 0, c * 360 / ncols + (s % 2) * 180 / ncols])
-                translate([0, -vent_w / 2, band_lo + s * (seg + vent_web)])
-                    cube([body_od, vent_w, seg]);
+        for (s = [0:slot_nseg - 1], c = [0:vcols - 1])
+            rotate([0, 0, c * 360 / vcols + (s % 2) * 180 / vcols])
+                translate([0, -vent_w / 2, vband_lo + s * (slot_seg + vent_web)])
+                    cube([body_od, vent_w, slot_seg]);
     }
 }
 
 module floor_vent_cut() {
-    ring_p = vent_w + vent_web + 0.6;
-    nrings = floor((body_id / 2 - 2 - vent_w / 2) / ring_p);
-    for (i = [1:nrings]) {
-        r = i * ring_p;
-        n = max(4, floor(2 * PI * r / (vent_w + vent_web)));
-        for (j = [0:n - 1])
-            rotate([0, 0, j * 360 / n])
-                translate([r, 0, -eps])
-                    cylinder(d = vent_w, h = floor_t + 2 * eps, $fn = 12);
+    for (i = [1:max(1, fl_nrings)]) {
+        if (i <= fl_nrings) {
+            r = i * fl_ring_p;
+            n = fl_counts[i - 1];
+            for (j = [0:n - 1])
+                rotate([0, 0, j * 360 / n])
+                    translate([r, 0, -eps])
+                        cylinder(d = vent_w, h = floor_t + 2 * eps, $fn = 12);
+        }
     }
 }
 
