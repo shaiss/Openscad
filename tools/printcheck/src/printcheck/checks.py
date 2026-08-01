@@ -17,12 +17,20 @@ from .report import Finding, Severity
 
 @dataclass
 class Config:
+    # mm, extruder nozzle diameter; sets the minimum printable feature width
     nozzle_mm: float = 0.4
+    # mm, print layer height; faces within ~1.5 layers of the bed count as
+    # plate contact
     layer_height_mm: float = 0.2
-    min_wall_mm: float = 0.8          # 2 perimeters with a 0.4 nozzle
-    overhang_deg: float = 45.0        # steeper than this (from vertical) needs support
+    # mm, thinnest wall considered printable — 2 extrusion widths with a
+    # 0.4 nozzle (the printability floor; a *design* target is usually 1.2+)
+    min_wall_mm: float = 0.8
+    # degrees from vertical; faces steeper than this need support
+    overhang_deg: float = 45.0
+    # mm, printer build volume (X, Y, Z)
     build_volume_mm: tuple = (250.0, 210.0, 220.0)
-    thickness_samples: int = 2000     # face samples for wall-thickness rays
+    # count, face samples for the wall-thickness ray casts
+    thickness_samples: int = 2000
 
 
 # --------------------------------------------------------------------------
@@ -143,10 +151,15 @@ def check_overhangs(mesh: trimesh.Trimesh, cfg: Config):
 def check_walls(mesh: trimesh.Trimesh, cfg: Config):
     if len(mesh.faces) == 0 or not mesh.is_watertight:
         return  # thickness rays are meaningless on an open surface
-    n = min(cfg.thickness_samples, len(mesh.faces))
+    areas = mesh.area_faces
+    total_area = float(areas.sum())
+    if total_area <= 0.0:
+        return  # all faces degenerate; integrity check reports that
+    # replace=False can only draw faces with nonzero probability
+    n = min(cfg.thickness_samples, int((areas > 0).sum()))
     rng = np.random.default_rng(0)
     idx = rng.choice(len(mesh.faces), size=n, replace=False,
-                     p=mesh.area_faces / mesh.area)
+                     p=areas / total_area)
     origins = mesh.triangles_center[idx]
     directions = -mesh.face_normals[idx]
     # Nudge inward so the ray doesn't hit the source triangle.

@@ -1,6 +1,7 @@
 name: CI
 
-# push covers direct pushes to the default branch; pull_request covers PR
+# push covers direct pushes to the default branch (which in this repo is
+# claude/3d-printable-openscad-5341we, not main); pull_request covers PR
 # branches — scoping push this way avoids double-running every PR commit.
 on:
   push:
@@ -52,7 +53,11 @@ jobs:
       - name: Install printcheck
         run: pip install -e tools/printcheck
       - name: Render, gate with printcheck, test-slice with PrusaSlicer
-        run: ./scripts/gate.sh --slice | tee gate.log
+        # pipefail: the default Actions shell is `bash -e` WITHOUT pipefail,
+        # so without it tee would mask gate.sh failures.
+        run: |
+          set -o pipefail
+          ./scripts/gate.sh --slice | tee gate.log
       - name: Write job summary
         if: always()
         run: |

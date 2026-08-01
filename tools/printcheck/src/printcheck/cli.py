@@ -8,6 +8,10 @@ import sys
 from .analyzer import analyze
 from .checks import Config
 
+# Single source of truth for user-tunable defaults: the Config dataclass.
+_D = Config()
+_D_BUILD_VOLUME = "x".join(f"{v:g}" for v in _D.build_volume_mm)
+
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -17,16 +21,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("model", nargs="+", help="mesh file(s) to analyze")
     p.add_argument("--json", action="store_true",
                    help="emit the report as JSON instead of text")
-    p.add_argument("--nozzle", type=float, default=0.4,
-                   help="nozzle diameter in mm (default 0.4)")
-    p.add_argument("--layer-height", type=float, default=0.2,
-                   help="layer height in mm (default 0.2)")
+    p.add_argument("--nozzle", type=float, default=_D.nozzle_mm,
+                   help=f"nozzle diameter in mm (default {_D.nozzle_mm})")
+    p.add_argument("--layer-height", type=float, default=_D.layer_height_mm,
+                   help=f"layer height in mm (default {_D.layer_height_mm})")
     p.add_argument("--min-wall", type=float, default=None,
                    help="minimum wall thickness in mm (default 2× nozzle)")
-    p.add_argument("--overhang-angle", type=float, default=45.0,
-                   help="support threshold in degrees from vertical (default 45)")
-    p.add_argument("--build-volume", type=str, default="250x210x220",
-                   help="printer build volume as XxYxZ in mm")
+    p.add_argument("--overhang-angle", type=float, default=_D.overhang_deg,
+                   help="support threshold in degrees from vertical "
+                        f"(default {_D.overhang_deg:g})")
+    p.add_argument("--build-volume", type=str, default=_D_BUILD_VOLUME,
+                   help=f"printer build volume as XxYxZ in mm "
+                        f"(default {_D_BUILD_VOLUME})")
     p.add_argument("--no-orientation", action="store_true",
                    help="skip the orientation suggestion pass")
     p.add_argument("--ai", action="store_true",
