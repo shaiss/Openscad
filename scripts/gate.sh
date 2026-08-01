@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # Render each design's printable STL(s) and gate them with printcheck
 # (tools/printcheck — pip install -e tools/printcheck).
-#   ./scripts/gate.sh          # gate all designs under designs/
-#   ./scripts/gate.sh <name>   # gate one design
+#   ./scripts/gate.sh                  # gate all designs under designs/
+#   ./scripts/gate.sh <name>           # gate one design
+#   ./scripts/gate.sh --slice [<name>] # additionally test-slice each gated
+#                                      # STL with PrusaSlicer (ground truth:
+#                                      # slicing errors fail the gate; slicer
+#                                      # warnings and print time are surfaced)
 #
 # Per-design config, both optional:
 #   designs/<name>/ci.parts        one `part` value per line; each renders as
@@ -15,11 +19,36 @@
 #                                  that target a larger printer
 set -euo pipefail
 
+SLICE=0
+if [[ "${1:-}" == "--slice" ]]; then
+  SLICE=1
+  shift
+  command -v prusa-slicer >/dev/null || {
+    echo "error: --slice needs prusa-slicer on PATH" >&2; exit 2; }
+fi
+
 cd "$(dirname "$0")/.."
 mkdir -p build
 export OPENSCADPATH="$PWD/lib"
 
 fail=0
+
+slice_one() {
+  local stl="$1"
+  local gcode="${stl%.stl}.gcode"
+  echo "== test-slice ${stl} =="
+  local out
+  if ! out=$(prusa-slicer --export-gcode -o "$gcode" \
+      --layer-height 0.2 --nozzle-diameter 0.4 --filament-diameter 1.75 \
+      "$stl" 2>&1); then
+    tail -20 <<<"$out"
+    echo "FAIL  ${stl}: slicing failed"
+    fail=1
+    return 0
+  fi
+  grep -i "warning" <<<"$out" | sed 's/^/      /' || true
+  grep -m1 "estimated printing time" "$gcode" | sed 's/^; */      /' || true
+}
 
 gate_one() {
   local name="$1"
@@ -55,6 +84,9 @@ gate_one() {
     echo "== ${name}: printcheck ${stl} =="
     if ! printcheck "$stl" ${args[@]+"${args[@]}"}; then
       fail=1
+    fi
+    if [[ "$SLICE" == 1 ]]; then
+      slice_one "$stl"
     fi
   done
 }

@@ -27,6 +27,10 @@ All commands run from the repo root.
 # Fast syntax/eval check of every .scad in the repo + lib geometry regression test
 ./scripts/check.sh
 
+# Render printable parts (designs/<name>/ci.parts, if present) and gate the
+# STLs with tools/printcheck; --slice adds a PrusaSlicer test-slice. CI runs this.
+./scripts/gate.sh [--slice] [<name>]
+
 # Render a design to STL manually (full CGAL render, catches geometry errors)
 xvfb-run -a openscad -o build/<name>.stl designs/<name>/<name>.scad
 

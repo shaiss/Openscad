@@ -9,6 +9,7 @@ Parametric, 3D-printable designs written in [OpenSCAD](https://openscad.org/).
 - `build/` — generated STL/PNG outputs (gitignored)
 - `scripts/render.sh` — render one design (`./scripts/render.sh <name>`) or all of them (no args); produces an STL and a 4-view preview sheet
 - `scripts/check.sh` — fast syntax/geometry validation of every `.scad` file
+- `scripts/gate.sh` — render each design's printable parts and gate the STLs with printcheck; `--slice` adds a PrusaSlicer test-slice (this is what CI runs)
 - `templates/design.scad` — starting point for new designs
 - `tools/printcheck/` — STL printability analyzer (`printcheck build/<name>.stl`); scores rendered models for watertightness, overhangs, thin walls, and bed adhesion before slicing — see its [README](tools/printcheck/README.md)
 
