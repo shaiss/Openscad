@@ -1,0 +1,6 @@
+# Generated outputs — always reproducible from .scad sources
+build/
+
+# OpenSCAD backup files
+*.scad.bak
+*-backup.scad
