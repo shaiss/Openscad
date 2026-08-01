@@ -112,9 +112,12 @@ tray_h   = ledge_z + rim_h;        // total tray height
 
 tabspan  = opening - 10;                       // tabs stay inside this
 tab_c    = (tabspan - tab_len)/2;              // outer tab centres
+grip_w   = min(18, door_w - 10);               // grip bar width
 
 assert(slide >= tab_len + 1.2, "slide travel too short to free the tabs");
 assert(lip_d - clr_h >= 2,     "not enough lip engagement");
+assert(tab_c >= slide + tab_len + 0.5,
+       "tabs would hit the lips at full slide; enlarge roll_d or shorten tab_len");
 
 echo(str("Cell pitch: ", pitch, " mm, window: ", opening, " mm"));
 echo(str("Lid footprint: ", lid_x, " x ", lid_y, " mm"));
@@ -143,8 +146,8 @@ module door(label = "A1") {
                            c - tab_len/2, gap_z])
                     cube([tab_w, tab_len, tab_t]);
             // grip bar near the front edge
-            translate([-9, -door_l/2 + 2, gap_z + door_t - eps])
-                cube([18, 3.2, 2.4]);
+            translate([-grip_w/2, -door_l/2 + 2, gap_z + door_t - eps])
+                cube([grip_w, 3.2, 2.4]);
         }
         // engraved coordinate
         translate([0, -1, gap_z + door_t - 0.6])
@@ -192,11 +195,12 @@ module lid_body() {
                                      [-s*lip_d, rail_h],
                                      [0, rail_h]]);
 
-            // door end-stop ridges on every row boundary
+            // door end-stop ridges on every row boundary (kept narrower than
+            // the door body so they never reach the tab/lip zone)
             for (i = [0 : grid_x - 1], j = [0 : grid_y])
-                translate([cell_cx(i) - 21,
+                translate([cell_cx(i) - (door_w/2 - 2.8),
                            -play_y/2 + j*pitch + m_y - 1, plate_t])
-                    cube([42, 0.8, 1.4]);
+                    cube([door_w - 5.6, 0.8, 1.4]);
         }
 
         // windows (with chamfered top edge)

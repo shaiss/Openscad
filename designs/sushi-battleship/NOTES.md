@@ -17,11 +17,14 @@ Battleship played with real sushi. Two printed parts:
 
 - Common cut roll piece (California-style futomaki): ~40 mm Ø × ~30 mm tall
   → `roll_d = 40`, `roll_h = 30`. Lid window is `roll_d + 6 = 46 mm`,
-  cell pitch 58 mm, cell interior ~52 mm — comfortable buffer around a piece.
+  cell pitch 58 mm, tray cell interior 56.4 mm (pitch − 1.6 mm divider) —
+  comfortable buffer around a piece.
 - Default 4×4 grid → lid 250 × 250 mm, tray 253.9 × 253.9 × 44.4 mm.
   Fits a 256 mm bed (Bambu X1/P1, Prusa CORE One). For a 220 mm bed use
-  `roll_d = 34` (windows 40 mm, board ~230… still check) or drop to
-  `grid_x = grid_y = 3`. Any grid size works; suggested "fleet" for 4×4:
+  `grid_x = grid_y = 3` (lid 192 × 192 mm); reducing `roll_d` alone is not
+  enough (`roll_d = 34` still yields a 226 mm lid on 4×4, and the shutter
+  tab spacing stops working below `roll_d ≈ 36` — an assert catches this).
+  Any grid size works; suggested "fleet" for 4×4:
   one 3-piece roll, two 2-piece rolls, two single nigiri.
 
 ## Key decisions
