@@ -6,10 +6,14 @@ found the defects below. This file is the working brief for the hardening
 rounds; it is replaced by updates to NOTES.md as rounds land. The design
 coach reviews each round on the PR; standing requirement: every round ships
 `previews/` close-ups of each changed region, with exact render commands
-recorded in `previews/CAMERAS.md` (fixed cameras across rounds).
+recorded in `previews/CAMERAS.md` (fixed cameras across rounds); the
+coach additionally posts independent before/after audit renders under
+`audits/pr3/` on the base branch with each round review.
 
-## Round A — print-physics defects (landed — decisions and margin math
-## recorded in NOTES.md "Key decisions"; summary on the PR)
+## Round A — print-physics defects (landed)
+
+Decisions and margin math are recorded in NOTES.md "Key decisions";
+round summary on the PR.
 
 **A1 (killer) — end-stop ridge welds to doors.** The ridge sits 0.2 mm from
 every closed door's leading face by construction (ridge at

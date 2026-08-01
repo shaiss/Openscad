@@ -3,8 +3,13 @@
 Run from the repo root. Cameras are FIXED across review rounds so
 before/after comparisons align; if a new region needs a shot, add a new
 camera here rather than moving an existing one.
-`SRC = designs/sushi-battleship/sushi-battleship.scad`,
-`PRE = designs/sushi-battleship/previews`.
+
+Set these shell variables before running any command:
+
+```bash
+SRC=designs/sushi-battleship/sushi-battleship.scad
+PRE=designs/sushi-battleship/previews
+```
 
 **contact-sheet.png** — 4-view overview (iso / top / front / bottom-iso):
 
@@ -17,7 +22,7 @@ camera here rather than moving an existing one.
 
 ```bash
 xvfb-run -a openscad -o $PRE/assembly.png --imgsize=1400,1000 \
-  --autocenter --viewall -D 'part="assembled"' $SRC
+  --autocenter --viewall -D 'part="assembled"' -D 'demo_open=true' $SRC
 ```
 
 **shutter-closeup.png** — lid only, D1 slid fully open at plate level:
