@@ -23,13 +23,13 @@
 part = "print"; // [body, lid, print, assembly, cutaway]
 
 /* [Body] */
-// Outer diameter of the body
+// Outer diameter of the body (mm)
 body_od = 30;
-// Overall body height, including the threaded neck
+// Overall body height, including the threaded neck (mm)
 body_h = 40;
-// Side wall thickness
+// Side wall thickness (mm)
 wall = 2.0;
-// Floor thickness
+// Floor thickness (mm)
 floor_t = 2.0;
 
 /* [Vents] */
@@ -37,46 +37,46 @@ floor_t = 2.0;
 // openings FDM nozzles tend to seal hex holes shut, while narrow
 // vertical slots print crisply.
 vent_style = "slot"; // [hex, slot]
-// Max opening size; guarded against bead_min below (hex inscribed width is ~0.87x this)
+// Max opening size (mm); guarded against bead_min below (hex inscribed width is ~0.87x this)
 vent_w = 0.8;
-// Material web left between openings
+// Material web left between openings (mm)
 vent_web = 2.4;
 // Perforate the floor as well
 floor_vents = true;
-// Height of each slot segment (slot style only)
+// Height of each slot segment (mm, slot style only)
 slot_seg_h = 8;
 
 /* [Thread] */
-// Major (outer) diameter of the male thread on the neck
+// Major (outer) diameter of the male thread on the neck (mm)
 thread_major = 28;
-// Axial distance between adjacent thread crests
+// Axial distance between adjacent thread crests (mm)
 thread_pitch = 4;
 // Number of thread starts (2 = opens in ~1 turn)
 thread_starts = 2;
-// Radial depth of the thread
+// Radial depth of the thread (mm)
 thread_depth = 1.2;
-// Height of the threaded neck
+// Height of the threaded neck (mm)
 neck_h = 9;
-// TUNE THIS if the lid binds: radial clearance added to the female thread
+// TUNE THIS if the lid binds: radial clearance added to the female thread (mm)
 thread_tol = 0.3;
 
 /* [Lid] */
-// Lid wall thickness around the thread
+// Lid wall thickness around the thread (mm)
 lid_wall = 2.4;
-// Lid top plate thickness
+// Lid top plate thickness (mm)
 lid_top_t = 2.4;
 // Number of grip ribs
 rib_count = 24;
-// Grip rib diameter
+// Grip rib diameter (mm)
 rib_d = 1.6;
-// Axial clearance between neck top and lid ceiling
+// Axial clearance between neck top and lid ceiling (mm)
 lid_clear_top = 0.4;
 
 /* [Bead containment] */
-// Smallest silica bead diameter the capsule must retain
+// Smallest silica bead diameter the capsule must retain (mm)
 // (1.0 = indicating silica gel, 1-3 mm grade)
 bead_min = 1.0;
-// Safety margin below bead_min (beads shed size over drying cycles)
+// Safety margin below bead_min (mm; beads shed size over drying cycles)
 bead_margin = 0.2;
 
 /* [Quality] */
@@ -92,6 +92,13 @@ thread_minor = thread_major - 2 * thread_depth;
 body_id      = body_od - 2 * wall;
 mouth_id     = thread_minor - 2 * wall;      // pour opening
 cone_h       = (body_id - mouth_id) / 2;     // 45 deg internal shoulder
+assert(cone_h > 0,
+    str("Internal shoulder cone height is ", cone_h,
+        " mm; mouth_id (", mouth_id, " mm) must stay below body_id (",
+        body_id, " mm) - lower thread_major or thicken wall."));
+assert(thread_pitch > 0, "thread_pitch must be positive.");
+assert(thread_starts >= 1, "thread_starts must be at least 1.");
+assert(thread_seg >= 1, "thread_seg must be at least 1.");
 lid_bore     = thread_minor + 2 * thread_tol;              // slides over the neck core
 lid_od       = thread_major + 2 * thread_tol + 2 * lid_wall; // wall covers groove depth
 lid_h        = neck_h + lid_clear_top + lid_top_t;
@@ -127,7 +134,18 @@ vband_h   = vband_hi - vband_lo;
 vcols     = floor(PI * body_od / (vent_w + vent_web));
 hex_row_p = (vent_w + vent_web) * 0.85;
 hex_rows  = floor((vband_h - vent_w) / hex_row_p) + 1;
-slot_nseg = floor((vband_h + vent_web) / (slot_seg_h + vent_web));
+
+// Slot segment count, guarded: OpenSCAD division by zero yields inf
+// (IEEE 754) instead of erroring, so an unguarded slot_nseg of 0 would
+// surface as a runaway cube dimension rather than a clean abort.
+assert(vband_h > 0,
+    str("Vent band height is ", vband_h,
+        " mm; body_h/neck_h/floor_t leave no room for vents."));
+slot_nseg_fit = floor((vband_h + vent_web) / (slot_seg_h + vent_web));
+assert(vent_style != "slot" || slot_nseg_fit >= 1,
+    str("Vent band (", vband_h, " mm) is too short for one slot segment; ",
+        "reduce slot_seg_h (", slot_seg_h, " mm) or increase body_h."));
+slot_nseg = max(1, slot_nseg_fit);
 slot_seg  = (vband_h - (slot_nseg - 1) * vent_web) / slot_nseg;
 
 // floor hole rings

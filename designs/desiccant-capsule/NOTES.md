@@ -56,8 +56,9 @@ with dry-box gloves on. Must print on FDM with no supports on either part.
 - **Lid**: rim seats on the body shoulder as a positive closing stop;
   lead-in chamfer at the rim; 24 grip ribs (~35 mm over ribs). Interior
   shoulder in the body is a 45 deg cone (no internal supports).
-- Walls 2.0 mm, floor 2.0 mm, lid top 2.4 mm; webs between vents 1.6 mm —
-  all above the 0.8 mm minimum-feature rule.
+- Walls 2.0 mm, floor 2.0 mm, lid top 2.4 mm; webs between vents 2.4 mm
+  (was 1.6 mm in the round-1 hex pattern) — all above the 0.8 mm
+  minimum-feature rule.
 
 ## Thread clearance derivation
 
@@ -76,13 +77,13 @@ along its normal, and an axial shift of `a` moves it `a/sqrt(2)` — and
 for this profile both displacements move each flank *away* from its
 mating flank. So the flank-normal gap is:
 
-```
+```text
 gap = (thread_tol + flank_add/2) / sqrt(2)
 ```
 
 Requiring `gap == thread_tol` gives:
 
-```
+```text
 flank_add = 2*(sqrt(2) - 1)*thread_tol   ~= 0.83*thread_tol
 ```
 
@@ -125,8 +126,8 @@ geometry modules cut with (`vcols`, `slot_nseg`, `slot_seg`, `hex_rows`,
 | Round 2 (slot 0.8 / web 2.4) | 501.1 mm² | 22.2% | 10.6 mm² | 511.7 mm² |
 
 Wall-only change: +10.2%; wall+floor: +0.7% — both within the 15%
-budget. The band is the 24 mm-tall perforated zone (pi * 30 * 24 =
-2262 mm²).
+budget. The band is the 24 mm-tall perforated zone (`pi * 30 * 24 =
+2262` mm²).
 
 ## Print orientation
 
