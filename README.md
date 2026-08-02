@@ -65,7 +65,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   source (entry point matches the directory name), the `README.md` product
   page, the `NOTES.md` engineering log, and committed `previews/`
 - `lib/` — shared modules: `printability.scad` (FDM fastener/chamfer
-  helpers) and vendored [BOSL2](https://github.com/BelfrySCAD/BOSL2)
+  helpers), `threads-fdm.scad` (printable trapezoidal threads), each with a
+  `*-demo.scad` regression render, plus vendored
+  [BOSL2](https://github.com/BelfrySCAD/BOSL2)
 - `build/` — generated STL/PNG outputs (gitignored)
 - `scripts/` — the toolchain:
   - `render.sh` — STL + 4-view preview sheet; `--previews` re-renders a
@@ -78,7 +80,7 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `readme-gate.sh` — every design must ship a product-page README
   - `animate.sh` — animated GIF previews from `animations.conf`
   - `product-shot.sh` — real-world-looking studio product shots from
-    `shots.conf`, raytraced from the design's own STL export
+    `shots.conf`, path-traced from the design's own STL export
   - `gallery.sh` — regenerates the design gallery above
   - `lint-scad.sh` — report-only [sca2d](https://gitlab.com/bath_open_instrumentation_group/sca2d) static analysis
   - `preview-budget.sh` — sourced helper defining the GIF and product-shot
@@ -88,5 +90,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
 - `tools/printcheck/` — STL printability analyzer; scores rendered models
   for watertightness, overhangs, thin walls, and bed adhesion before
   slicing — see its [README](tools/printcheck/README.md)
+- `tools/photoshot/` — STL → Blender/Cycles studio renderer behind
+  `product-shot.sh`, which turns a design's own STL export into the
+  photographed-looking hero image on its product page — see its
+  [README](tools/photoshot/README.md)
 - `audits/` — preserved before/after render comparisons from design
   reviews (review history — don't delete)

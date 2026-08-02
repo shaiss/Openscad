@@ -131,18 +131,6 @@ def positive_float(s):
     return v
 
 
-def nonnegative_float(s):
-    """Parse a finite float that must be zero or greater (layer height).
-
-    Plain float() accepts "nan", and nan passes a `< 0` guard silently, so the
-    bad value would only surface as a nan texture scale in the render.
-    """
-    v = finite_float(s)
-    if v < 0:
-        raise argparse.ArgumentTypeError(f"must be 0 or greater, got {v}")
-    return v
-
-
 def positive_int(s):
     """Parse an int that must be greater than zero (sample count)."""
     try:
@@ -484,9 +472,16 @@ def main():
     ap.add_argument("--size", default="1280x960", type=parse_size, help="WxH pixels")
     ap.add_argument(
         "--layers",
-        type=nonnegative_float,
+        # finite_float, not plain float, for the same reason --rotz and --elev
+        # use it: float() accepts "inf" and "nan". A positive infinity passes
+        # the `layers > 0` guard and lands in the wave texture as a 1/inf
+        # scale; nan passes it too and poisons the whole node tree. Finite
+        # negatives still parse and fail that guard, rendering smooth — which
+        # the help text states.
+        type=finite_float,
         default=0.2,
-        help="FDM layer-line height in mm for the surface texture (0 = smooth)",
+        help="FDM layer-line height in mm for the surface texture "
+        "(0 or negative = smooth)",
     )
     ap.add_argument(
         "--samples",

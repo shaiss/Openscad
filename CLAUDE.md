@@ -12,13 +12,15 @@ OpenSCAD (2021.01) runs headless here — there is no display, so every invocati
 
 The scripts honor `OPENSCAD_BIN` (default `openscad`) and `OPENSCAD_ARGS`: CI's render gate runs the dev snapshot with `OPENSCAD_BIN=openscad-nightly OPENSCAD_ARGS=--backend=manifold` (order-of-magnitude faster full renders), while the stable 2021.01 check job keeps designs compatible with the release build. Locally the default is whatever `openscad` is installed; don't use nightly-only flags (like `--backend`) in scripts or designs without going through `OPENSCAD_ARGS`.
 
-The SessionStart hook (`.claude/hooks/session-start.sh`) installs the full toolchain: openscad, xvfb, imagemagick, prusa-slicer, and printcheck (with pytest). If any of those commands is missing mid-session, run `.claude/hooks/session-start.sh --force` rather than working around the gap (`--force` is needed outside Claude Code on the web, where the hook otherwise no-ops) — `gate.sh --slice` must be runnable locally.
+The SessionStart hook (`.claude/hooks/session-start.sh`) installs the full toolchain: openscad, xvfb, imagemagick, bpy (Blender as a Python module, for `product-shot.sh`), prusa-slicer, and printcheck (with pytest). If any of those commands is missing mid-session, run `.claude/hooks/session-start.sh --force` rather than working around the gap (`--force` is needed outside Claude Code on the web, where the hook otherwise no-ops) — `gate.sh --slice` must be runnable locally.
 
 Set `OPENSCADPATH="$PWD/lib"` (the scripts do this automatically) so library includes resolve. Available libraries:
 
 - **BOSL2** (vendored at `lib/BOSL2/`) — `include <BOSL2/std.scad>`. Use for fillets/roundings (`cuboid`, `cyl`), attachments, threads (`include <BOSL2/screws.scad>`), gears, and anything geometrically hard. Prefer it over hand-rolled hulls for rounded/filleted parts.
 - **MCAD** (system-installed) — `include <MCAD/...>`.
-- **`lib/printability.scad`** — repo-local FDM helpers: `screw_hole()` (plain/socket/countersunk, M2–M6 presets), `teardrop_hole()` (support-free horizontal holes), `heatset_boss()`, `chamfered_cylinder()`, `rounded_box()`. Lightweight and fast; reach for these before BOSL2 for simple fastener work. `lib/printability-demo.scad` shows one of each and doubles as its regression test.
+- **`lib/printability.scad`** — repo-local FDM helpers: `screw_hole()` (plain/socket/countersunk, M2–M6 presets), `teardrop_hole()` (support-free horizontal holes), `heatset_boss()`, `chamfered_cylinder()`, `rounded_box()`. Lightweight and fast; reach for these before BOSL2 for simple fastener work.
+- **`lib/threads-fdm.scad`** — printable trapezoidal threads for vertical bores: `thread_helix()` (the generator), `thread_neck()` (male, with lead-in chamfer), `thread_bore_cut()` (the matching female cutter), `flank_add()` (the clearance derivation). 45° flanks so both halves print supportless, one tunable radial `tol`, and both profiles from one generator so male and female cannot drift apart. Use it over BOSL2's `screws.scad` for printed threads; use BOSL2 for machine threads.
+- Each **first-party** library (the `lib/*.scad` files above; not vendored BOSL2 or system-installed MCAD) ships a `lib/<name>-demo.scad` exercising every module; `check.sh` CGAL-renders all of them, so they are those libraries' regression tests. Add one with any new first-party library.
 
 ## Commands
 
@@ -64,6 +66,13 @@ All commands run from the repo root.
 # Regenerate the README design gallery (check.sh fails when it's stale)
 ./scripts/gallery.sh
 
+# Calling openscad directly means setting OPENSCADPATH yourself — the scripts
+# above do it for you. Without it a `use <printability.scad>` / `use
+# <threads-fdm.scad>` silently resolves to nothing: OpenSCAD only WARNs about
+# the unknown modules, exits 0, and hands you a watertight sliceable STL with
+# the features missing (the capsule comes out with a threadless neck).
+export OPENSCADPATH="$PWD/lib"
+
 # Render a design to STL manually (full CGAL render, catches geometry errors)
 xvfb-run -a openscad -o build/<name>.stl designs/<name>/<name>.scad
 
@@ -92,9 +101,10 @@ Workflow skills (`.claude/skills/`):
 - `designs/<name>/shots.conf` — optional product-shot manifest (format documented in `scripts/product-shot.sh`). Each entry raytraces the exported STL into a committed `previews/<shot>.png` studio product shot for the README — the hero image a stranger sees first. The gate checks every entry has its PNG, embedded in the README, within the size budget. Shots are geometry-true (rendered from the same STL export the printable part uses), so they can never show a feature the print doesn't have, and re-rendering an unchanged design reproduces the committed PNG pixel for pixel.
 - `lib/` — shared OpenSCAD modules. With `OPENSCADPATH` set, designs reference them as `use <printability.scad>` / `include <BOSL2/std.scad>`. Anything used by two or more designs belongs here. `lib/BOSL2/` is vendored third-party code — never edit it.
 - `build/` — generated STLs and PNGs; gitignored. STLs are regenerated from source, never hand-edited or committed.
-- `scripts/` — the full toolchain: `render.sh`, `check.sh`, `gate.sh`, `readme-gate.sh`, `animate.sh`, `gallery.sh`, `lint-scad.sh` (all described above), plus `docs-check.sh` (docs-drift assertions, run by check.sh), `gate-summary.py` (turns a gate.sh log into the markdown table CI posts as the job summary and sticky PR comment) and `preview-budget.sh` (sourced helper defining the GIF size budget).
+- `scripts/` — the full toolchain: `render.sh`, `check.sh`, `gate.sh`, `readme-gate.sh`, `animate.sh`, `product-shot.sh`, `gallery.sh`, `lint-scad.sh` (all described above), plus `docs-check.sh` (docs-drift assertions, run by check.sh), `gate-summary.py` (turns a gate.sh log into the markdown table CI posts as the job summary and sticky PR comment) and `preview-budget.sh` (sourced helper defining the GIF and product-shot size budgets). `docs-check.sh` asserts this bullet names every file in `scripts/`, so keep it exhaustive.
 - `templates/design.scad` — starting point for new designs; demonstrates the parameter conventions below.
 - `tools/printcheck/` — the STL printability analyzer gate.sh runs on every rendered part; has its own README and pytest suite (CI runs it when the tool changes).
+- `tools/photoshot/` — the STL → Blender/Cycles studio renderer behind `product-shot.sh`; has its own README. Needs the `bpy` module locally, but CI never runs it: the gate only checks that the committed PNGs exist and are embedded.
 - `docs/` — repo-level research and reference notes (e.g. `oss-libraries-research.md`, the OSS-library evaluation behind the adoption backlog).
 - `audits/` — preserved before/after render comparisons from design review rounds (e.g. `audits/pr3/`). Review history: keep it, never treat it as disposable scratch.
 
