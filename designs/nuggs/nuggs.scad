@@ -299,7 +299,11 @@ module nuggs_bulkhead_out() {
 
 // Coupon: two port stubs as a mated pair, printed side by side. Tunes
 // port_tol and doubles as the bore gauge.
-module nuggs_coupon(stub = 25) {
+// stub defaults from straight_len so the wrapper's override is the real
+// control. Hardcoding it made nuggs-coupon.scad's `straight_len = 25` inert:
+// the geometry only looked right because the hardcoded value happened to
+// match, and re-tuning the wrapper would have silently changed nothing.
+module nuggs_coupon(stub = straight_len) {
     for (x = [-1, 1])
         translate([x * (r_out + 6), 0, 0]) nuggs_straight(stub);
 }
