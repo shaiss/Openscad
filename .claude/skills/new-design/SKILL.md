@@ -82,14 +82,14 @@ they like rather than one of the packs already here.
   until you add **`shots.conf`** and render with
   `./scripts/product-shot.sh <name>` (see `/product-shots`). That is
   deliberate — every finished design leads its README with one. Rendering
-  needs povray locally; CI only checks the committed PNG.
+  needs the `bpy` module locally; CI only checks the committed PNG.
 
 ## 3. First render before first commit
 
 ```bash
 ./scripts/render.sh <name>       # STL + contact sheet must succeed
 ./scripts/gate.sh --slice <name> # printcheck + PrusaSlicer test-slice must exit 0
-./scripts/product-shot.sh <name> # the hero shot the README embeds (needs povray)
+./scripts/product-shot.sh <name> # the hero shot the README embeds (needs bpy)
 ./scripts/readme-gate.sh <name>  # product page must pass
 ```
 

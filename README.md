@@ -11,6 +11,7 @@ co-designer, and gated by automated printability checks before they ship.
 |---|---|
 | <a href="designs/calibration-cube/"><img src="designs/calibration-cube/previews/contact-sheet.png" width="320" alt="calibration-cube previews"></a> | **[calibration-cube](designs/calibration-cube/)** — Simple dimensional-accuracy test print; also serves as the repo's starter design demonstrating the parameter conventions. |
 | <a href="designs/desiccant-capsule/"><img src="designs/desiccant-capsule/previews/contact-sheet.png" width="320" alt="desiccant-capsule previews"></a> | **[desiccant-capsule](designs/desiccant-capsule/)** — Refillable two-part capsule for loose silica gel beads, lived-in filament dry-boxes. Perforated body lets air/moisture reach the beads; screw-on lid with real threads (not press-fit) and a ribbed grip edge so it can be opened with dry-box gloves on. Must print on FDM with no supports on either part. |
+| <a href="designs/nuggs/"><img src="designs/nuggs/previews/contact-sheet.png" width="320" alt="nuggs previews"></a> | **[nuggs](designs/nuggs/)** — A short, straight, wide-bore tunnel joining **two** hamster enclosures through their walls, for an adult Syrian. Not a tube *system* and nothing inside the cage — see the dossier for why that framing is deliberate (PLOS One / EXOPET-II rates tube systems unsuitable as a category; this design answers each cited defect individually or omits the part). |
 | <a href="designs/sushi-battleship/"><img src="designs/sushi-battleship/previews/contact-sheet.png" width="320" alt="sushi-battleship previews"></a> | **[sushi-battleship](designs/sushi-battleship/)** — Battleship played with real sushi. |
 <!-- gallery:end -->
 
@@ -64,8 +65,9 @@ The scripts expect: `openscad`, `xvfb-run` (headless rendering — the
 scripts wrap every OpenSCAD call in `xvfb-run -a` themselves; you only need
 the prefix for raw `openscad` commands you run by hand), ImageMagick
 (`montage`, for preview sheets), `prusa-slicer` (for `gate.sh --slice`),
-`povray` plus Python `trimesh` (for `product-shot.sh`; trimesh comes with
-printcheck), [printcheck](tools/printcheck/)
+Python `bpy` — Blender as an importable module, `pip install 'bpy~=4.5.0'`
+(for `product-shot.sh`; its wheels are built per Python minor version, so
+this needs Python 3.11) — [printcheck](tools/printcheck/)
 (`pip install -e tools/printcheck`), and [stylelift](tools/stylelift/)
 (`pip install -e tools/stylelift`, for the style scripts).
 
@@ -98,7 +100,7 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `readme-gate.sh` — every design must ship a product-page README
   - `animate.sh` — animated GIF previews from `animations.conf`
   - `product-shot.sh` — real-world-looking studio product shots from
-    `shots.conf`, raytraced from the design's own STL export
+    `shots.conf`, path-traced from the design's own STL export
   - `gallery.sh` — regenerates the design gallery above
   - `style-lift.sh` — lift a design style out of a reference mesh into
     `styles/<name>/`
@@ -113,7 +115,7 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
 - `tools/printcheck/` — STL printability analyzer; scores rendered models
   for watertightness, overhangs, thin walls, and bed adhesion before
   slicing — see its [README](tools/printcheck/README.md)
-- `tools/photoshot/` — STL → POV-Ray studio renderer behind
+- `tools/photoshot/` — STL → Blender/Cycles studio renderer behind
   `product-shot.sh`, which turns a design's own STL export into the
   photographed-looking hero image on its product page — see its
   [README](tools/photoshot/README.md)
