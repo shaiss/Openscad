@@ -5,9 +5,12 @@ build/
 *.scad.bak
 *-backup.scad
 
-# Python bytecode (tools/photoshot, tools/printcheck)
+# Python bytecode (tools/photoshot, tools/printcheck, tools/stylelift)
 __pycache__/
 *.pyc
+
+# setuptools metadata from `pip install -e tools/<tool>`
+*.egg-info/
 
 # POV-Ray's continue-trace file: an interrupted product-shot render drops a
 # multi-MB .pov-state next to the output, inside a tracked previews/ dir
