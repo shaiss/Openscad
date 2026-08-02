@@ -20,14 +20,18 @@ lug_r = 6.0;
 port_proj = 10.0;
 // Coupling sectors per face (3 = kinematically determinate)
 n_lug = 3;
-// Angular width of each sector (deg). Asserted <= 360/n_lug/2
-lug_deg = 55;
+// Angular width of each sector (deg). Asserted lug_deg + twist_deg <= pitch/2
+lug_deg = 30;
 // Radial depth of the locking rib (mm)
 rib_h = 1.0;
 // Axial width of the locking rib / groove (mm)
 rib_w = 2.4;
-// Circumferential run of the bayonet groove (deg) - the locking twist
-twist_deg = 40;
+// Angular width of the locking rib (deg). Must be narrower than the sector,
+// or the entry slot that admits it consumes the whole sector and there is
+// nothing left for the rib to twist under.
+rib_deg = 12;
+// The locking twist (deg). Asserted rib_deg + twist_deg <= lug_deg.
+twist_deg = 14;
 // Backing-collar thickness (mm) - ties the outer sectors in, stops the mate
 collar_t = 3.0;
 // Overlap used to fuse sectors into the tube/collar (mm). Never zero: a
@@ -97,6 +101,10 @@ for a Syrian hamster with full cheek pouches. bore_d must be >= min_bore_mm.");
 assert(lug_deg <= pitch / 2,
        "GENDERLESS: lug_deg must be <= 360/n_lug/2 or the sector pattern is not \
 its own complement and two identical faces cannot interleave.");
+assert(rib_deg + twist_deg <= lug_deg,
+       "BAYONET TRAVEL: the rib must be able to twist rib_deg->lug_deg within \
+the mate's sector. rib_deg + twist_deg must fit inside lug_deg, or the rib \
+runs off the end of the sector and retains nothing.");
 assert(wall >= 3 * nozzle,
        "WALL: needs >= 3 perimeters at the given nozzle.");
 assert(port_tol >= 0.10 && port_tol <= 0.60,
@@ -110,9 +118,11 @@ assert(straight_len + 2 * (bh_spigot_len + port_proj) <= 2 * body_len_mm,
 assert(wall_hole_d >= bore_d + 2 * bh_spigot_wall + 1.0,
        "WALL HOLE: the hole must clear the full-bore spigot - the bore is never \
 necked down at the wall crossing.");
-assert(twist_deg + lug_deg <= pitch,
-       "BAYONET: the locking twist plus the sector width cannot exceed the \
-sector pitch, or the sectors collide before the rib seats.");
+assert(twist_deg + lug_deg <= pitch / 2,
+       "BAYONET CLEARANCE: twist_deg + lug_deg must fit within HALF the sector \
+pitch. The mate's like-radius sectors sit half a pitch away, so free travel is \
+pitch/2 - lug_deg, not pitch - lug_deg. The looser form lets the part render \
+and gate cleanly while being physically impossible to twist shut.");
 assert(rib_h < lug_r / 2 - 0.4,
        "RIB: too deep for the coupling ring's radial budget.");
 
@@ -150,73 +160,93 @@ module tube(l, r_i = ri, r_o = ro) {
 // Everything is outboard of `ro`. Nothing protrudes into the bore, ever.
 // ---------------------------------------------------------------------------
 
+// The mate's clockings, derived so nothing has to restate them. Insertion is
+// half a pitch; locked is that plus or minus the twist, either direction.
+// nuggs-matetest.scad echoes these rather than hardcoding numbers that go
+// stale the moment a parameter moves — which they did, three rounds running.
+function nuggs_clockings() = [pitch / 2, pitch / 2 - twist_deg, pitch / 2 + twist_deg];
+
 // Sector angular start for index i, with a half-pitch offset for the inner set.
 function outer_a(i) = i * pitch;
 function inner_a(i) = i * pitch + pitch / 2;
 
-// Bayonet groove cut into one inner sector's outer face. The mate's rib
-// enters axially from our free tip (+port_proj), runs down to the seat just
-// above the backing collar, then rotates along the circumferential run.
-// Cut oversize by port_tol on every surface — this is the one fit knob.
+// Sector cross-sections are swept as ONE polygon each, not unioned from two
+// arcs. Two arcs that share an exact radius leave a coincident cylindrical
+// surface and CGAL returns a non-watertight mesh — that cost a round.
+module sector(pts, ang) { rotate_extrude(angle = ang) polygon(pts); }
+
+/* [Hidden] */
+t2      = port_tol / 2;
+i_out   = r_mid - t2;             // inner shell outer face
+i_in    = ro + t2;                // inner shell bore-side face, PROJECTING half
+o_in    = r_mid + t2;             // outer shell inner face
+rin     = ri - 2;                 // buried inside the bore; the bore cut removes it
+z_tip   = -port_proj;             // our sector tips
+z_top   = port_proj + collar_t;   // top of the port zone, inside the tube body
+z_seat  = port_proj;              // where the MATE's tips land on our collar
+rib_in  = i_out - rib_h;          // how far the rib reaches into the mate's band
+g_floor = i_out - rib_h - port_tol;   // groove floor: clears the rib by port_tol
+
+// Bayonet groove cut into one inner sector's outer face:
+//   * a narrow axial entry slot (rib_deg wide) running from our tip to the
+//     seat — this is the only way in, and it is deliberately much narrower
+//     than the sector so there is solid material left to twist under;
+//   * a full-width circumferential run at the seat, so the rib retains in
+//     EITHER twist direction and no handedness has to be got right.
+// Cut oversize by port_tol on every surface — the one fit knob.
 module bayonet_groove(a0) {
     t = port_tol;
-    // axial entry slot: from our free tip (-port_proj) up to the seat, which
-    // is where the mate's tip lands against our collar (+port_proj).
-    rotate([0, 0, a0 - t])
-        translate([0, 0, -port_proj - eps])
-            arc(r_mid - rib_h - t, r_mid + eps, lug_deg + 2 * t,
-                2 * port_proj + eps);
-    // circumferential run at seat depth — the twist travel
-    translate([0, 0, port_proj - rib_w - t])
-        rotate([0, 0, a0 - twist_deg - t])
-            arc(r_mid - rib_h - t, r_mid + eps, twist_deg + lug_deg + 2 * t,
-                rib_w + 2 * t);
+    rotate([0, 0, a0 - t])                                   // axial entry slot
+        sector([[g_floor, z_tip - eps], [i_out + eps, z_tip - eps],
+                [i_out + eps, z_seat + t], [g_floor, z_seat + t]],
+               rib_deg + 2 * t);
+    rotate([0, 0, a0 - t])                                   // circumferential run
+        sector([[g_floor, z_seat - rib_w - t], [i_out + eps, z_seat - rib_w - t],
+                [i_out + eps, z_seat + t], [g_floor, z_seat + t]],
+               lug_deg + 2 * t);
 }
 
 // One port face. The tube face sits at z = 0 and the mate's face butts it
 // there, so the bore is continuous across the joint — no gap, no step.
 //
-// The sectors span z = -port_proj .. +port_proj: the +z half reaches past our
-// own face and runs alongside the MATE's tube, while the -z half sits
-// alongside ours and leaves the interleaved sectors free for the mate's. A
-// full backing collar below z = -port_proj ties the outer sectors to the tube
-// (they are at r > r_mid and would otherwise float) and is the axial stop the
-// mate's sector tips seat against.
-// The tube body lies on the +z side of the face; the port projects to -z.
+// Sectors span z_tip..z_top. The half below z = 0 reaches past our own face
+// and runs alongside the MATE's tube, so its bore-side face must clear ro by
+// the fit tolerance; only the half above z = 0 may reach inward to fuse with
+// our own tube. Biting inward along the whole length instead drives the
+// sector into the mate's tube OD, and the two parts simply do not go
+// together — that was 1645 mm3 of interference.
 module nuggs_port() {
     difference() {
         union() {
-            // backing collar: full annulus inside the tube body, fused to it.
-            // This is what the mate's sector tips seat against.
-            translate([0, 0, port_proj]) tube(collar_t, ri, r_out);
-            // outer shell sectors: r_mid..r_out, tip at -port_proj, running up
-            // into the collar so they fuse (they touch no tube wall).
+            // Backing collar: full ring, fused to the tube, and the hard stop
+            // the mate's sector tips seat against. Its outer radius stops
+            // short of r_out so it never shares a surface with the outer
+            // sectors it overlaps.
+            translate([0, 0, z_seat])
+                difference() {
+                    cylinder(r = o_in + 1.0, h = collar_t);
+                    translate([0, 0, -eps]) cylinder(r = rin, h = collar_t + 2 * eps);
+                }
+            // Outer shell sectors — run up into the collar so they fuse
             for (i = [0 : n_lug - 1])
                 rotate([0, 0, outer_a(i)])
-                    translate([0, 0, -port_proj])
-                        arc(r_mid + port_tol / 2, r_out,
-                            lug_deg, 2 * port_proj + bite);
-            // inner shell sectors: bite into the tube wall so they fuse to it
+                    sector([[o_in, z_tip], [r_out, z_tip],
+                            [r_out, z_top], [o_in, z_top]], lug_deg);
+            // Inner shell sectors — one L-shaped profile: clear of the mate's
+            // tube below z = 0, reaching into our own tube above it.
             for (i = [0 : n_lug - 1])
                 rotate([0, 0, inner_a(i)])
-                    translate([0, 0, -port_proj])
-                        arc(ro - bite, r_mid - port_tol / 2,
-                            lug_deg, 2 * port_proj + bite);
-            // locking rib: inward off each outer sector, just back from its tip
+                    sector([[i_in, z_tip], [i_out, z_tip], [i_out, z_top],
+                            [rin, z_top], [rin, 0], [i_in, 0]], lug_deg);
+            // Locking rib: a narrow tab at one edge of each outer sector,
+            // reaching rib_h into the mate's inner-shell band at the tip.
             for (i = [0 : n_lug - 1])
-                translate([0, 0, -port_proj])
-                    rotate([0, 0, outer_a(i)])
-                        arc(r_mid - rib_h, r_mid + port_tol / 2 + bite, lug_deg, rib_w);
+                rotate([0, 0, outer_a(i)])
+                    sector([[rib_in, z_tip], [o_in + bite, z_tip],
+                            [o_in + bite, z_tip + rib_w], [rib_in, z_tip + rib_w]],
+                           rib_deg);
         }
-        // bayonet groove in each inner sector: axial entry then a
-        // circumferential run the mate's rib rotates along.
         for (i = [0 : n_lug - 1]) bayonet_groove(inner_a(i));
-        // Lead-in taper on the sector tips so two faces self-centre.
-        // Cut as a cone from BELOW the tips: an annular cutter that starts
-        // exactly at the tip plane slices a disc off every sector instead of
-        // chamfering it (12 free bodies, and printcheck rates that PRINTABLE).
-        translate([0, 0, -port_proj - 1.5])
-            cylinder(r1 = r_out + 1.5, r2 = r_mid - rib_h - 0.5, h = 3.0);
     }
 }
 
