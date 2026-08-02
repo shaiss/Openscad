@@ -17,13 +17,28 @@ read -ra OSC_ARGS <<<"${OPENSCAD_ARGS:-}"
 
 fail=0
 
+# WARNINGs that mean the file silently produced the WRONG SHAPE rather than
+# something cosmetic: OpenSCAD skips the call, exits 0, and hands you a
+# watertight, sliceable, gate-passing STL with the feature missing. These fail
+# the check; every other WARNING stays advisory.
+#
+# Note the echo pass below does not instantiate geometry, so it never sees an
+# unresolved `use <lib.scad>` — that is what the link check further down is
+# for. This pattern covers the top-level cases the echo pass does reach.
+FATAL_WARN="Ignoring unknown module|Ignoring unknown function|Can't open include file"
+
 check() {
   local f="$1"
   if out=$(xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
       -o /dev/null --export-format echo "$f" 2>&1); then
     # Surface WARNINGs even on success
     if grep -q "WARNING" <<<"$out"; then
-      echo "WARN  $f"
+      if grep -qE "$FATAL_WARN" <<<"$out"; then
+        echo "FAIL  $f  (unresolved module/include — wrong geometry, not a nit)"
+        fail=1
+      else
+        echo "WARN  $f"
+      fi
       grep "WARNING" <<<"$out" | sed 's/^/      /'
     else
       echo "ok    $f"
@@ -40,15 +55,43 @@ for f in designs/*/*.scad lib/*.scad templates/*.scad; do
   check "$f"
 done
 
-echo "-- geometry check: lib/printability-demo.scad"
-if xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
-    -o /dev/null --export-format binstl lib/printability-demo.scad 2>&1 \
-    | grep -E "ERROR|WARNING"; then
-  echo "FAIL  lib demo rendered with errors/warnings above"
-  fail=1
-else
-  echo "ok    lib demo renders clean"
-fi
+# Library-link check. OpenSCAD treats an unresolvable `use <x.scad>` as a
+# non-event: no error, no warning during the echo pass, exit 0 — and at render
+# time only "Ignoring unknown module", after which you get a watertight,
+# sliceable STL with the feature simply absent. Rendering the capsule without
+# OPENSCADPATH gives you a threadless neck that passes every downstream gate.
+# So resolve the links statically instead of hoping a render complains.
+echo "-- library-link check"
+lib_search=("$PWD/lib" /usr/share/openscad/libraries)
+for f in designs/*/*.scad lib/*.scad templates/*.scad; do
+  while read -r ref; do
+    [[ -f "$(dirname "$f")/$ref" ]] && continue     # sibling file
+    found=0
+    for d in "${lib_search[@]}"; do
+      [[ -f "$d/$ref" ]] && { found=1; break; }
+    done
+    (( found )) || { echo "FAIL  $f: use/include <$ref> resolves nowhere"; fail=1; }
+  done < <(grep -oE '^[[:space:]]*(use|include)[[:space:]]*<[^>]+>' "$f" \
+             | sed -E 's/.*<([^>]+)>.*/\1/')
+done
+(( fail )) || echo "ok    every use/include resolves"
+
+# Every lib/*-demo.scad is a full CGAL render, not just an echo check: that is
+# what catches a geometry regression in a shared module before a design does.
+# Globbed rather than named so a new library's demo is covered the day it
+# lands (the echo pass above already covers every lib/*.scad for syntax).
+for demo in lib/*-demo.scad; do
+  [[ -f "$demo" ]] || continue
+  echo "-- geometry check: ${demo}"
+  if xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
+      -o /dev/null --export-format binstl "$demo" 2>&1 \
+      | grep -E "ERROR|WARNING"; then
+    echo "FAIL  ${demo} rendered with errors/warnings above"
+    fail=1
+  else
+    echo "ok    ${demo} renders clean"
+  fi
+done
 
 echo "-- docs-drift check: scripts/docs-check.sh"
 if ! ./scripts/docs-check.sh; then

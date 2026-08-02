@@ -65,7 +65,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   source (entry point matches the directory name), the `README.md` product
   page, the `NOTES.md` engineering log, and committed `previews/`
 - `lib/` — shared modules: `printability.scad` (FDM fastener/chamfer
-  helpers) and vendored [BOSL2](https://github.com/BelfrySCAD/BOSL2)
+  helpers), `threads-fdm.scad` (printable trapezoidal threads), each with a
+  `*-demo.scad` regression render, plus vendored
+  [BOSL2](https://github.com/BelfrySCAD/BOSL2)
 - `build/` — generated STL/PNG outputs (gitignored)
 - `scripts/` — the toolchain:
   - `render.sh` — STL + 4-view preview sheet; `--previews` re-renders a

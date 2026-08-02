@@ -49,7 +49,8 @@ with dry-box gloves on. Must print on FDM with no supports on either part.
   → 8 mm lead, lid opens in ~1 turn; depth 1.2 mm). Flanks are exactly
   45 deg so the male thread prints supportless upright. BOSL2 screws.scad
   was considered; hand-rolled sweep kept the profile/printability fully
-  under parameter control and the file dependency-free.
+  under parameter control. Now shared via `lib/threads-fdm.scad` rather
+  than defined here — see "Thread engine moved to lib/" below.
 - **Thread fit**: `thread_tol=0.3` clearance on the female thread — equal
   radially and normal to the flanks (derivation below). Lid binds → +0.1
   and reprint lid only; too loose → -0.1.
@@ -59,6 +60,28 @@ with dry-box gloves on. Must print on FDM with no supports on either part.
 - Walls 2.0 mm, floor 2.0 mm, lid top 2.4 mm; webs between vents 2.4 mm
   (was 1.6 mm in the round-1 hex pattern) — all above the 0.8 mm
   minimum-feature rule.
+
+## Thread engine moved to lib/ (issue #18)
+
+The helix generator and the male/female pair now live in
+`lib/threads-fdm.scad`; this design keeps thin `male_neck()` /
+`female_thread_cut()` wrappers that bind its own parameter names to the
+library call. The derivation below is unchanged and is what
+`flank_add()` implements there.
+
+Verified behaviour-preserving at extraction: `argus diff` of the exported
+STL before vs after reports 0 bodies added/removed/modified and +0.00%
+volume (12387.6 mm³ both sides), 11,376 triangles and printcheck 92/100
+either way. Byte-comparing the STL does **not** work as a check — CGAL's
+facet ordering varies run to run, so two renders of identical source
+differ in ~200 kB.
+
+Extracting also surfaced a precondition this design never violated: the
+axial profile height must fit inside the lead
+(`0.25*pitch + w_add + 2*depth < pitch*starts`), or consecutive turns
+self-intersect and CGAL fails on the union with an opaque assertion. The
+capsule sits at 3.4 against a lead of 8, which is why it never showed up
+here; `thread_helix()` now asserts it.
 
 ## Thread clearance derivation
 
