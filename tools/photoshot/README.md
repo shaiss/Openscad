@@ -42,6 +42,7 @@ across them, and these PNGs are committed and diffed.
 | `--size` | `1280x960` | output `WxH` in pixels |
 | `--layers` | `0.2` | FDM layer-line pitch in mm for the surface texture; `0` or negative = smooth, `nan`/`inf` rejected |
 | `--samples` | `48` | Cycles path-tracing samples; with denoising, more than ~48 buys very little |
+| `--verbose` | off | let Blender's render log through instead of capturing it |
 | `--threads` | `0` | Cycles render threads; `0` uses every core. Raising or lowering it does **not** change the pixels |
 
 `--rotz`/`--elev`/`--zoom`/`--layers` reject `nan`/`inf`, `--zoom` rejects
@@ -98,9 +99,22 @@ disk.
   | `matte` | 0.62 | 0.25 | 0.00 | 0.50 |
 
 Cycles runs on CPU with OpenImageDenoise. Blender's per-sample progress goes
-straight to fd 1, below Python's `sys.stdout`, so it is silenced with a
-file-descriptor redirect for the duration of the render; the tool's own output
-is written after.
+straight to fd 1, below Python's `sys.stdout`, so it is diverted with a
+file-descriptor redirect for the duration of the render — into a temp file
+rather than `/dev/null`, so a failed render can still show what Blender said.
+`--verbose` leaves the fd alone.
+
+A render is only reported as successful if `bpy.ops.render.render()` returns
+`FINISHED` **and** the output file's mtime changed. The output path is usually
+a committed PNG that already exists, so "the file is there afterwards" would
+prove nothing — without the mtime check, a failed render would leave the
+previous image in place and report success.
+
+Note on smoothing: `bpy.ops.object.shade_auto_smooth()` cannot be used. It
+appends a "Smooth by Angle" geometry-nodes asset, and asset loading never
+completes in the headless `bpy` module — it returns `{'CANCELLED'}` and
+silently smooths nothing. `shade_smooth()` plus the mesh-level
+`set_sharp_from_angle()` gets the same result through the data API.
 
 ## Determinism
 

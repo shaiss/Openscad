@@ -45,6 +45,7 @@ import contextlib
 import math
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 # Horizontal field of view in degrees. A mild telephoto keeps product-shot
@@ -208,23 +209,40 @@ def solve_camera(extents, look_z, rotz, elev, zoom, size):
     return (dist * ux, dist * uy, look_z + dist * uz), dist
 
 
+def _tail(log, limit=2000):
+    """Last of whatever Blender printed, for a failure message."""
+    try:
+        log.flush()
+        log.seek(0)
+        text = log.read()
+    except (OSError, ValueError):
+        return ""
+    text = text.strip()
+    return f"--- blender output ---\n{text[-limit:]}" if text else ""
+
+
 @contextlib.contextmanager
-def quiet_fd(stream=1):
-    """Silence Blender's C-level chatter on the given fd for the duration.
+def captured_fd(sink, stream=1):
+    """Divert Blender's C-level chatter on the given fd into `sink`.
 
     Cycles writes per-sample progress straight to fd 1, below Python's stdout,
-    so redirecting sys.stdout is not enough. The tool's own output is written
-    after the block exits.
+    so redirecting sys.stdout is not enough. It goes to a file rather than
+    /dev/null so that a failing render can still show what Blender said —
+    discarding it outright would make every failure mode look identical.
     """
     saved = os.dup(stream)
-    devnull = os.open(os.devnull, os.O_WRONLY)
     try:
-        os.dup2(devnull, stream)
+        os.dup2(sink.fileno(), stream)
         yield
     finally:
         os.dup2(saved, stream)
-        os.close(devnull)
         os.close(saved)
+
+
+@contextlib.contextmanager
+def passthrough_fd(_sink, _stream=1):
+    """--verbose counterpart of captured_fd: leave the fd alone."""
+    yield
 
 
 def build_scene(bpy, stl_paths, colors, args):
@@ -300,8 +318,15 @@ def build_scene(bpy, stl_paths, colors, args):
         obj.select_set(True)
         # Smooth only genuinely curved surfaces; real facets stay faceted, so
         # the shot cannot imply a smoothness the printed part will not have.
-        if hasattr(bpy.ops.object, "shade_auto_smooth"):
-            bpy.ops.object.shade_auto_smooth(angle=math.radians(30))
+        #
+        # NOT bpy.ops.object.shade_auto_smooth(): that operator appends a
+        # "Smooth by Angle" geometry-nodes asset, and asset loading never
+        # completes in the headless bpy module — it returns {'CANCELLED'} and
+        # silently smooths nothing. shade_smooth() plus the mesh-level
+        # set_sharp_from_angle() is the same result through the data API.
+        bpy.ops.object.shade_smooth()
+        if hasattr(obj.data, "set_sharp_from_angle"):
+            obj.data.set_sharp_from_angle(angle=math.radians(30))
         obj.select_set(False)
 
     studio_floor(bpy, diag)
@@ -341,7 +366,12 @@ def filament_material(bpy, color, args):
         wave.wave_type = "BANDS"
         wave.bands_direction = "Z"
         wave.wave_profile = "SIN"
-        wave.inputs["Scale"].default_value = 1.0 / args.layers
+        # Blender's band wave evaluates sin(p * 20 * scale), so one full band
+        # spans 2*pi / (20 * scale) object units. Solving that for a pitch of
+        # `layers` mm gives pi / (10 * layers) — NOT 1/layers, which would put
+        # the bands at 0.063 mm for a 0.2 mm layer height: 3.18x too fine to
+        # survive to a pixel, so the texture would silently do nothing.
+        wave.inputs["Scale"].default_value = math.pi / (10.0 * args.layers)
         wave.inputs["Distortion"].default_value = 0.0
         bump.inputs["Strength"].default_value = 0.35
         bump.inputs["Distance"].default_value = args.layers * 0.05
@@ -491,6 +521,12 @@ def main():
         "very little (default: 48)",
     )
     ap.add_argument(
+        "--verbose",
+        action="store_true",
+        help="let Blender's render log through instead of capturing it "
+        "(it is shown automatically when a render fails)",
+    )
+    ap.add_argument(
         "--threads",
         type=int,
         default=0,
@@ -519,16 +555,36 @@ def main():
     colors += [default] * (len(args.stl) - len(colors))
 
     out = Path(args.output)
-    out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        sys.exit(f"error: cannot create output directory {out.parent}: {e}")
     w, h = args.size
 
-    with quiet_fd(1):
-        scene = build_scene(bpy, args.stl, colors, args)
-        scene.render.filepath = str(out)
-        bpy.ops.render.render(write_still=True)
+    # The output path is usually a committed PNG that already exists, so
+    # "the file is there afterwards" proves nothing. Remember what was there
+    # and require this run to have replaced it.
+    before = out.stat().st_mtime_ns if out.is_file() else None
 
-    if not out.is_file():
-        sys.exit(f"error: render produced no output at {out}")
+    diverted = passthrough_fd if args.verbose else captured_fd
+    with tempfile.TemporaryFile("w+") as log:
+        try:
+            with diverted(log, 1):
+                scene = build_scene(bpy, args.stl, colors, args)
+                scene.render.filepath = str(out)
+                result = bpy.ops.render.render(write_still=True)
+        except Exception as e:  # noqa: BLE001 - re-raised as a clean exit below
+            sys.exit(f"error: render failed: {e}\n{_tail(log)}")
+        if "FINISHED" not in result:
+            sys.exit(f"error: render did not finish (got {result})\n{_tail(log)}")
+        if not out.is_file():
+            sys.exit(f"error: render wrote no file at {out}\n{_tail(log)}")
+        if before is not None and out.stat().st_mtime_ns == before:
+            sys.exit(
+                f"error: {out} was not rewritten by this render — the file on "
+                f"disk is the previous one\n{_tail(log)}"
+            )
+
     strip_png_metadata(out)
     print(f"wrote {out} ({w}x{h})")
 
