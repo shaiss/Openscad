@@ -34,7 +34,20 @@ Two halves, and they have very different evidential weight:
 
 Everything below was measured in this session on the repo toolchain
 (OpenSCAD 2021.01 headless, printcheck, PrusaSlicer), not quoted.
-Probe sources: scratchpad/probe/{tube,elbow,bend,vent}-probe.scad
+Probe sources are committed alongside this doc:
+`docs/nuggs-probes/{tube,elbow,bend,vent}-probe.scad`. Reproduce the
+headline figure with:
+
+```bash
+OPENSCADPATH="$PWD/lib" xvfb-run -a openscad -o /tmp/repro.stl \
+  -D 'part="vertical"' -D 'bore=80' -D 'wall=2.4' -D 'len=160' -D '$fn=128' \
+  docs/nuggs-probes/tube-probe.scad
+printcheck /tmp/repro.stl --build-volume 256x256x256   # 100/100, no findings
+```
+
+Note the probes sit outside `check.sh`'s glob (`designs/*/*.scad
+lib/*.scad templates/*.scad`), so nothing re-validates them automatically
+— they are frozen reproduction inputs, not maintained sources.
 
 ## 1. Print orientation for a 75 mm-bore tube (150 mm long, 2.4 mm wall)
 
@@ -51,9 +64,26 @@ printcheck escalates the overhang finding from WARNING to CRITICAL at 25%
 at 23% — **two points under a hard CI failure**. Vertical is not a
 preference, it's the only orientation with margin.
 
-Bed contact, vertical: annulus area = pi*(39.9^2 - 37.5^2) = 583.6 mm²
-against a 5,001 mm² footprint = 11.7%, above printcheck's 5% "small bed
-contact patch" threshold (checks.py:248) — confirmed, no warning raised.
+Bed contact, vertical: **582.6 mm² against a 6,368 mm² footprint = 9.2%**,
+above printcheck's 5% "small bed contact patch" threshold (checks.py:248)
+— confirmed, no warning raised.
+
+Two corrections to an earlier draft of this line, both caught in review on
+PR #35, because the method matters more than the conclusion here:
+
+- **The footprint is the bounding box, not a circle.** printcheck uses
+  `footprint = mesh.extents[0] * mesh.extents[1]` (checks.py:238), so for
+  an OD of 79.8 mm it is 79.8 × 79.8 = 6,368 mm² — not pi*39.9² = 5,001 mm².
+  The earlier "11.7%" used the circular area and was wrong.
+- **Contact is measured, not derived.** Running printcheck's own
+  `plate_contact_faces()` over the mesh gives 582.6 mm², slightly under the
+  analytic annulus pi*(39.9² − 37.5²) = 583.6 mm², because a faceted
+  polygon is marginally smaller than the ideal circle it approximates.
+
+The conclusion is unchanged — 9.2% clears the 5% threshold and no warning
+fires — which is exactly why the wrong number survived a first pass. **The
+gate's silence here is not a pass**; see §"the warning nothing can give
+you" implication under the v1 straight below.
 
 ## 2. Bend angle: 45 deg is the printable ceiling
 
@@ -168,7 +198,9 @@ Solid-annulus theory gives pi*(42.4^2 - 40^2)*160 = 99,405 mm3 = 126.2 g at
 1.27 g/cm3, so the slicer came in 1.8% under theory. Bare tube only —
 flanges and lugs add roughly 12% on top.
 
-Bed contact: annulus 621.3 mm2 against a 7,191 mm2 bounding-box footprint
+Bed contact: **621.0 mm2 measured** (via printcheck's own
+`plate_contact_faces()`; the analytic annulus is 621.3) against a
+7,191 mm2 bounding-box footprint
 = 8.6%, above printcheck's 5% threshold, so **no brim warning will ever
 fire** on a 160 mm-tall part standing on a 2.4 mm-wide ring. Brim is a
 README instruction, not a gate outcome.
