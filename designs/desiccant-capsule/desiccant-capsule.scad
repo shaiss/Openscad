@@ -18,6 +18,8 @@
 // decrease it.
 // ============================================================
 
+use <threads-fdm.scad>
+
 /* [Part selection] */
 // Which geometry to generate ("print" = both parts laid out for one plate)
 part = "print"; // [body, lid, print, assembly, cutaway]
@@ -103,14 +105,10 @@ lid_bore     = thread_minor + 2 * thread_tol;              // slides over the ne
 lid_od       = thread_major + 2 * thread_tol + 2 * lid_wall; // wall covers groove depth
 lid_h        = neck_h + lid_clear_top + lid_top_t;
 
-// Axial widening of the female groove so the flank-normal clearance equals
-// thread_tol exactly. The female profile is the male profile translated
-// radially by thread_tol and widened axially by flank_add/2 per side; both
-// displacements move a 45-degree flank along its normal:
-//   gap = (thread_tol + flank_add/2) / sqrt(2)  ==  thread_tol
-//   =>  flank_add = 2*(sqrt(2) - 1)*thread_tol      (~0.83*thread_tol)
-// Full derivation in NOTES.md.
-flank_add = 2 * (sqrt(2) - 1) * thread_tol;
+// The flank-clearance derivation that used to live here (flank_add, the axial
+// widening that makes the flank-normal gap equal thread_tol exactly) moved to
+// flank_add() in lib/threads-fdm.scad, which thread_bore_cut() applies for us.
+// Full derivation in NOTES.md and in the library header.
 
 // ---- bead-containment guards: no opening may pass a worn (undersized) bead.
 // A bead passes an opening iff its diameter fits the opening's inscribed
@@ -172,73 +170,25 @@ echo(str("Wall vent open area: ", wall_open, " mm2 (",
 echo(str("Floor vent open area: ", floor_open, " mm2"));
 
 // ============================================================
-// Thread: trapezoidal profile swept as a helical polyhedron.
-// Solid rib for the male thread; pass tol/w_add to grow it into
-// a cutter for the female thread.
+// Thread
 // ============================================================
-module thread_helix(d_major, depth, pitch, starts, length, w_add = 0) {
-    lead    = pitch * starts;
-    r_maj   = d_major / 2;
-    r_min   = r_maj - depth;
-    w_crest = 0.25 * pitch + w_add;
-    w_root  = w_crest + 2 * depth;           // 45 deg flanks
-    sink    = 0.4;                           // weld into the core
-    prof = [
-        [r_min - sink, -w_root / 2],
-        [r_maj,        -w_crest / 2],
-        [r_maj,         w_crest / 2],
-        [r_min - sink,  w_root / 2]
-    ];
-    k     = len(prof);
-    turns = (length + 2 * lead) / lead;
-    N     = ceil(thread_seg * turns);
-    da    = 360 * turns / N;
-    dz    = lead * turns / N;
-    pts   = [for (i = [0:N], p = prof)
-                [p[0] * cos(i * da), p[0] * sin(i * da), p[1] + i * dz - lead]];
-    faces = concat(
-        [[for (j = [k-1:-1:0]) j]],                 // start cap
-        [[for (j = [0:k-1]) N * k + j]],            // end cap
-        [for (i = [0:N-1], j = [0:k-1])                     // side quads,
-            [i*k + j, i*k + (j+1)%k, (i+1)*k + (j+1)%k]],   // triangulated
-        [for (i = [0:N-1], j = [0:k-1])
-            [i*k + j, (i+1)*k + (j+1)%k, (i+1)*k + j]]
-    );
-    for (s = [0:starts-1])
-        rotate([0, 0, s * 360 / starts])
-            polyhedron(points = pts, faces = faces, convexity = 10);
-}
+// The helix generator, the male/female pair and the flank-clearance
+// derivation now live in lib/threads-fdm.scad (issue #18) so a second
+// threaded design cannot re-derive them differently. These wrappers keep the
+// design's parameter names at the call sites.
 
 // Male thread + neck core, chamfered at the top for lead-in.
 module male_neck() {
-    ch = thread_depth + 0.2;
-    intersection() {
-        union() {
-            cylinder(d = thread_minor, h = neck_h);
-            thread_helix(thread_major, thread_depth, thread_pitch,
-                         thread_starts, neck_h);
-        }
-        union() {
-            cylinder(d = thread_major + 2, h = neck_h - ch);
-            translate([0, 0, neck_h - ch])
-                cylinder(d1 = thread_major + 2, d2 = thread_minor - 0.6,
-                         h = ch + eps);
-        }
-    }
+    thread_neck(thread_major, thread_depth, thread_pitch, thread_starts,
+                neck_h, seg = thread_seg, eps = eps);
 }
 
 // Female thread cutter: same thread grown radially by thread_tol
 // and axially widened, running out below the rim.
 module female_thread_cut() {
-    ext = thread_pitch;                      // run out past the rim
-    intersection() {
-        thread_helix(thread_major + 2 * thread_tol, thread_depth,
-                     thread_pitch, thread_starts,
-                     neck_h + lid_clear_top, w_add = flank_add);
-        translate([0, 0, -ext])
-            cylinder(d = thread_major + 4,
-                     h = neck_h + lid_clear_top + ext);
-    }
+    thread_bore_cut(thread_major, thread_depth, thread_pitch, thread_starts,
+                    neck_h, thread_tol, over = lid_clear_top,
+                    seg = thread_seg);
 }
 
 // ============================================================

@@ -18,7 +18,9 @@ Set `OPENSCADPATH="$PWD/lib"` (the scripts do this automatically) so library inc
 
 - **BOSL2** (vendored at `lib/BOSL2/`) — `include <BOSL2/std.scad>`. Use for fillets/roundings (`cuboid`, `cyl`), attachments, threads (`include <BOSL2/screws.scad>`), gears, and anything geometrically hard. Prefer it over hand-rolled hulls for rounded/filleted parts.
 - **MCAD** (system-installed) — `include <MCAD/...>`.
-- **`lib/printability.scad`** — repo-local FDM helpers: `screw_hole()` (plain/socket/countersunk, M2–M6 presets), `teardrop_hole()` (support-free horizontal holes), `heatset_boss()`, `chamfered_cylinder()`, `rounded_box()`. Lightweight and fast; reach for these before BOSL2 for simple fastener work. `lib/printability-demo.scad` shows one of each and doubles as its regression test.
+- **`lib/printability.scad`** — repo-local FDM helpers: `screw_hole()` (plain/socket/countersunk, M2–M6 presets), `teardrop_hole()` (support-free horizontal holes), `heatset_boss()`, `chamfered_cylinder()`, `rounded_box()`. Lightweight and fast; reach for these before BOSL2 for simple fastener work.
+- **`lib/threads-fdm.scad`** — printable trapezoidal threads for vertical bores: `thread_helix()` (the generator), `thread_neck()` (male, with lead-in chamfer), `thread_bore_cut()` (the matching female cutter), `flank_add()` (the clearance derivation). 45° flanks so both halves print supportless, one tunable radial `tol`, and both profiles from one generator so male and female cannot drift apart. Use it over BOSL2's `screws.scad` for printed threads; use BOSL2 for machine threads.
+- Each library ships a `lib/<name>-demo.scad` exercising every module; `check.sh` CGAL-renders all of them, so they are the libraries' regression tests. Add one with any new library.
 
 ## Commands
 

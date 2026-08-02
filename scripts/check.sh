@@ -40,15 +40,22 @@ for f in designs/*/*.scad lib/*.scad templates/*.scad; do
   check "$f"
 done
 
-echo "-- geometry check: lib/printability-demo.scad"
-if xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
-    -o /dev/null --export-format binstl lib/printability-demo.scad 2>&1 \
-    | grep -E "ERROR|WARNING"; then
-  echo "FAIL  lib demo rendered with errors/warnings above"
-  fail=1
-else
-  echo "ok    lib demo renders clean"
-fi
+# Every lib/*-demo.scad is a full CGAL render, not just an echo check: that is
+# what catches a geometry regression in a shared module before a design does.
+# Globbed rather than named so a new library's demo is covered the day it
+# lands (the echo pass above already covers every lib/*.scad for syntax).
+for demo in lib/*-demo.scad; do
+  [[ -f "$demo" ]] || continue
+  echo "-- geometry check: ${demo}"
+  if xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
+      -o /dev/null --export-format binstl "$demo" 2>&1 \
+      | grep -E "ERROR|WARNING"; then
+    echo "FAIL  ${demo} rendered with errors/warnings above"
+    fail=1
+  else
+    echo "ok    ${demo} renders clean"
+  fi
+done
 
 echo "-- docs-drift check: scripts/docs-check.sh"
 if ! ./scripts/docs-check.sh; then
