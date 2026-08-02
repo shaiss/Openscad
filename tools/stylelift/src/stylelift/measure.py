@@ -55,6 +55,12 @@ class Config:
     # from width_ratio above: that one guards an arithmetic estimate, this one
     # answers a question about design intent.
     chamfer_width_ratio: float = 1.6
+    # A band whose two ends differ in width by more than this is tapered: a
+    # cone's strip, not a cylinder's, and the radius identity does not apply.
+    taper_tol: float = 1.15
+    # A fold turning less than this fraction of what the folds around it turn
+    # is where an arc runs tangent into a flat face, not part of the arc.
+    turn_consistency: float = 0.7
     # Radius modes: half-width of the refinement window, and the share of
     # folded length below which a mode is noise rather than vocabulary.
     mode_tol: float = 0.12
@@ -104,6 +110,7 @@ def _strip_widths(mesh: trimesh.Trimesh, groups, index):
     edges = mesh.face_adjacency_edges
     verts = mesh.vertices
     widths = np.zeros((len(pairs), 2))
+    taper = np.ones((len(pairs), 2))
     keys = np.zeros((len(pairs), 2), dtype=np.int64)
     cache: dict[int, np.ndarray] = {}
 
@@ -131,8 +138,36 @@ def _strip_widths(mesh: trimesh.Trimesh, groups, index):
             n = np.linalg.norm(across)
             if n == 0:
                 continue
-            widths[k, side] = float(np.ptp(v @ (across / n)))
-    return widths, keys
+            span = v @ (across / n)
+            widths[k, side] = float(np.ptp(span))
+            # Is the band parallel-sided, or does it converge? A cylinder's
+            # strip is a rectangle; a cone's is a trapezoid. The radius
+            # identity assumes the first, so measure the across-fold width at
+            # both ends of the shared edge and let the caller drop the folds
+            # where the two disagree — otherwise a plain tapered boss reports
+            # a "corner radius" nothing in the model has.
+            along = v @ edge
+            # Is the band parallel-sided, or does it converge? A cylinder's
+            # strip is a rectangle, a cone's a trapezoid, and the identity
+            # above assumes the first. Which way the trapezoid narrows depends
+            # on how the cone was tessellated: with the folds running up the
+            # generators the chords shrink along the band, with the folds
+            # running around the rim the band's length shrinks across it.
+            # Measure both and keep the stronger — checking only one axis finds
+            # cones in one tessellation and misses them in the other.
+            if len(v) >= 4:
+                for axis, other in ((along, span), (span, along)):
+                    if float(np.ptp(axis)) <= 0:
+                        continue
+                    middle = float(np.median(axis))
+                    near, far = axis <= middle, axis > middle
+                    if near.sum() < 2 or far.sum() < 2:
+                        continue
+                    a, b = float(np.ptp(other[near])), float(np.ptp(other[far]))
+                    if min(a, b) > 1e-9:
+                        taper[k, side] = max(taper[k, side],
+                                             max(a, b) / min(a, b))
+    return widths, taper, keys
 
 
 def radius_modes(radii: np.ndarray, weights: np.ndarray, cfg: Config) -> list[dict]:
@@ -191,7 +226,7 @@ def _edge_treatment(mesh: trimesh.Trimesh, cfg: Config) -> dict:
     lengths = np.linalg.norm(verts[edges[:, 0]] - verts[edges[:, 1]], axis=1)
 
     groups, index = _facet_groups(mesh)
-    widths, keys = _strip_widths(mesh, groups, index)
+    widths, taper, keys = _strip_widths(mesh, groups, index)
 
     flat = angles < np.radians(cfg.flat_deg)
     soft = (~flat) & (angles <= np.radians(cfg.soft_max_deg))
@@ -287,7 +322,41 @@ def _edge_treatment(mesh: trimesh.Trimesh, cfg: Config) -> dict:
     wmin = np.minimum(widths[:, 0], widths[:, 1])
     wmax = np.maximum(widths[:, 0], widths[:, 1])
     comparable = (wmin > 0) & (wmax <= cfg.width_ratio * wmin)
-    usable = band & comparable & (~on_chamfer)
+
+    # Both sides converging means the surface is a cone, not a cylinder, and it
+    # has no single radius to report. Without this a plain tapered boss claims
+    # a corner radius — and one measured off the taper angle, so it belongs to
+    # no feature of the part at all.
+    # Both guards below read the shape of a *strip*, so they only apply where
+    # the mesh actually has strips: a facet key of -1 is a lone triangle, whose
+    # width necessarily narrows to a point and whose fold angles carry no strip
+    # ordering. On triangle soup they would filter folds arbitrarily and shift
+    # the very radii the tessellation note already warns are approximate.
+    strip_fold = (keys[:, 0] >= 0) & (keys[:, 1] >= 0)
+    # Either side converging is enough: a fold between a flat plate and the
+    # side of a tapered boss is not a cylinder fold on anybody's reading, and
+    # letting it through is what made a bar with one plain draft-angled boss
+    # report a corner radius.
+    conical = strip_fold & (np.maximum(taper[:, 0], taper[:, 1]) > cfg.taper_tol)
+
+    # A tessellated arc turns by the same angle at every interior fold, and by
+    # half that where it runs tangent into the flat face it joins. On a coarse
+    # curve those tangent folds pass the width test — the strips are wide
+    # enough to look comparable — and each one contributes a radius twice the
+    # true one. Compare every fold against the folds around it: a fold turning
+    # much less than its own neighbours is a joint, not part of the arc.
+    turn_ref = np.zeros(len(angles))
+    facet_turn: dict[int, list] = {}
+    for k in np.where(band)[0]:
+        for side in (0, 1):
+            facet_turn.setdefault(int(keys[k, side]), []).append(float(angles[k]))
+    medians = {f: float(np.median(v)) for f, v in facet_turn.items()}
+    for k in np.where(band)[0]:
+        turn_ref[k] = max(medians.get(int(keys[k, 0]), 0.0),
+                          medians.get(int(keys[k, 1]), 0.0))
+    consistent = (~strip_fold) | (angles >= cfg.turn_consistency * turn_ref)
+
+    usable = band & comparable & consistent & (~conical) & (~on_chamfer)
     radii = np.full(len(angles), np.nan)
     with np.errstate(divide="ignore", invalid="ignore"):
         radii[usable] = ((widths[usable, 0] + widths[usable, 1]) / 2
@@ -355,9 +424,18 @@ def _edge_treatment(mesh: trimesh.Trimesh, cfg: Config) -> dict:
     form_outer = modes_for(usable & convex & form, sweeps)
     form_inner = modes_for(usable & ~convex & form, sweeps)
 
-    chamfer_len = float(sum(b["length_mm"] for b in bands))
-    round_len = float(lengths[usable].sum())
-    grammar_total = chamfer_len + round_len + hard_len
+    # The three grammar buckets must PARTITION the shaped folds, not overlap.
+    # Summing "hard length" and "chamfer length" double-counted every chamfer's
+    # own bounding folds — they turn 45 degrees, so they are hard edges *and*
+    # chamfer edges — inflating the denominator and quietly shrinking every
+    # share below what it should be.
+    chamfer_mask = (~flat) & on_chamfer
+    round_mask = usable & (~chamfer_mask)
+    sharp_mask = (~flat) & (~chamfer_mask) & (~round_mask)
+    chamfer_len = float(lengths[chamfer_mask].sum())
+    round_len = float(lengths[round_mask].sum())
+    sharp_len = float(lengths[sharp_mask].sum())
+    grammar_total = chamfer_len + round_len + sharp_len
 
     # How the curved surfaces are tessellated, because it bounds how far the
     # radii can be trusted. CAD and OpenSCAD emit quad strips (two coplanar
@@ -369,10 +447,14 @@ def _edge_treatment(mesh: trimesh.Trimesh, cfg: Config) -> dict:
     # silently corrected: the factor is only stable at the isotropic extreme,
     # and a confident wrong number is worse than a flagged approximate one.
     stripped = 0.0
-    if usable.any():
-        paired = np.array([(keys[k, 0] >= 0) or (keys[k, 1] >= 0)
-                           for k in np.where(usable)[0]])
-        stripped = float(lengths[usable][paired].sum() / lengths[usable].sum())
+    if band.any():
+        # Judged over the *curved* folds and requiring strips on both sides:
+        # this is a statement about how the curved surfaces are tessellated,
+        # and a part whose flat faces are quads but whose cone is triangle soup
+        # should not be able to claim otherwise.
+        paired = np.array([(keys[k, 0] >= 0) and (keys[k, 1] >= 0)
+                           for k in np.where(band)[0]])
+        stripped = float(lengths[band][paired].sum() / lengths[band].sum())
     tessellation = ("strip" if stripped > 0.6
                     else "triangulated" if stripped < 0.15 else "mixed")
     return {
@@ -408,7 +490,7 @@ def _edge_treatment(mesh: trimesh.Trimesh, cfg: Config) -> dict:
         "grammar": {
             "rounded_share": round(round_len / grammar_total, 4) if grammar_total else 0.0,
             "chamfered_share": round(chamfer_len / grammar_total, 4) if grammar_total else 0.0,
-            "sharp_share": round(hard_len / grammar_total, 4) if grammar_total else 0.0,
+            "sharp_share": round(sharp_len / grammar_total, 4) if grammar_total else 0.0,
         },
         # handed to the feature pass so the regions are grown only once
         "_internal": {"radii": radii, "usable": usable, "lengths": lengths,
@@ -627,16 +709,23 @@ def _walls(mesh: trimesh.Trimesh, cfg: Config) -> dict:
     # On a solid part these rays measure the part, not a wall, and the answer
     # must not become a "wall thickness" token in somebody's style.
     #
-    # Two things have to hold for a shell. The commonest thickness must be well
-    # under the part's shortest dimension — and it must account for much of the
-    # surface, because a shell is *mostly* wall. Size alone is not enough: any
-    # solid part with a boss or a post on it has a bounding box taller than the
-    # body, so the rays crossing that boss return its width as the commonest
-    # thickness and a perfectly solid block reads as shelled.
-    thinnest_extent = float(np.min(mesh.extents))
+    # Two things have to hold. Most of the surface must sit at the same
+    # thickness, because a shell is *mostly* wall — that alone rules out a
+    # solid block with a boss, whose rays cross the boss and return its width.
+    # And that thickness must agree with the part's own volume-to-area ratio:
+    # material of thickness t bounded on both sides gives 2V/A ≈ t, while a
+    # solid block's commonest chord is far larger than its 2V/A.
+    #
+    # Neither term looks at the bounding box, deliberately. A box-based test
+    # made the answer depend on how the file happened to be rotated, which
+    # would have been the one place this tool contradicted itself: everything
+    # else it measures is invariant under pose.
+    area = float(mesh.area)
+    volume = float(mesh.volume) if mesh.is_watertight else 0.0
+    implied = 2.0 * volume / area if area > 0 else 0.0
     at_mode = float(((thickness >= mode * 0.88) & (thickness <= mode * 1.12)
                      ).mean())
-    shelled = bool(mode < 0.85 * thinnest_extent and at_mode >= 0.5)
+    shelled = bool(at_mode >= 0.5 and 0 < implied and mode <= 1.5 * implied)
     return {
         "measured": True,
         "shelled": shelled,

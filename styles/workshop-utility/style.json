@@ -120,23 +120,23 @@
         0.4342,
         0.2105
       ],
-      "volume_mm3": 11825.932,
+      "volume_mm3": 11825.93,
       "bbox_fill": 0.2947,
       "convexity": 0.4343,
       "surface_area_mm2": 6156.787
     },
     "edges": {
       "folds": 4470,
-      "soft_length_mm": 4082.394,
+      "soft_length_mm": 4312.853,
       "hard_length_mm": 1084.108,
-      "softness": 0.7902,
+      "softness": 0.7991,
       "tessellation": "strip",
-      "strip_share": 1.0,
+      "strip_share": 0.9129,
       "rounding": {
         "convex": [
           {
-            "r_mm": 4.0,
-            "share": 0.9814,
+            "r_mm": 4.0017,
+            "share": 1.0,
             "length_mm": 564.0,
             "implied_fn": 64.0,
             "sweep_deg": 84.4
@@ -144,63 +144,58 @@
         ],
         "concave": [
           {
-            "r_mm": 3.0,
-            "share": 0.4152,
+            "r_mm": 3.0016,
+            "share": 0.7781,
             "length_mm": 376.0,
             "implied_fn": 64.0,
             "sweep_deg": 264.4
           },
           {
-            "r_mm": 7.1791,
-            "share": 0.3393,
-            "length_mm": 307.282,
-            "implied_fn": 90.3
-          },
-          {
-            "r_mm": 1.7,
-            "share": 0.1837,
-            "length_mm": 166.4,
-            "implied_fn": 64.0
+            "r_mm": 4.8017,
+            "share": 0.0828,
+            "length_mm": 40.0,
+            "implied_fn": 64.0,
+            "sweep_deg": 28.1
           }
         ],
-        "dominant_r_mm": 4.0,
-        "dominant_share": 0.9814,
+        "dominant_r_mm": 4.0017,
+        "dominant_share": 1.0,
         "implied_fn": 64.0
       },
       "form": {
         "convex": [
           {
-            "r_mm": 4.9998,
-            "share": 0.9867,
-            "length_mm": 1187.2,
+            "r_mm": 4.3979,
+            "share": 1.0,
+            "length_mm": 512.0,
             "implied_fn": 64.0,
             "sweep_deg": 360.0
           }
         ],
         "concave": [
           {
-            "r_mm": 1.7,
-            "share": 0.5,
-            "length_mm": 576.0,
+            "r_mm": 1.7001,
+            "share": 0.5631,
+            "length_mm": 742.4,
             "implied_fn": 64.0,
             "sweep_deg": 360.0
           },
           {
-            "r_mm": 1.9999,
-            "share": 0.3333,
+            "r_mm": 1.9989,
+            "share": 0.2913,
             "length_mm": 384.0,
             "implied_fn": 64.0,
             "sweep_deg": 360.0
           },
           {
-            "r_mm": 3.0,
-            "share": 0.1667,
+            "r_mm": 3.0009,
+            "share": 0.1456,
             "length_mm": 192.0,
             "implied_fn": 64.0,
             "sweep_deg": 360.0
           }
         ],
-        "dominant_r_mm": 4.9998
+        "dominant_r_mm": 4.3979
       },
       "chamfers": {
         "bands": [
@@ -236,39 +231,39 @@
             "leg_mm": 0.5996,
             "width_mm": 0.848,
             "turn_deg": 90.0,
-            "length_mm": 0.922,
+            "length_mm": 0.923,
             "convex": true
           },
           {
             "leg_mm": 0.5996,
             "width_mm": 0.848,
             "turn_deg": 90.0,
-            "length_mm": 0.922,
+            "length_mm": 0.923,
             "convex": true
           },
           {
             "leg_mm": 0.5996,
             "width_mm": 0.848,
             "turn_deg": 90.0,
-            "length_mm": 0.922,
+            "length_mm": 0.923,
             "convex": true
           },
           {
             "leg_mm": 0.5996,
             "width_mm": 0.848,
             "turn_deg": 90.0,
-            "length_mm": 0.922,
+            "length_mm": 0.923,
             "convex": true
           }
         ],
         "count": 196,
-        "length_mm": 276.48,
+        "length_mm": 442.864,
         "dominant_leg_mm": 0.5996
       },
       "grammar": {
-        "rounded_share": 0.7382,
-        "chamfered_share": 0.0532,
-        "sharp_share": 0.2086
+        "rounded_share": 0.5332,
+        "chamfered_share": 0.0821,
+        "sharp_share": 0.3847
       }
     },
     "features": {
@@ -277,7 +272,7 @@
           "d_mm": 3.4,
           "kind": "hole",
           "axis": "z",
-          "count": 2,
+          "count": 3,
           "implied_fn": 64.0
         },
         {
@@ -300,17 +295,10 @@
           "axis": "z",
           "count": 1,
           "implied_fn": 64.0
-        },
-        {
-          "d_mm": 10.0,
-          "kind": "boss",
-          "axis": "z",
-          "count": 1,
-          "implied_fn": 64.0
         }
       ],
       "count": 6,
-      "hole_count": 4,
+      "hole_count": 5,
       "dominant_hole_d_mm": 3.4
     },
     "orientation": {
@@ -321,14 +309,14 @@
       "sloped_share": 0.0635,
       "dominant_slopes": [
         {
-          "angle_deg": 44.94,
-          "share": 0.0367
+          "angle_deg": 44.92,
+          "share": 0.028
         }
       ]
     },
     "walls": {
       "measured": true,
-      "shelled": true,
+      "shelled": false,
       "samples": 2000,
       "p05_mm": 2.397,
       "median_mm": 7.138,
@@ -336,14 +324,12 @@
       "min_mm": 2.0
     },
     "symmetry": {
-      "x": 0.4013,
-      "y": 0.23,
-      "z": 0.2987
+      "x": 0.3893,
+      "y": 0.2287,
+      "z": 0.298
     },
     "ratios": {
-      "radius_to_wall": 0.667,
-      "chamfer_to_wall": 0.1,
-      "radius_to_size": 0.0526
+      "radius_to_size": 0.0527
     },
     "config": {
       "flat_deg": 0.5,
@@ -353,6 +339,9 @@
       "min_chamfer_mm": 0.3,
       "noise_radius_multiple": 5.0,
       "width_ratio": 3.0,
+      "chamfer_width_ratio": 1.6,
+      "taper_tol": 1.15,
+      "turn_consistency": 0.7,
       "mode_tol": 0.12,
       "mode_min_share": 0.05,
       "closed_turn_deg": 350.0,

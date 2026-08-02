@@ -13,7 +13,7 @@ import trimesh
 
 from make_probe_models import (chamfered_prism, chamfered_slab, drilled_plate,
                                rounded_prism, rounded_slab, sharp_prism,
-                               shelled_tube)
+                               shelled_tube, tapered_boss_plate)
 from stylelift import measure
 from stylelift.cli import main
 from stylelift.emit import lift, render_tokens, sync
@@ -124,6 +124,57 @@ def test_a_coarse_curve_is_not_mistaken_for_chamfers(tmp_path):
         r = measure(save(tmp_path, barrel, f"barrel{sections}.stl"))
         assert r["edges"]["chamfers"]["count"] == 0
         assert r["edges"]["form"]["dominant_r_mm"] == pytest.approx(10.0, abs=0.05)
+
+
+def test_a_tapered_boss_is_not_a_corner_radius(tmp_path):
+    # A bar with one plain draft-angled boss contains no fillet at all. The
+    # radius identity assumes a cylinder's parallel-sided strip; a cone's strip
+    # is a trapezoid, and applying the identity to it reported a 12.7 mm corner
+    # radius over 95% of the curved length — a number belonging to no feature
+    # of the part.
+    r = measure(save(tmp_path, tapered_boss_plate(), "frustum.stl"))
+    assert r["edges"]["rounding"]["dominant_r_mm"] is None
+    assert r["edges"]["rounding"]["convex"] == []
+
+
+def test_a_coarse_arc_reports_only_the_radius_it_has(tmp_path):
+    # At $fn=8 a 3 mm fillet's strips are wide enough that the tangent fold
+    # where the arc meets the flat face passes the width test, and each such
+    # fold contributes twice the true radius. The dominant mode was 8.07 mm on
+    # a part whose only radius is 3.
+    mesh = rounded_prism(width=10, depth=10, height=40, radius=3.0,
+                         quarter_segments=2)
+    r = measure(save(tmp_path, mesh, "coarse.stl"))
+    assert r["edges"]["rounding"]["dominant_r_mm"] == pytest.approx(3.0, abs=0.05)
+    assert r["edges"]["rounding"]["dominant_share"] > 0.9
+
+
+def test_grammar_shares_partition_the_shaped_edges(tmp_path):
+    # rounded / chamfered / sharp are shares of one quantity, so they must sum
+    # to 1. Adding chamfer length to hard length counted every chamfer's own
+    # 45-degree bounding folds twice.
+    for name, mesh in (("chamfer", chamfered_prism(leg=1.0)),
+                       ("round", rounded_prism(radius=3.0)),
+                       ("slab", chamfered_slab(height=8.0, leg=0.6))):
+        g = measure(save(tmp_path, mesh, f"{name}.stl"))["edges"]["grammar"]
+        assert sum(g.values()) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_shelled_does_not_depend_on_the_pose_of_the_file(tmp_path):
+    # Everything else this tool measures is invariant under rotation; deciding
+    # "is this a shell?" from the axis-aligned bounding box made this one metric
+    # depend on how the exporter happened to orient the part, and a rotated
+    # solid could mint a wall-thickness token for a style.
+    for name, mesh, expected in (("tube", shelled_tube(wall=2.4), True),
+                                 ("solid", sharp_prism(), False)):
+        tumbled = mesh.copy()
+        for angle, axis in ((17, [1, 0, 0]), (29, [0, 1, 0]), (41, [0, 0, 1])):
+            tumbled.apply_transform(
+                trimesh.transformations.rotation_matrix(np.radians(angle), axis))
+        upright = measure(save(tmp_path, mesh, f"{name}.stl"))
+        rotated = measure(save(tmp_path, tumbled, f"{name}-rot.stl"))
+        assert upright["walls"]["shelled"] is expected
+        assert rotated["walls"]["shelled"] is expected
 
 
 def test_edge_rounding_is_kept_apart_from_bores(tmp_path):

@@ -68,14 +68,13 @@ Numbers to build with. `include <styles/workshop-utility/style.scad>` and use th
 <!-- stylelift:evidence -->
 | Property | Reference |
 |---|---|
-| Edge softness | 0.79 (1.0 = every edge curves) |
-| Edge grammar | rounded 74% / chamfered 5% / sharp 21% |
-| Rounding vocabulary | 4 mm (98%) |
-| Form curvature (the shape, not its edges) | 5 mm |
+| Edge softness | 0.80 (1.0 = every edge curves) |
+| Edge grammar | rounded 53% / chamfered 8% / sharp 38% |
+| Rounding vocabulary | 4.0017 mm (100%) |
+| Form curvature (the shape, not its edges) | 4.4 mm |
 | Chamfer leg | 0.6 mm |
 | Fills its bounding box | 29% |
-| Wall thickness | 6 mm |
-| Round feature | 2 x hole 3.4 mm diameter, z axis |
+| Round feature | 3 x hole 3.4 mm diameter, z axis |
 | Round feature | 1 x hole 4 mm diameter, z axis |
 | Round feature | 1 x hole 6 mm diameter, z axis |
 | Round feature | 1 x boss 8.8 mm diameter, z axis |

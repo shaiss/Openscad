@@ -84,6 +84,39 @@ def chamfered_slab(width=60.0, depth=40.0, height=3.0, leg=0.6) -> trimesh.Trime
     return trimesh.PointCloud(np.array(points)).convex_hull
 
 
+def tapered_boss_plate(width=120.0, depth=20.0, height=6.0, r_low=9.0,
+                       r_high=4.0, boss_h=5.0, segments=64) -> trimesh.Trimesh:
+    """A flat bar carrying one plain draft-angled boss — a part with no fillet,
+    no rounded edge and no arc except the two circular rims.
+
+    The boss is the convex hull of two circles at different heights, which is
+    exactly a frustum. Nothing here has a corner radius, and a measurement that
+    reports one is reading the taper as curvature.
+    """
+    # Built face by face rather than as a convex hull, because the lateral
+    # quads of a frustum are planar and every CAD exporter emits them that way:
+    # a hull triangulates them with a zigzag that no real STL of a cone has.
+    angles = np.linspace(0, 2 * np.pi, segments, endpoint=False)
+    cx, cy = width / 2, depth / 2
+    low = np.array([[cx + r_low * np.cos(a), cy + r_low * np.sin(a), height]
+                    for a in angles])
+    high = np.array([[cx + r_high * np.cos(a), cy + r_high * np.sin(a),
+                      height + boss_h] for a in angles])
+    verts = np.vstack([low, high, [[cx, cy, height + boss_h]]])
+    top_centre = 2 * segments
+    faces = []
+    for i in range(segments):
+        j = (i + 1) % segments
+        # the planar quad between two generators, split along one diagonal
+        faces += [[i, j, segments + j], [i, segments + j, segments + i]]
+        faces.append([segments + i, segments + j, top_centre])
+    boss = trimesh.Trimesh(vertices=verts, faces=np.array(faces),
+                           process=False)
+    bar = trimesh.creation.box(extents=(width, depth, height))
+    bar.apply_translation([width / 2, depth / 2, height / 2])
+    return trimesh.util.concatenate([bar, boss])
+
+
 def rounded_slab(**kw) -> trimesh.Trimesh:
     """A different *part* in the same language as rounded_prism: same radius and
     the same curve resolution, less than half the size. A style check has to
