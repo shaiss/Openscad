@@ -267,8 +267,15 @@ jobs:
       - name: Upsert sticky PR comment
         # Same-repo PRs only: fork PR tokens are read-only and the comment
         # would fail; this repo's PRs all come from session branches anyway.
+        #
+        # !cancelled() rather than always(): a run superseded by the next
+        # push (concurrency cancels it mid-gate) would otherwise overwrite a
+        # complete report with a truncated one — the log stops mid-part, so
+        # the table renders the in-flight part as "no printcheck score" and
+        # silently drops every part after it. Leave the previous comment
+        # standing; the superseding run posts the real result.
         if: >-
-          always() && github.event_name == 'pull_request' &&
+          !cancelled() && github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v8
         with:
@@ -475,8 +482,12 @@ jobs:
           if-no-files-found: ignore
       - name: Upsert sticky PR comment
         # Same-repo PRs only, same reason as render-gate's sticky comment.
+        # !cancelled() for the same reason too: a cancelled run has no
+        # argus-report.md, so always() would replace a good geometric diff
+        # with "job failed before diffing" every time a push supersedes a
+        # run in flight.
         if: >-
-          always() &&
+          !cancelled() &&
           github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v8
         with:
