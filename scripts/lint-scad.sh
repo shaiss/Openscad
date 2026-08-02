@@ -22,8 +22,10 @@ command -v sca2d >/dev/null || {
 errors=0
 warnings=0
 shopt -s nullglob
-for f in designs/*/*.scad lib/printability.scad lib/printability-demo.scad \
-         templates/*.scad; do
+# lib/*.scad is the top level of lib/ only, so vendored lib/BOSL2/ is excluded
+# by the glob itself — do not expand this to lib/**/*.scad. Globbed rather than
+# named file-by-file so a new library is linted the day it lands.
+for f in designs/*/*.scad lib/*.scad templates/*.scad; do
   out=$(sca2d "$f" 2>&1) || true
   # message lines look like: path:line:col: X####: text  (X in E/W/I/D)
   findings=$(grep -E ':[0-9]+:[0-9]+: [EW][0-9]{4}:' <<<"$out" || true)
