@@ -110,6 +110,13 @@ jobs:
         run: |
           bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
           ./actionlint -color
+      - name: sca2d (report-only)
+        # Static analysis of first-party .scad files. lint-scad.sh always
+        # exits 0 while we build confidence in the signal — the step exists
+        # to surface findings in the log, not to gate (yet).
+        run: |
+          pip install sca2d
+          ./scripts/lint-scad.sh
 
   printcheck-tests:
     name: printcheck unit tests
@@ -160,6 +167,39 @@ jobs:
       - name: Run check.sh
         run: ./scripts/check.sh
 
+  # Same checks against the OpenSCAD dev snapshot with the Manifold
+  # backend — the engine render-gate uses. The stable job above stays the
+  # compatibility baseline (2021.01 is what most users run); this job
+  # catches nightly-only regressions before they surprise the gate.
+  scad-check-nightly:
+    name: OpenSCAD syntax/geometry check (nightly, manifold)
+    needs: changes
+    if: needs.changes.outputs.scad == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install xvfb (cached)
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          packages: xvfb
+          version: "2026-08"
+      - name: Install OpenSCAD nightly (OBS repo)
+        run: |
+          echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
+            | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
+          curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
+          sudo apt-get update
+          sudo apt-get install -y openscad-nightly
+          openscad-nightly --version
+      - name: Run check.sh (manifold backend)
+        env:
+          OPENSCAD_BIN: openscad-nightly
+          OPENSCAD_ARGS: --backend=manifold
+        run: ./scripts/check.sh
+
   render-gate:
     name: Render designs, gate STLs, test-slice
     needs: changes
@@ -172,12 +212,27 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Install OpenSCAD and PrusaSlicer (cached)
+      - name: Install xvfb and PrusaSlicer (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
-          packages: openscad openscad-mcad xvfb prusa-slicer
+          # PrusaSlicer stays on the Ubuntu package: upstream stopped
+          # shipping Linux binaries after 2.9.0 (Flatpak-only now), so
+          # apt 2.7.x is the newest CI-practical build.
+          packages: xvfb prusa-slicer
           # cache key; bump to pull fresh package versions (see scad-check)
           version: "2026-08"
+      - name: Install OpenSCAD nightly (OBS repo)
+        # Dev snapshots render with the Manifold backend — order-of-
+        # magnitude faster than 2021.01's CGAL on these models. The stable
+        # binary remains covered by the scad-check job.
+        run: |
+          echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
+            | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
+          curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
+          sudo apt-get update
+          sudo apt-get install -y openscad-nightly
+          openscad-nightly --version
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -187,6 +242,8 @@ jobs:
       - name: Render, gate with printcheck, test-slice with PrusaSlicer
         env:
           GATE_DESIGNS: ${{ needs.changes.outputs.gate_designs }}
+          OPENSCAD_BIN: openscad-nightly
+          OPENSCAD_ARGS: --backend=manifold
         # pipefail: the default Actions shell is `bash -e` WITHOUT pipefail,
         # so without it tee would mask gate.sh failures.
         run: |

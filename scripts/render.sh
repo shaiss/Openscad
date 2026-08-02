@@ -13,6 +13,12 @@ cd "$(dirname "$0")/.."
 mkdir -p build
 export OPENSCADPATH="$PWD/lib"
 
+# OPENSCAD_BIN selects the binary (e.g. openscad-nightly); OPENSCAD_ARGS
+# passes extra flags (e.g. --backend=manifold — nightly-only, 2021.01 has
+# no --backend). Both default to the stable invocation.
+OPENSCAD_BIN="${OPENSCAD_BIN:-openscad}"
+read -ra OSC_ARGS <<<"${OPENSCAD_ARGS:-}"
+
 # label:rotx,roty,rotz — camera rotations for the four preview views
 VIEWS=("iso:55,0,25" "top:0,0,0" "front:90,0,0" "bottom:235,0,55")
 
@@ -25,14 +31,16 @@ render_one() {
   fi
 
   echo "== ${name}: STL =="
-  xvfb-run -a openscad -o "build/${name}.stl" "$src"
+  xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
+    -o "build/${name}.stl" "$src"
 
   echo "== ${name}: previews =="
   local pngs=()
   for view in "${VIEWS[@]}"; do
     local label="${view%%:*}" rot="${view#*:}"
     local png="build/.${name}-${label}.png"
-    xvfb-run -a openscad -o "$png" --imgsize=800,600 \
+    xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
+      -o "$png" --imgsize=800,600 \
       --camera="0,0,0,${rot},140" --viewall --autocenter "$src" 2>/dev/null
     montage -label "$label" "$png" -geometry +0+0 -pointsize 24 "$png"
     pngs+=("$png")

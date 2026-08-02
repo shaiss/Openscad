@@ -33,11 +33,21 @@ printcheck model.stl --json                      # machine-readable
 printcheck model.stl --nozzle 0.6 --overhang-angle 50
 printcheck model.stl --build-volume 220x220x250
 printcheck model.stl --fail-under 80             # CI gate: exit 1 below 80
+printcheck model.stl --repair                    # also write model.repaired.stl
 ```
 
 Exit code is `1` when a model is not printable as-is (or under
 `--fail-under`), so it drops straight into CI — e.g. gate every STL your
 OpenSCAD build exports.
+
+`--repair` re-unions shells that were concatenated instead of
+boolean-unioned (via [manifold3d](https://github.com/elalish/manifold)) and
+writes `<model>.repaired.stl`. It triggers on integrity failures or on
+overlapping bodies — a disjoint plate of parts is left alone. The repaired
+file is a convenience for slicing experiments: the exit code still judges
+the original mesh, because the real fix belongs in the source model.
+Zero-volume "kiss" contacts and open holes are design problems it will not
+paper over.
 
 ## What it checks
 

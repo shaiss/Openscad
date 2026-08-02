@@ -37,6 +37,12 @@ cd "$(dirname "$0")/.."
 mkdir -p build
 export OPENSCADPATH="$PWD/lib"
 
+# OPENSCAD_BIN selects the binary (e.g. openscad-nightly); OPENSCAD_ARGS
+# passes extra flags (e.g. --backend=manifold — nightly-only, 2021.01 has
+# no --backend). Both default to the stable invocation.
+OPENSCAD_BIN="${OPENSCAD_BIN:-openscad}"
+read -ra OSC_ARGS <<<"${OPENSCAD_ARGS:-}"
+
 fail=0
 
 slice_one() {
@@ -75,7 +81,8 @@ gate_one() {
       [[ -z "$part" || "$part" == \#* ]] && continue
       local stl="build/${name}-${part}.stl"
       echo "== ${name} (part=${part}): render =="
-      if ! xvfb-run -a openscad -o "$stl" -D "part=\"${part}\"" "$src"; then
+      if ! xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
+          -o "$stl" -D "part=\"${part}\"" "$src"; then
         echo "FAIL  ${name} (part=${part}): render failed"
         fail=1
         continue
@@ -84,7 +91,8 @@ gate_one() {
     done < "designs/${name}/ci.parts"
   else
     echo "== ${name}: render =="
-    if ! xvfb-run -a openscad -o "build/${name}.stl" "$src"; then
+    if ! xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
+        -o "build/${name}.stl" "$src"; then
       echo "FAIL  ${name}: render failed"
       fail=1
       return 0

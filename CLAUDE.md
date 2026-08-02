@@ -10,6 +10,8 @@ This repository holds 3D-printable designs co-designed in OpenSCAD. Each design 
 
 OpenSCAD (2021.01) runs headless here — there is no display, so every invocation must go through `xvfb-run -a`. Rendering with plain `openscad` will fail.
 
+The scripts honor `OPENSCAD_BIN` (default `openscad`) and `OPENSCAD_ARGS`: CI's render gate runs the dev snapshot with `OPENSCAD_BIN=openscad-nightly OPENSCAD_ARGS=--backend=manifold` (order-of-magnitude faster full renders), while the stable 2021.01 check job keeps designs compatible with the release build. Locally the default is whatever `openscad` is installed; don't use nightly-only flags (like `--backend`) in scripts or designs without going through `OPENSCAD_ARGS`.
+
 The SessionStart hook (`.claude/hooks/session-start.sh`) installs the full toolchain: openscad, xvfb, imagemagick, prusa-slicer, and printcheck (with pytest). If any of those commands is missing mid-session, run `.claude/hooks/session-start.sh --force` rather than working around the gap (`--force` is needed outside Claude Code on the web, where the hook otherwise no-ops) — `gate.sh --slice` must be runnable locally.
 
 Set `OPENSCADPATH="$PWD/lib"` (the scripts do this automatically) so library includes resolve. Available libraries:
@@ -28,6 +30,9 @@ All commands run from the repo root.
 
 # Fast syntax/eval check of every .scad in the repo + lib geometry regression test
 ./scripts/check.sh
+
+# Report-only sca2d static analysis of first-party .scad files (pip install sca2d)
+./scripts/lint-scad.sh
 
 # Render printable parts (designs/<name>/ci.parts, if present) and gate the
 # STLs with tools/printcheck; --slice adds a PrusaSlicer test-slice. CI runs this.

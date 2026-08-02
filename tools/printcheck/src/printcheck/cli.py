@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import math
 import sys
+from pathlib import Path
 
-from .analyzer import analyze
+from .analyzer import analyze, load_mesh
 from .checks import Config
+from .report import Report, Severity
 
 # Single source of truth for user-tunable defaults: the Config dataclass.
 _D = Config()
@@ -63,7 +65,59 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fail-under", type=int, default=None, metavar="SCORE",
                    help="exit non-zero if the score is below SCORE "
                         "(for CI pipelines)")
+    p.add_argument("--repair", action="store_true",
+                   help="on integrity failures, boolean-union the shells "
+                        "with manifold3d and write <model>.repaired.stl; "
+                        "the exit code still reflects the original mesh")
     return p
+
+
+def _bodies_overlap(mesh) -> bool:
+    """True when any two connected components have intersecting AABBs.
+
+    Cheap proxy separating "shells concatenated instead of unioned"
+    (overlapping boxes) from an intentional plate of parts (disjoint).
+    """
+    import numpy as np
+    bodies = mesh.split(only_watertight=False)
+    boxes = [b.bounds for b in bodies]
+    for i in range(len(boxes)):
+        for j in range(i + 1, len(boxes)):
+            lo = np.maximum(boxes[i][0], boxes[j][0])
+            hi = np.minimum(boxes[i][1], boxes[j][1])
+            if bool(np.all(lo < hi)):
+                return True
+    return False
+
+
+def _try_repair(path: str, report: Report) -> None:
+    """Attempt a manifold3d union repair of `path`, write .repaired.stl.
+
+    Triggers on non-INFO integrity findings, or on a multi-body mesh
+    whose bodies overlap (closed shells exported without a union pass
+    are watertight, so they only ever raise INFO). A disjoint plate of
+    parts is left alone: unioning it would weld the plate.
+    """
+    from .repair import repair
+    broken = any(f.check == "integrity" and f.severity is not Severity.INFO
+                 for f in report.findings)
+    try:
+        mesh = load_mesh(path)
+        if not broken:
+            if report.mesh_summary["bodies"] < 2 or not _bodies_overlap(mesh):
+                return
+        result = repair(mesh)
+    except Exception as e:
+        print(f"  repair: failed to process {path}: {e}", file=sys.stderr)
+        return
+    if result.mesh is None:
+        print(f"  repair: {result.note}")
+        return
+    out = str(Path(path).with_suffix(".repaired.stl"))
+    result.mesh.export(out)
+    print(f"  repair: {result.note}")
+    print(f"  repair: wrote {out} (verify with printcheck before trusting; "
+          "the gate still judges the original)")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -103,6 +157,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"warning: AI summary skipped: {e}", file=sys.stderr)
 
         print(report.to_json() if args.json else report.to_text())
+
+        if args.repair:
+            _try_repair(path, report)
+
         if len(args.model) > 1 and not args.json:
             print()
 
