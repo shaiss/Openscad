@@ -4,6 +4,10 @@ Run from the repo root. Cameras are FIXED across review rounds so
 before/after comparisons align; if a new region needs a shot, add a new
 camera here rather than moving an existing one.
 
+Animated shots (the GIFs) live in `../animations.conf`, rendered by
+`./scripts/animate.sh sushi-battleship`; the same fixed-camera policy
+applies there.
+
 Set these shell variables before running any command:
 
 ```bash

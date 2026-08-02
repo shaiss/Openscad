@@ -25,7 +25,11 @@ Classify exactly like CI's `changes` job:
 - **`templates/` changed** → run `check.sh` (templates are echo-checked),
   no gate.
 - **Only docs/skills/audits changed** → the lint step below still applies
-  if `.claude/hooks/` changed; otherwise nothing to run — say so and stop.
+  if `.claude/hooks/` changed; otherwise only the readme-gate below runs.
+
+CI runs the `design-docs` job (readme-gate) on **every** PR regardless of
+scope — it needs no installs and takes seconds, so it is never skipped
+here either.
 
 ## 2. Run (in this order — fastest failure first)
 
@@ -34,6 +38,7 @@ Classify exactly like CI's `changes` job:
 shellcheck --severity=warning scripts/*.sh .claude/hooks/*.sh
 actionlint .github/workflows/*.yml   # if missing: install pinned, same as ci.yml's lint job
 
+./scripts/readme-gate.sh                             # product pages + committed GIFs (every PR)
 ./scripts/check.sh                                   # syntax/eval of every .scad
 ./scripts/gate.sh --slice <changed-names...>         # or no args when infra changed
 python -m pytest tools/printcheck/tests -q           # if tools/printcheck or the workflow changed
