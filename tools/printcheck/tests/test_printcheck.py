@@ -181,3 +181,16 @@ def test_repair_skips_clean_plate_of_parts(tmp_path, capsys):
     path = _save(tmp_path, plate, "plate.stl")
     main([str(path), "--repair"])
     assert not (tmp_path / "plate.repaired.stl").exists()
+
+
+def test_nonmanifold_location_reported(tmp_path):
+    # Two cubes sharing one full edge: 4 faces on the shared edge.
+    a = trimesh.creation.box(extents=(10, 10, 10))
+    a.apply_translation((5, 5, 5))
+    b = a.copy()
+    b.apply_translation((10, 10, 0))
+    bad = trimesh.util.concatenate([a, b])
+    report = analyze(_save(tmp_path, bad, "kiss.stl"))
+    f = next(f for f in report.findings if "watertight" in f.title)
+    assert "cluster at (mm)" in f.detail
+    assert "near (10, 10," in f.detail

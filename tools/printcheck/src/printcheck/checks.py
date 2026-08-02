@@ -58,6 +58,28 @@ def overhang_faces(mesh: trimesh.Trimesh, cfg: Config) -> np.ndarray:
 # Mesh integrity
 # --------------------------------------------------------------------------
 
+def _nonmanifold_edge_clusters(mesh: trimesh.Trimesh, top: int = 5) -> str:
+    """Locate edges shared by >2 faces and summarize where they sit.
+
+    Groups the offending edge midpoints onto a 1 mm grid and returns the
+    `top` densest locations as "N edges near (x, y, z)" — enough to find
+    the responsible feature in the source model without a mesh viewer.
+    """
+    edges = mesh.edges_sorted
+    groups = trimesh.grouping.group_rows(edges)
+    bad = [g for g in groups if len(g) > 2]
+    if not bad:
+        return ""
+    mids = np.array([mesh.vertices[edges[g[0]]].mean(axis=0) for g in bad])
+    cells, counts = np.unique(np.round(mids), axis=0, return_counts=True)
+    order = np.argsort(-counts)[:top]
+    spots = ", ".join(
+        f"{int(counts[i])}x near ({cells[i][0]:g}, {cells[i][1]:g}, "
+        f"{cells[i][2]:g})" for i in order)
+    more = len(bad) - int(counts[order].sum())
+    return spots + (f" (+{more} elsewhere)" if more > 0 else "")
+
+
 def check_integrity(mesh: trimesh.Trimesh, cfg: Config):
     """Report topology problems: holes, non-manifold edges, bad normals,
     duplicate/degenerate faces, and stray disconnected shells."""
@@ -85,6 +107,9 @@ def check_integrity(mesh: trimesh.Trimesh, cfg: Config):
                 "that were concatenated instead of boolean-unioned. Most "
                 "slicers repair this, but a proper union is safer."
             )
+            where = _nonmanifold_edge_clusters(mesh)
+            if where:
+                detail += " Non-manifold edges cluster at (mm): " + where
         yield Finding(
             "integrity", Severity.CRITICAL, "Mesh is not watertight",
             detail, {"open_edges": open_edges},
