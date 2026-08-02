@@ -160,6 +160,12 @@ module tube(l, r_i = ri, r_o = ro) {
 // Everything is outboard of `ro`. Nothing protrudes into the bore, ever.
 // ---------------------------------------------------------------------------
 
+// The mate's clockings, derived so nothing has to restate them. Insertion is
+// half a pitch; locked is that plus or minus the twist, either direction.
+// nuggs-matetest.scad echoes these rather than hardcoding numbers that go
+// stale the moment a parameter moves — which they did, three rounds running.
+function nuggs_clockings() = [pitch / 2, pitch / 2 - twist_deg, pitch / 2 + twist_deg];
+
 // Sector angular start for index i, with a half-pitch offset for the inner set.
 function outer_a(i) = i * pitch;
 function inner_a(i) = i * pitch + pitch / 2;
