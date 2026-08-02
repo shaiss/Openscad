@@ -10,6 +10,8 @@ This repository holds 3D-printable designs co-designed in OpenSCAD. Each design 
 
 OpenSCAD (2021.01) runs headless here — there is no display, so every invocation must go through `xvfb-run -a`. Rendering with plain `openscad` will fail.
 
+The SessionStart hook (`.claude/hooks/session-start.sh`) installs the full toolchain: openscad, xvfb, imagemagick, prusa-slicer, and printcheck (with pytest). If any of those commands is missing mid-session, run `.claude/hooks/session-start.sh --force` rather than working around the gap (`--force` is needed outside Claude Code on the web, where the hook otherwise no-ops) — `gate.sh --slice` must be runnable locally.
+
 Set `OPENSCADPATH="$PWD/lib"` (the scripts do this automatically) so library includes resolve. Available libraries:
 
 - **BOSL2** (vendored at `lib/BOSL2/`) — `include <BOSL2/std.scad>`. Use for fillets/roundings (`cuboid`, `cyl`), attachments, threads (`include <BOSL2/screws.scad>`), gears, and anything geometrically hard. Prefer it over hand-rolled hulls for rounded/filleted parts.
@@ -29,7 +31,7 @@ All commands run from the repo root.
 
 # Render printable parts (designs/<name>/ci.parts, if present) and gate the
 # STLs with tools/printcheck; --slice adds a PrusaSlicer test-slice. CI runs this.
-./scripts/gate.sh [--slice] [<name>]
+./scripts/gate.sh [--slice] [<name>...]
 
 # Render a design to STL manually (full CGAL render, catches geometry errors)
 xvfb-run -a openscad -o build/<name>.stl designs/<name>/<name>.scad
@@ -42,7 +44,12 @@ xvfb-run -a openscad -o build/<name>.png --imgsize=1200,900 \
 xvfb-run -a openscad -o build/<name>.stl -D 'wall_thickness=2.4' designs/<name>/<name>.scad
 ```
 
-`scripts/render.sh` produces `build/<name>.stl` plus `build/<name>.png`, a 2×2 contact sheet (iso / top / front / bottom-iso) — the bottom-iso view exists to check overhangs and bed contact, look at it. `scripts/check.sh` is the pre-commit / CI gate: it echo-checks every design and lib file (surfacing WARNINGs) and CGAL-renders the lib demo.
+`scripts/render.sh` produces `build/<name>.stl` plus `build/<name>.png`, a 2×2 contact sheet (iso / top / front / bottom-iso) — the bottom-iso view exists to check overhangs and bed contact, look at it. `scripts/check.sh` is the fast pre-commit check: it echo-checks every design and lib file (surfacing WARNINGs) and CGAL-renders the lib demo. `scripts/gate.sh --slice` is what CI actually enforces.
+
+Workflow skills (`.claude/skills/`):
+
+- **`/preflight`** — before any push: runs the exact checks CI runs (check.sh, gate.sh --slice, printcheck tests), scoped to what changed the same way CI scopes them, and answers "would CI pass?".
+- **`/new-design <name>`** — scaffolds `designs/<name>/` with everything CI and reviewers expect: entry `.scad` from the template, NOTES.md, `ci.parts` / `printcheck.args` when relevant, then first-renders it.
 
 ## Repository layout
 
@@ -61,7 +68,7 @@ xvfb-run -a openscad -o build/<name>.stl -D 'wall_thickness=2.4' designs/<name>/
   - Orient the model so it prints flat-side-down without supports where possible; chamfer (45°) rather than fillet the bottom edges of overhangs.
   - Holes for fasteners get 0.2–0.4 mm diameter clearance; press-fit and sliding fits get explicit tolerance parameters so the user can tune for their printer.
   - Avoid features thinner than 0.8 mm (2 extrusion widths).
-- A design is not done until `render.sh <name>` succeeds: the STL render must complete without CGAL errors (non-manifold geometry, zero-volume unions) and the PNG must be visually checked.
+- A design is not done until `render.sh <name>` succeeds (STL render completes without CGAL errors, PNG visually checked) **and** `gate.sh --slice <name>` exits 0 — printcheck watertightness/printability plus a PrusaSlicer test-slice. That is the bar CI enforces; `render.sh` alone is not it.
 
 ## Co-design workflow
 
@@ -70,7 +77,7 @@ This repo is used in a session-per-design pattern: the user starts a fresh sessi
 1. **Brief.** Get the essentials before modeling: what the part does, the dimensions that matter (what it must fit/hold — ask for measurements), and anything printer-specific. Don't block on details you can default sensibly; state your assumptions.
 2. **Scaffold.** Pick a kebab-case name, copy `templates/design.scad` to `designs/<name>/<name>.scad`, and create `designs/<name>/NOTES.md` recording: the goal, given measurements, key decisions, and intended print orientation. NOTES.md is what lets a later session resume the design cold — keep it current as decisions are made.
 3. **Iterate preview-first.** After each meaningful change, run `./scripts/render.sh <name>` and send the user `build/<name>.png` (SendUserFile) so they react to the shape, not the code. Look at the bottom-iso view yourself for overhang/bed-contact problems before sending.
-4. **Finish.** A design is done when the user approves the preview and `./scripts/check.sh` plus `./scripts/render.sh <name>` pass clean. Send the final STL to the user as well — it's the deliverable they'll slice.
+4. **Finish.** A design is done when the user approves the preview and `/preflight` comes back green (`check.sh`, `render.sh <name>`, and `gate.sh --slice <name>` all clean). Send the final STL to the user as well — it's the deliverable they'll slice.
 5. **Commit.** Commit the design directory (`.scad`, `NOTES.md`, any variants) with message `Add design: <name>` (or `Update design: <name>`). If a module written for this design is generally reusable, move it into `lib/` and mention it in the commit. Push to the branch designated for the session.
 
 Multi-part designs (lids, hinged pairs, assemblies) stay in one design directory: either one `.scad` with a `part` parameter selecting what to render, or `<name>-<part>.scad` files next to the entry point — note the choice in NOTES.md.

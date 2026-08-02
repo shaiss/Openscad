@@ -3,24 +3,125 @@ name: CI
 # push covers direct pushes to the default branch (which in this repo is
 # claude/3d-printable-openscad-5341we, not main); pull_request covers PR
 # branches — scoping push this way avoids double-running every PR commit.
+#
+# The `changes` job decides what actually runs: docs/skills-only PRs skip
+# the expensive render jobs, and design-only PRs gate just the designs they
+# touch. Downstream jobs are skipped via `if:` on the changes outputs rather
+# than workflow-level `paths:` filters, because jobs skipped via `if:` still
+# report a (skipped) check run that satisfies branch-protection required
+# checks — a paths-filtered workflow reports nothing and leaves required
+# checks pending forever. Keep the job `name:` strings stable: they are what
+# branch protection matches on.
 on:
   push:
     branches: [claude/3d-printable-openscad-5341we]
   pull_request:
 
-# No job pushes commits or comments; the token only needs to read the repo.
+# Superseded runs on the same PR are wasted minutes; cancel them. Default-
+# branch pushes always run to completion so the branch's status is trustworthy.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Read-only by default; the one exception is render-gate's job-level
+# pull-requests:write, used only to upsert the sticky printcheck comment.
 permissions:
   contents: read
 
 jobs:
-  printcheck-tests:
-    name: printcheck unit tests
+  changes:
+    name: Detect changed paths
     runs-on: ubuntu-latest
+    outputs:
+      scad: ${{ steps.filter.outputs.scad }}
+      printcheck_tests: ${{ steps.filter.outputs.printcheck_tests }}
+      gate: ${{ steps.filter.outputs.gate }}
+      gate_designs: ${{ steps.filter.outputs.gate_designs }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+          fetch-depth: 0
+      - name: Classify changed files
+        id: filter
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          scad=false; ptests=false; gate=false; designs=""
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+            # Default-branch push: run everything, gate every design.
+            scad=true; ptests=true; gate=true; designs=ALL
+          else
+            # Capture via command substitution so a git failure fails the
+            # step: mapfile < <(git diff ...) would swallow the error and
+            # fail open — every job skipped, PR green having tested nothing.
+            changed="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+            files=()
+            [ -n "$changed" ] && mapfile -t files <<<"$changed"
+            echo "changed files:"; printf '  %s\n' "${files[@]}"
+            infra=false
+            declare -A names=()
+            for f in "${files[@]}"; do
+              case "$f" in
+                # A lib/script/printcheck/workflow change can break any
+                # design, so it re-gates all of them.
+                lib/*|scripts/*|tools/printcheck/*|.github/workflows/ci.yml)
+                  infra=true ;;
+              esac
+              case "$f" in
+                designs/*/*)
+                  n=${f#designs/}; n=${n%%/*}
+                  # skip names whose entry point no longer exists (deleted
+                  # or renamed design directories)
+                  [ -f "designs/$n/$n.scad" ] && names[$n]=1 ;;
+              esac
+              case "$f" in
+                tools/printcheck/*|.github/workflows/ci.yml) ptests=true ;;
+              esac
+              case "$f" in
+                designs/*|lib/*|templates/*|scripts/*|.github/workflows/ci.yml)
+                  scad=true ;;
+              esac
+            done
+            if $infra; then
+              gate=true; designs=ALL
+            elif [ "${#names[@]}" -gt 0 ]; then
+              gate=true; designs="${!names[*]}"
+            fi
+          fi
+          {
+            echo "scad=$scad"
+            echo "printcheck_tests=$ptests"
+            echo "gate=$gate"
+            echo "gate_designs=$designs"
+          } >> "$GITHUB_OUTPUT"
+
+  lint:
+    name: Lint scripts and workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        # warning+: style-level nits (SC2001 etc.) don't fail the build
+        run: shellcheck --severity=warning scripts/*.sh .claude/hooks/*.sh
+      - name: actionlint
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
+
+  printcheck-tests:
+    name: printcheck unit tests
+    needs: changes
+    if: needs.changes.outputs.printcheck_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
@@ -31,55 +132,103 @@ jobs:
 
   scad-check:
     name: OpenSCAD syntax/geometry check
+    needs: changes
+    if: needs.changes.outputs.scad == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Install OpenSCAD
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends openscad openscad-mcad xvfb
+      - name: Install OpenSCAD (cached)
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          packages: openscad openscad-mcad xvfb
+          # cache key; bump to pull fresh package versions (e.g. after a
+          # runner-image rollover or when apt security updates matter)
+          version: "2026-08"
       - name: Run check.sh
         run: ./scripts/check.sh
 
   render-gate:
     name: Render designs, gate STLs, test-slice
+    needs: changes
+    if: needs.changes.outputs.gate == 'true'
     runs-on: ubuntu-latest
-    needs: [scad-check, printcheck-tests]
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Install OpenSCAD and PrusaSlicer
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            openscad openscad-mcad xvfb prusa-slicer
-      - uses: actions/setup-python@v5
+      - name: Install OpenSCAD and PrusaSlicer (cached)
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          packages: openscad openscad-mcad xvfb prusa-slicer
+          # cache key; bump to pull fresh package versions (see scad-check)
+          version: "2026-08"
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
       - name: Install printcheck
         run: pip install -e tools/printcheck
       - name: Render, gate with printcheck, test-slice with PrusaSlicer
+        env:
+          GATE_DESIGNS: ${{ needs.changes.outputs.gate_designs }}
         # pipefail: the default Actions shell is `bash -e` WITHOUT pipefail,
         # so without it tee would mask gate.sh failures.
         run: |
           set -o pipefail
-          ./scripts/gate.sh --slice | tee gate.log
+          if [ "$GATE_DESIGNS" = ALL ]; then
+            ./scripts/gate.sh --slice | tee gate.log
+          else
+            echo "gating changed designs only: $GATE_DESIGNS"
+            # word splitting of the design list is intended
+            # shellcheck disable=SC2086
+            ./scripts/gate.sh --slice $GATE_DESIGNS | tee gate.log
+          fi
       - name: Write job summary
         if: always()
         run: |
-          {
-            echo "### printcheck + slice results"
-            echo '```'
-            grep -E "SCORE|estimated printing time|warning|FAIL|CRITICAL" gate.log || echo "no gate output captured"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/gate-summary.py gate.log > gate-summary.md \
+            || echo '_no gate output captured_' > gate-summary.md
+          cat gate-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upsert sticky PR comment
+        # Same-repo PRs only: fork PR tokens are read-only and the comment
+        # would fail; this repo's PRs all come from session branches anyway.
+        if: >-
+          always() && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- printcheck-gate-report -->';
+            let report;
+            try {
+              report = fs.readFileSync('gate-summary.md', 'utf8');
+            } catch {
+              report = '_gate produced no summary (job failed before printcheck ran)_';
+            }
+            const sha = context.payload.pull_request.head.sha.slice(0, 7);
+            const body = `${marker}\n${report}\n_Automated report for ${sha}._`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo, issue_number: context.issue.number, per_page: 100,
+            });
+            const prev = comments.find(c => c.body && c.body.startsWith(marker));
+            if (prev) {
+              await github.rest.issues.updateComment({
+                ...context.repo, comment_id: prev.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: context.issue.number, body,
+              });
+            }
       - name: Upload STLs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: stls
           path: build/*.stl
