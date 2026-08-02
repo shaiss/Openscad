@@ -212,13 +212,15 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Install xvfb and PrusaSlicer (cached)
+      - name: Install xvfb, PrusaSlicer and f3d (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
           # PrusaSlicer stays on the Ubuntu package: upstream stopped
           # shipping Linux binaries after 2.9.0 (Flatpak-only now), so
-          # apt 2.7.x is the newest CI-practical build.
-          packages: xvfb prusa-slicer
+          # apt 2.7.x is the newest CI-practical build. f3d likewise uses
+          # the Ubuntu package (2.2.x; upstream 3.x ships .debs if we ever
+          # need newer) — it only renders artifact previews here.
+          packages: xvfb prusa-slicer f3d
           # cache key; bump to pull fresh package versions (see scad-check)
           version: "2026-08"
       - name: Install OpenSCAD nightly (OBS repo)
@@ -294,6 +296,31 @@ jobs:
                 ...context.repo, issue_number: context.issue.number, body,
               });
             }
+      - name: Render gated STLs with f3d
+        # Previews of the exported STLs — the meshes printcheck and the
+        # slicer actually see — as opposed to the OpenSCAD source-level
+        # contact sheets (which show modifier colors and assembled poses,
+        # not export artifacts). Non-blocking while f3d proves itself in
+        # this pipeline (issue #22).
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p stl-renders
+          shopt -s nullglob
+          for stl in build/*.stl; do
+            base="$(basename "${stl%.stl}")"
+            xvfb-run -a f3d "$stl" --output="stl-renders/${base}.png" \
+              --resolution=1200,900 2>/dev/null \
+              || echo "f3d failed on ${stl} (non-blocking)"
+          done
+      - name: Upload STL renders
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v5
+        with:
+          name: stl-renders
+          path: stl-renders/*.png
+          if-no-files-found: warn
       - name: Upload STLs
         if: always()
         uses: actions/upload-artifact@v5
@@ -301,3 +328,162 @@ jobs:
           name: stls
           path: build/*.stl
           if-no-files-found: error
+
+  # Geometric diff of the rendered STLs, base vs head, on design PRs:
+  # bodies added/removed/modified, volume/mass deltas, interference —
+  # posted as a second sticky comment. argus-diff is v0.1.x (weeks old at
+  # adoption), so the whole job is continue-on-error and gates nothing;
+  # revisit --fail-on-interference once it proves stable (issue #21).
+  geo-diff:
+    name: Geometric STL diff (argus-diff, non-blocking)
+    needs: changes
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.gate == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Check out base branch for comparison renders
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          ref: ${{ github.base_ref }}
+          path: base
+      - name: Install xvfb (cached)
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          packages: xvfb
+          version: "2026-08"
+      - name: Install OpenSCAD nightly (OBS repo)
+        # Same engine as render-gate so base and head render identically.
+        run: |
+          echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
+            | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
+          curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
+          sudo apt-get update
+          sudo apt-get install -y openscad-nightly
+          openscad-nightly --version
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install argus-diff
+        run: pip install 'argus-diff[render]'
+      - name: Render base + head parts, diff each
+        env:
+          GATE_DESIGNS: ${{ needs.changes.outputs.gate_designs }}
+          OPENSCAD_BIN: openscad-nightly
+          OPENSCAD_ARGS: --backend=manifold
+        run: |
+          set -o pipefail
+          mkdir -p argus-renders head-stl base-stl
+          : > argus-report.md
+          read -ra osc_args <<<"$OPENSCAD_ARGS"
+
+          render_part() {  # root name part outdir -> 0/1
+            local root="$1" name="$2" part="$3" outdir="$4"
+            local src="${root}/designs/${name}/${name}.scad"
+            [ -f "$src" ] || return 1
+            local dargs=()
+            [ -n "$part" ] && dargs=(-D "part=\"${part}\"")
+            OPENSCADPATH="${root}/lib" xvfb-run -a "$OPENSCAD_BIN" \
+              "${osc_args[@]}" -o "${outdir}/${name}${part:+-$part}.stl" \
+              "${dargs[@]}" "$src"
+          }
+
+          if [ "$GATE_DESIGNS" = ALL ] || [ -z "$GATE_DESIGNS" ]; then
+            designs="$(for d in designs/*/; do
+              n="$(basename "$d")"
+              [ -f "designs/$n/$n.scad" ] && echo "$n"
+            done)"
+          else
+            designs="$(tr ' ' '\n' <<<"$GATE_DESIGNS")"
+          fi
+
+          while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            if [ -f "designs/${name}/ci.parts" ]; then
+              parts="$(grep -vE '^(#|$)' "designs/${name}/ci.parts")"
+            else
+              parts=""
+            fi
+            # empty part = the design's default render
+            printf '%s\n' "${parts:-''}" | while IFS= read -r part; do
+              [ "$part" = "''" ] && part=""
+              label="${name}${part:+-$part}"
+              if ! render_part . "$name" "$part" head-stl; then
+                echo "skip ${label}: head render failed"; continue
+              fi
+              if ! render_part base "$name" "$part" base-stl 2>/dev/null; then
+                {
+                  echo "### \`${label}\`"
+                  echo
+                  echo "_new on this PR (no base version to diff against)_"
+                  echo
+                } >> argus-report.md
+                continue
+              fi
+              out="$(xvfb-run -a argus diff \
+                "base-stl/${label}.stl" "head-stl/${label}.stl" \
+                --density 1.24 --render "argus-renders/${label}.png" \
+                2>&1)" || true
+              {
+                echo "### \`${label}\`"
+                echo
+                echo '```'
+                echo "$out"
+                echo '```'
+                echo
+              } >> argus-report.md
+            done
+          done <<<"$designs"
+      - name: Upload diff renders
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: argus-diff-renders
+          path: argus-renders/*.png
+          if-no-files-found: ignore
+      - name: Upsert sticky PR comment
+        # Same-repo PRs only, same reason as render-gate's sticky comment.
+        if: >-
+          always() &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- argus-diff-report -->';
+            let report;
+            try {
+              report = fs.readFileSync('argus-report.md', 'utf8');
+            } catch {
+              report = '_argus-diff produced no report (job failed before diffing)_';
+            }
+            if (!report.trim()) {
+              report = '_no gated parts to diff on this PR_';
+            }
+            const sha = context.payload.pull_request.head.sha.slice(0, 7);
+            const body = `${marker}\n### Geometric diff vs base (non-blocking)\n` +
+              `${report}\n_Before/after/overlay renders are in the ` +
+              `argus-diff-renders artifact. Automated report for ${sha}._`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo, issue_number: context.issue.number, per_page: 100,
+            });
+            const prev = comments.find(c => c.body && c.body.startsWith(marker));
+            if (prev) {
+              await github.rest.issues.updateComment({
+                ...context.repo, comment_id: prev.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: context.issue.number, body,
+              });
+            }
