@@ -1,5 +1,5 @@
 // Calibration cube — starter design demonstrating repo conventions.
-// A simple cube with chamfered bottom edges and an embossed size marker,
+// A simple cube with chamfered bottom edges and an engraved size marker,
 // useful for checking printer dimensional accuracy.
 // All dimensions in millimeters.
 
@@ -24,7 +24,7 @@ module calibration_cube() {
             translate([0, 0, bottom_chamfer])
                 cube([size, size, size - bottom_chamfer]);
         }
-        // Embossed size marker on the top face
+        // Engraved size marker on the top face
         translate([size / 2, size / 2, size - 0.4])
             linear_extrude(0.5)
                 text(str(size), size = size * 0.35, halign = "center", valign = "center");
