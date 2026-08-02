@@ -26,6 +26,10 @@ Classify exactly like CI's `changes` job:
   moved.
 - **`designs/<name>/...` changed** (and no infra) → gate just those designs
   (skip names whose `designs/<name>/<name>.scad` no longer exists).
+- **A `styles/<style>/` file changed** → also gate every design whose
+  `style.conf` names that style. Its tokens are compiled into the design, so
+  editing them moves the design's geometry even though no file under
+  `designs/` changed.
 - **`templates/` changed** → run `check.sh` (templates are echo-checked),
   no gate.
 - **Only docs/skills/audits changed** → the lint step below still applies

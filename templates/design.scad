@@ -2,7 +2,7 @@
 // Requirements and decisions: see NOTES.md next to this file.
 // All dimensions in millimeters.
 
-use <printability.scad>       // repo FDM helpers (resolved via OPENSCADPATH=lib)
+use <printability.scad>       // repo FDM helpers (OPENSCADPATH="$PWD/lib:$PWD")
 // include <BOSL2/std.scad>   // uncomment for fillets, threads, attachments
 
 /* [Main dimensions] */
