@@ -142,6 +142,9 @@ assert(tab_c >= slide + tab_len + 0.5,
        "tabs would hit the lips at full slide; enlarge roll_d or shorten tab_len");
 assert(door_fit >= -0.2 && door_fit <= 0.5,
        "door_fit outside the safe range (-0.2 .. 0.5)");
+assert(chamfer_side == 0
+       || chamfer_side < min(chamfer_front, chamfer_rear),
+       "chamfer_side must stay below the front/rear chamfers so the side wedges can bury their ends in those cuts (mesh validity)");
 assert(lip_d - clr_h - max(door_fit, 0) >= 1.5,
        "door_fit too loose; tabs would barely engage the lips");
 
@@ -194,14 +197,12 @@ module door(label = "A1") {
 
 // 45-degree lead-in wedge cut along the +Y window edge (rotate into
 // place for the other edges); cell-local coordinates, z = plate bottom.
-// ext = how far each end runs past the window corner. The side wedges
-// must use ext = 0 (ends flush with the window walls, where they meet
-// the front/rear wedge voids face-on-face): a square overshoot can land
-// its bottom tip exactly tangent to the crossing wedge's 45-degree ramp
-// (it does at the defaults: 2*chamfer_side + 1 == chamfer_rear), and
-// that point contact makes the union non-manifold.
-module window_wedge(d, ext) {
-    len = opening + 2*(is_undef(ext) ? d + 1 : ext);
+// `len` is the wedge length along the edge. An end face must never land
+// exactly on another wedge's 45-degree slope: the two cut volumes then
+// touch at a single point, and the CGAL difference exports that kiss as
+// a zero-volume two-triangle shell (non-manifold STL). Ends must sit
+// strictly inside a crossing cut, or strictly clear of it.
+module window_wedge(d, len) {
     if (d > 0)
         translate([-len/2, 0, 0])
             rotate([90, 0, 90])
@@ -265,10 +266,25 @@ module lid_body() {
                 translate([0, 0, membrane])
                     linear_extrude(plate_t)
                         square(opening, center = true);
-                rotate([0, 0, 0])   window_wedge(chamfer_rear);
-                rotate([0, 0, 180]) window_wedge(chamfer_front);
+                rotate([0, 0, 0])
+                    window_wedge(chamfer_rear,  opening + 2*chamfer_rear + 2);
+                rotate([0, 0, 180])
+                    window_wedge(chamfer_front, opening + 2*chamfer_front + 2);
+                // Side wedges end past the window wall but short of the
+                // front/rear wedges' apex-height crossings, so each end
+                // face is strictly contained inside those bigger cuts: an
+                // end face exactly on a neighbouring wedge's slope is a
+                // point contact that exports as a non-manifold sliver
+                // (exactly where chamfer_rear = 1.6 landed the old
+                // opening + 2*d + 2 length), and an end at opening/2
+                // alone would be coplanar with the window wall. Burial
+                // needs chamfer_side < min(chamfer_front, chamfer_rear)
+                // -- see the assert next to the chamfer parameters.
                 for (r = [90, 270])
-                    rotate([0, 0, r]) window_wedge(chamfer_side, ext = 0);
+                    rotate([0, 0, r])
+                        window_wedge(chamfer_side,
+                                     opening + min(chamfer_front, chamfer_rear)
+                                             - chamfer_side);
             }
 
         // column letters on the front border
