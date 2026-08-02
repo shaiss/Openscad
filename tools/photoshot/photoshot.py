@@ -344,6 +344,11 @@ def build_scene(bpy, stl_paths, colors, args):
 
     for obj, color in objects:
         obj.data.materials.append(filament_material(bpy, color, args))
+        # shade_smooth/shade_flat act on every SELECTED editable object, not on
+        # the active one, and the STL importer leaves what it imported selected.
+        # Isolating obj keeps the operator's reach equal to set_sharp_from_angle's,
+        # which only ever touches this mesh.
+        bpy.ops.object.select_all(action="DESELECT")
         bpy.context.view_layer.objects.active = obj
         obj.select_set(True)
         # Smooth only finely-tessellated curves (see SMOOTH_ANGLE); coarse
