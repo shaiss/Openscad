@@ -306,7 +306,10 @@ def build_scene(bpy, stl_paths, colors, args):
     scene.view_settings.view_transform = "Standard"
 
     objects = []
-    for path, color in zip(stl_paths, colors):
+    # strict: main() has already padded or rejected, so a length mismatch here
+    # is a bug rather than user input, and silently dropping STLs would render
+    # a shot missing a part of the assembly.
+    for path, color in zip(stl_paths, colors, strict=True):
         before = set(bpy.data.objects)
         bpy.ops.wm.stl_import(filepath=str(path))
         new = [o for o in bpy.data.objects if o not in before]
@@ -361,6 +364,11 @@ def build_scene(bpy, stl_paths, colors, args):
             obj.data.set_sharp_from_angle(angle=math.radians(SMOOTH_ANGLE))
         else:
             bpy.ops.object.shade_flat()
+            print(
+                "warning: this Blender has no mesh.set_sharp_from_angle(); "
+                "rendering flat-shaded, so curves will look faceted",
+                file=sys.stderr,
+            )
         obj.select_set(False)
 
     studio_floor(bpy, diag)
@@ -585,6 +593,11 @@ def main():
             sys.exit(f"error: {path} not found")
 
     colors = list(args.color or [])
+    if len(colors) > len(args.stl):
+        sys.exit(
+            f"error: {len(colors)} --color values for {len(args.stl)} STL(s) — "
+            "colors map to STLs in order, so the extra ones name nothing"
+        )
     default = parse_color("#e8734a")
     colors += [default] * (len(args.stl) - len(colors))
 

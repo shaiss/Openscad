@@ -89,7 +89,7 @@ disk.
   colour, `IOR 1.46`, and the parameters below. When `--layers > 0` a wave
   texture (bands along z at the layer pitch) drives a bump node — a shading
   perturbation only, it never changes geometry. Meshes are auto-smoothed at a
-  30° angle, so genuinely curved surfaces smooth while real facets stay
+  15° angle (see below), so genuinely curved surfaces smooth while real facets stay
   faceted; the shot cannot imply a smoothness the printed part will not have.
 
   | finish | roughness | specular level | coat weight | coat roughness |
@@ -162,7 +162,8 @@ either way, so on the command line both forms work.
 Multiple positional STLs render into one scene and `--color` maps to them in
 order — a two-tone assembly is `photoshot.py body.stl lid.stl --color 333
 --color e8734a -o shot.png`. Any mesh past the last `--color` falls back to the
-default orange, and surplus colors are ignored without complaint. Note that
+default orange; more colors than STLs is an error rather than a silent
+truncation, since the extra ones name nothing. Note that
 `shots.conf` drives exactly one STL export per entry, so multi-STL scenes are
 run by hand (see the `/product-shots` skill).
 

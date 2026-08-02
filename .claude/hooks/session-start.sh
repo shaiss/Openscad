@@ -52,8 +52,20 @@ $SUDO apt-get install -y -qq openscad xvfb imagemagick prusa-slicer
 # byte-reproducible across point releases within a series, but not necessarily
 # across them, and the committed PNGs are diffed. Wheels are built per Python
 # minor version, so this needs the interpreter Blender 4.5 targets (3.11).
+#
+# `python3 -m pip`, never bare `pip`: they are not always the same interpreter
+# (here python3 is /usr/local/bin/python3 while pip is /usr/bin/pip), and bpy is
+# a compiled extension. Installing with one interpreter and importing with
+# another gives a "successful" install that cannot be imported. The check below
+# is the same python3 that scripts/product-shot.sh runs, so a mismatch fails
+# here rather than mid-render.
 if ! has_bpy; then
-  pip install -q 'bpy~=4.5.0'
+  python3 -m pip install -q 'bpy~=4.5.0'
+  if ! python3 -c 'import bpy' >/dev/null 2>&1; then
+    echo "error: bpy installed but will not import under $(python3 -V 2>&1)." >&2
+    echo "       bpy 4.5 ships wheels for Python 3.11 only." >&2
+    exit 1
+  fi
 fi
 
 # [test] extra brings pytest, so /preflight can run the unit tests locally
