@@ -34,14 +34,17 @@ state:
 Recorded state is a claim, not a fact. Before any new work:
 
 ```bash
-./scripts/render.sh <name>   # STL + contact sheet must still succeed
-./scripts/gate.sh <name>     # printcheck must still exit 0
+./scripts/render.sh <name>       # STL + contact sheet must still succeed
+./scripts/check.sh               # repo-wide syntax + docs-drift check
+./scripts/gate.sh --slice <name> # printcheck + test-slice — the CI bar
 ```
 
-- Re-run the `previews/CAMERAS.md` commands into a scratch directory and
-  diff each fresh shot against the committed frozen preview
-  (`compare -metric AE` from ImageMagick, or eyeball a montage). Committed
-  previews that no longer derive from source are drift.
+- Re-render the frozen shots (`./scripts/render.sh <name> --previews`,
+  driven by `previews/cameras.conf`) and diff each regenerated PNG against
+  the committed version (`git diff --stat`, or `compare -metric AE` from
+  ImageMagick). Committed previews that no longer derive from source are
+  drift; restore the frozen pixels (`git checkout`) unless the geometry
+  legitimately changed.
 - Take NOTES.md's claimed key numbers (clearances, wall thicknesses, bed
   footprint, part counts) and recompute them from the `.scad` source —
   read the parameters and redo the arithmetic; don't accept the prose.
@@ -65,9 +68,10 @@ Open with a short **state of the design** before asking what's next:
 
 ## 4. Guard rails for the resumed session
 
-- **Cameras are frozen.** A new region gets a new camera entry in
-  `previews/CAMERAS.md`; never move or reframe an existing one — reviewers
-  compare before/after shots across rounds.
+- **Cameras are frozen.** A new region gets a new line in
+  `previews/cameras.conf` (plus its description in `previews/CAMERAS.md`);
+  never move or reframe an existing one — reviewers compare before/after
+  shots across rounds.
 - **Decisions recorded in NOTES.md stay decided.** Reopening one takes the
   user's explicit say-so; until then treat it as a constraint, not a
   suggestion.

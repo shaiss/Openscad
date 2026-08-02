@@ -26,10 +26,11 @@ for dir in */ .*/; do
   grep -q "${d}/" README.md || err "top-level ${d}/ not mentioned in README.md"
 done
 
-# 2. Skills <-> CLAUDE.md, both directions.
+# 2. Skills <-> CLAUDE.md, both directions. Boundary-aware match so a
+#    longer name (e.g. /resume-design) can't satisfy a shorter one.
 for skill in .claude/skills/*/; do
   s="$(basename "$skill")"
-  grep -q "/${s}" CLAUDE.md \
+  grep -qE "/${s}([^a-z0-9-]|\$)" CLAUDE.md \
     || err "skill .claude/skills/${s} not mentioned in CLAUDE.md"
 done
 while read -r ref; do
@@ -49,11 +50,14 @@ done
 ./scripts/gallery.sh --check >/dev/null || err "README gallery is stale — run ./scripts/gallery.sh"
 
 # 5. Freshness canary where docs quote reality: every file in scripts/ is
-#    named in both CLAUDE.md and README.md.
+#    named in both CLAUDE.md and README.md. Boundary-aware match so e.g.
+#    readme-gate.sh can't satisfy the check for gate.sh.
 for f in scripts/*; do
   b="$(basename "$f")"
-  grep -q "$b" CLAUDE.md || err "scripts/${b} not mentioned in CLAUDE.md"
-  grep -q "$b" README.md || err "scripts/${b} not mentioned in README.md"
+  b_re="${b//./\\.}"
+  pat="(^|[^a-zA-Z0-9._-])${b_re}([^a-zA-Z0-9_-]|\$)"
+  grep -qE "$pat" CLAUDE.md || err "scripts/${b} not mentioned in CLAUDE.md"
+  grep -qE "$pat" README.md || err "scripts/${b} not mentioned in README.md"
 done
 
 if [[ "$fail" == 0 ]]; then

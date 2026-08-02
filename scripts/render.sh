@@ -139,9 +139,16 @@ render_previews() {
     for d in $defines; do args+=(-D "$d"); done
 
     echo "== ${name}: previews/${shot}.png =="
-    xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
-      -o "${outdir}/${shot}.png" --imgsize="${size/x/,}" \
-      --camera="$camera" ${args[@]+"${args[@]}"} "$src" 2>/dev/null
+    # capture stderr rather than discarding it: a failed shot must say why,
+    # not vanish under set -e
+    local err
+    if ! err="$(xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
+        -o "${outdir}/${shot}.png" --imgsize="${size/x/,}" \
+        --camera="$camera" ${args[@]+"${args[@]}"} "$src" 2>&1)"; then
+      echo "error: shot '${shot}' failed to render" >&2
+      tail -20 <<<"$err" >&2
+      return 1
+    fi
   done <"$conf"
   echo "== ${name}: previews done -> ${outdir}/"
 }
@@ -177,6 +184,11 @@ render_sweep() {
     'BEGIN { if (s <= 0) exit 1;
              for (v = a; v <= b + s/2; v += s) printf "%g\n", v }')" || {
     echo "error: step must be > 0" >&2; return 1; }
+
+  if [[ -z "$values" ]]; then
+    echo "error: --sweep range '$spec' produced no values (start > end?)" >&2
+    return 1
+  fi
 
   local stls=() v
   for v in $values; do
@@ -219,9 +231,11 @@ tag_h = 1.2      # tag plate thickness (min wall)
 text_h = 0.6     # raised text height (3 layers at 0.2)
 out = [f"// generated tolerance sweep: {param} — do not edit", ""]
 x = 0.0
+depths = []      # reused for the footprint line; bbox() re-parses the mesh
 for stl in stls:
     lo, hi = bbox(stl)
     w, d = hi[0] - lo[0], hi[1] - lo[1]
+    depths.append(d)
     val = stl.rsplit(f"-{param}-", 1)[1][: -len(".stl")]
     # place the copy with its bbox min corner at (x, 0), bed at z=0
     out.append(
@@ -239,8 +253,7 @@ for stl in stls:
     )
     out.append("}")
     x += w + gap
-print(f"strip footprint: {x - gap:.1f} x "
-      f"{max(bbox(s)[1][1] - bbox(s)[0][1] for s in stls) + tag_d + 1.0:.1f} mm")
+print(f"strip footprint: {x - gap:.1f} x {max(depths) + tag_d + 1.0:.1f} mm")
 with open(wrapper, "w") as f:
     f.write("\n".join(out) + "\n")
 PY
@@ -286,7 +299,9 @@ case "$MODE" in
   sweep) render_sweep "${names[0]}" "$SWEEP_SPEC" ;;
   stl)
     if [[ ${#names[@]} -ge 1 ]]; then
-      render_one "${names[0]}"
+      for name in "${names[@]}"; do
+        render_one "$name"
+      done
     else
       found=0
       for dir in designs/*/; do

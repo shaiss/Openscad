@@ -40,7 +40,8 @@ pitch() {
   if [[ "$line" == *: && "$line" == *.* ]]; then
     line="${line%.*}."
   fi
-  printf '%s' "$line"
+  # escape table delimiters so a pitch containing | can't add columns
+  printf '%s' "$line" | sed 's/|/\\|/g'
 }
 
 gallery() {

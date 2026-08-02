@@ -410,7 +410,9 @@ jobs:
           while IFS= read -r name; do
             [ -n "$name" ] || continue
             if [ -f "designs/${name}/ci.parts" ]; then
-              parts="$(grep -vE '^(#|$)' "designs/${name}/ci.parts")"
+              # `|| true`: grep exits 1 on a comment-only file, and the
+              # default Actions shell is `bash -e` (same guard gate.sh uses)
+              parts="$(grep -vE '^(#|$)' "designs/${name}/ci.parts" || true)"
             else
               parts=""
             fi
@@ -421,11 +423,23 @@ jobs:
               if ! render_part . "$name" "$part" head-stl; then
                 echo "skip ${label}: head render failed"; continue
               fi
-              if ! render_part base "$name" "$part" base-stl 2>/dev/null; then
+              # A missing base source is a genuinely new design; a base
+              # source that fails to render is a signal worth reporting, not
+              # something to mislabel as new.
+              if [ ! -f "base/designs/${name}/${name}.scad" ]; then
                 {
                   echo "### \`${label}\`"
                   echo
                   echo "_new on this PR (no base version to diff against)_"
+                  echo
+                } >> argus-report.md
+                continue
+              fi
+              if ! render_part base "$name" "$part" base-stl; then
+                {
+                  echo "### \`${label}\`"
+                  echo
+                  echo "_base render failed — no diff produced (see job log)_"
                   echo
                 } >> argus-report.md
                 continue
