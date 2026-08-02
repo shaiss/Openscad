@@ -56,6 +56,19 @@ for dir in designs/*/; do
   [[ -f "designs/${n}/NOTES.md" ]] || err "designs/${n}/ has no NOTES.md"
 done
 
+# 3b. Every style ships a complete pack, and appears in the styles catalog.
+#     (The pack's internal consistency — style.scad and STYLE.md matching
+#     style.json — is scripts/style-check.sh's job; this is the file census.)
+for dir in styles/*/; do
+  n="$(basename "$dir")"
+  [[ -f "styles/${n}/style.json" ]] || continue
+  for f in STYLE.md style.scad swatch.scad previews/swatch.png; do
+    [[ -f "styles/${n}/${f}" ]] || err "styles/${n}/ has no ${f}"
+  done
+  grep -q "${n}/STYLE.md" styles/README.md \
+    || err "style ${n} is not listed in styles/README.md"
+done
+
 # 4. The README gallery has one fresh row per design, no orphans.
 ./scripts/gallery.sh --check >/dev/null || err "README gallery is stale — run ./scripts/gallery.sh"
 
@@ -84,6 +97,31 @@ for f in scripts/*; do
   grep -qE "$pat" <<<"$scripts_bullet" \
     || err "scripts/${b} missing from CLAUDE.md's \`scripts/\` layout bullet"
   grep -qE "$pat" README.md || err "scripts/${b} not mentioned in README.md"
+done
+
+# 6. Same canary for lib/: every first-party library is named in CLAUDE.md and
+#    README.md, and ships the demo CLAUDE.md requires. Written as a check
+#    rather than trusted to review because that rule had no enforcement at all
+#    — threads-fdm.scad landed while README's lib/ bullet still said the only
+#    shared module was printability.scad. lib/*.scad is the top level only, so
+#    vendored lib/BOSL2/ is excluded by the glob; *-demo.scad files are the
+#    artifacts of the rule, not subjects of it.
+#
+#    README's match is scoped to its `## Layout` section and demands the
+#    backticked filename, for the same reason the scripts/ check is scoped to
+#    one bullet: a passing mention anywhere else in the file would let the
+#    layout list — the one place claiming to enumerate the libraries — go stale
+#    while the check stayed green.
+readme_layout="$(awk '/^## Layout/{f=1;next} /^## /{f=0} f' README.md)"
+[[ -n "$readme_layout" ]] || err "README.md has no '## Layout' section to check against"
+for f in lib/*.scad; do
+  b="$(basename "$f" .scad)"
+  [[ "$b" == *-demo ]] && continue
+  grep -qF "lib/${b}.scad" CLAUDE.md || err "lib/${b}.scad not named in CLAUDE.md"
+  grep -qF "\`${b}.scad\`" <<<"$readme_layout" \
+    || err "lib/${b}.scad not named in README.md's \`## Layout\` section"
+  [[ -f "lib/${b}-demo.scad" ]] \
+    || err "lib/${b}.scad has no lib/${b}-demo.scad (CLAUDE.md requires one per first-party library)"
 done
 
 if [[ "$fail" == 0 ]]; then

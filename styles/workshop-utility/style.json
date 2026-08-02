@@ -1,0 +1,353 @@
+{
+  "schema": "stylelift/style@1",
+  "name": "workshop-utility",
+  "title": "Workshop Utility",
+  "summary": "Generously rounded utility parts with 45-degree bed chamfers and an M3 fastener vocabulary.",
+  "provenance": {
+    "reference": [
+      {
+        "file": "style-ref-workshop-utility.stl",
+        "sha256": "d0ebb20bd12489b0eb8755f73ce21977a7174d712f5f6fcc2befd192d8740806",
+        "source": "rendered in-repo: OPENSCADPATH=lib:. openscad -o build/style-ref-workshop-utility.stl -D '$fn=64' lib/printability-demo.scad",
+        "license": "this repository (MIT)"
+      }
+    ],
+    "lifted_by": "stylelift",
+    "primary": "style-ref-workshop-utility.stl"
+  },
+  "tokens": {
+    "corner_r": 4.0,
+    "fn": 64,
+    "edge_chamfer": 0.6,
+    "softness": 0.79,
+    "hole_d": 3.4
+  },
+  "asserted": {
+    "material": "opaque PLA or PETG, one colour per part",
+    "finish": "printed as-is: layer lines visible, no sanding or filler",
+    "suits": "shop fixtures, mounts, organisers \u2014 parts that get bolted to something and handled daily",
+    "non_goals": "not a display style: no thin decorative ribs, no text on visible faces, nothing that needs supports to print"
+  },
+  "rules": [
+    {
+      "id": "corner-radius",
+      "metric": "edges.rounding.dominant_r_mm",
+      "op": "near",
+      "value": 4.0,
+      "tol": 0.35,
+      "severity": "required",
+      "when": {
+        "metric": "edges.rounding.dominant_share",
+        "op": "min",
+        "value": 0.12
+      },
+      "why": "the family reuses one radius (4 mm) on its rounded edges; a part that rounds at a different scale reads as a different family"
+    },
+    {
+      "id": "curve-smoothness",
+      "metric": "edges.rounding.implied_fn",
+      "op": "min",
+      "value": 44,
+      "severity": "required",
+      "when": {
+        "metric": "edges.rounding.dominant_share",
+        "op": "min",
+        "value": 0.12
+      },
+      "why": "curves in this family are drawn at about $fn=64; visibly faceted curves break the family look"
+    },
+    {
+      "id": "chamfer-size",
+      "metric": "edges.chamfers.dominant_leg_mm",
+      "op": "near",
+      "value": 0.6,
+      "tol": 0.4,
+      "severity": "advisory",
+      "when": {
+        "metric": "edges.chamfers.count",
+        "op": "min",
+        "value": 1
+      },
+      "why": "chamfers in the reference are cut at about 0.6 mm"
+    },
+    {
+      "id": "soft-edges",
+      "metric": "edges.softness",
+      "op": "min",
+      "value": 0.474,
+      "severity": "advisory",
+      "why": "this is a soft family: most of its edge length curves rather than turning a corner (a share of edge length, which falls as a part grows at fixed radius \u2014 advisory so a big tray in this family is not failed for being big)"
+    },
+    {
+      "id": "grammar-rounded",
+      "metric": "edges.grammar.rounded_share",
+      "op": "min",
+      "value": 0.443,
+      "severity": "advisory",
+      "why": "the reference treats 74% of its shaped edge length as rounded; that is the family's dominant edge grammar (a share of edge length, which falls as a part grows at fixed radius \u2014 advisory so a big tray in this family is not failed for being big)"
+    },
+    {
+      "id": "hole-vocabulary",
+      "metric": "features.dominant_hole_d_mm",
+      "op": "near",
+      "value": 3.4,
+      "tol": 0.12,
+      "severity": "advisory",
+      "when": {
+        "metric": "features.hole_count",
+        "op": "min",
+        "value": 1
+      },
+      "why": "the family's fastener vocabulary is a 3.4 mm hole; mixing fastener sizes across a family is what makes a set of parts feel unrelated"
+    }
+  ],
+  "measured": {
+    "source": "build/style-ref-workshop-utility.stl",
+    "mesh": {
+      "faces": 2980,
+      "vertices": 1492,
+      "watertight": true,
+      "bodies": 5
+    },
+    "massing": {
+      "extents_mm": [
+        76.0,
+        33.0,
+        16.0
+      ],
+      "aspect": [
+        1.0,
+        0.4342,
+        0.2105
+      ],
+      "volume_mm3": 11825.93,
+      "bbox_fill": 0.2947,
+      "convexity": 0.4343,
+      "surface_area_mm2": 6156.787
+    },
+    "edges": {
+      "folds": 4470,
+      "soft_length_mm": 4312.853,
+      "hard_length_mm": 1084.108,
+      "softness": 0.7991,
+      "tessellation": "strip",
+      "strip_share": 0.9129,
+      "rounding": {
+        "convex": [
+          {
+            "r_mm": 4.0017,
+            "share": 1.0,
+            "length_mm": 564.0,
+            "implied_fn": 64.0,
+            "sweep_deg": 84.4
+          }
+        ],
+        "concave": [
+          {
+            "r_mm": 3.0016,
+            "share": 0.7781,
+            "length_mm": 376.0,
+            "implied_fn": 64.0,
+            "sweep_deg": 264.4
+          },
+          {
+            "r_mm": 4.8017,
+            "share": 0.0828,
+            "length_mm": 40.0,
+            "implied_fn": 64.0,
+            "sweep_deg": 28.1
+          }
+        ],
+        "dominant_r_mm": 4.0017,
+        "dominant_share": 1.0,
+        "implied_fn": 64.0
+      },
+      "form": {
+        "convex": [
+          {
+            "r_mm": 4.3979,
+            "share": 1.0,
+            "length_mm": 512.0,
+            "implied_fn": 64.0,
+            "sweep_deg": 360.0
+          }
+        ],
+        "concave": [
+          {
+            "r_mm": 1.7001,
+            "share": 0.5631,
+            "length_mm": 742.4,
+            "implied_fn": 64.0,
+            "sweep_deg": 360.0
+          },
+          {
+            "r_mm": 1.9989,
+            "share": 0.2913,
+            "length_mm": 384.0,
+            "implied_fn": 64.0,
+            "sweep_deg": 360.0
+          },
+          {
+            "r_mm": 3.0009,
+            "share": 0.1456,
+            "length_mm": 192.0,
+            "implied_fn": 64.0,
+            "sweep_deg": 360.0
+          }
+        ],
+        "dominant_r_mm": 4.3979
+      },
+      "chamfers": {
+        "bands": [
+          {
+            "leg_mm": 0.6,
+            "width_mm": 0.8485,
+            "turn_deg": 90.0,
+            "length_mm": 32.0,
+            "convex": true
+          },
+          {
+            "leg_mm": 0.6,
+            "width_mm": 0.8485,
+            "turn_deg": 90.0,
+            "length_mm": 32.0,
+            "convex": true
+          },
+          {
+            "leg_mm": 0.6,
+            "width_mm": 0.8485,
+            "turn_deg": 90.0,
+            "length_mm": 24.0,
+            "convex": true
+          },
+          {
+            "leg_mm": 0.6,
+            "width_mm": 0.8485,
+            "turn_deg": 90.0,
+            "length_mm": 24.0,
+            "convex": true
+          },
+          {
+            "leg_mm": 0.5996,
+            "width_mm": 0.848,
+            "turn_deg": 90.0,
+            "length_mm": 0.923,
+            "convex": true
+          },
+          {
+            "leg_mm": 0.5996,
+            "width_mm": 0.848,
+            "turn_deg": 90.0,
+            "length_mm": 0.923,
+            "convex": true
+          },
+          {
+            "leg_mm": 0.5996,
+            "width_mm": 0.848,
+            "turn_deg": 90.0,
+            "length_mm": 0.923,
+            "convex": true
+          },
+          {
+            "leg_mm": 0.5996,
+            "width_mm": 0.848,
+            "turn_deg": 90.0,
+            "length_mm": 0.923,
+            "convex": true
+          }
+        ],
+        "count": 196,
+        "length_mm": 442.864,
+        "dominant_leg_mm": 0.5996
+      },
+      "grammar": {
+        "rounded_share": 0.5332,
+        "chamfered_share": 0.0821,
+        "sharp_share": 0.3847
+      }
+    },
+    "features": {
+      "cylinders": [
+        {
+          "d_mm": 3.4,
+          "kind": "hole",
+          "axis": "z",
+          "count": 3,
+          "implied_fn": 64.0
+        },
+        {
+          "d_mm": 4.0,
+          "kind": "hole",
+          "axis": "z",
+          "count": 1,
+          "implied_fn": 64.0
+        },
+        {
+          "d_mm": 6.0,
+          "kind": "hole",
+          "axis": "z",
+          "count": 1,
+          "implied_fn": 64.0
+        },
+        {
+          "d_mm": 8.8,
+          "kind": "boss",
+          "axis": "z",
+          "count": 1,
+          "implied_fn": 64.0
+        }
+      ],
+      "count": 6,
+      "hole_count": 5,
+      "dominant_hole_d_mm": 3.4
+    },
+    "orientation": {
+      "assumes_z_up": true,
+      "up_share": 0.2209,
+      "down_share": 0.2244,
+      "vertical_share": 0.4912,
+      "sloped_share": 0.0635,
+      "dominant_slopes": [
+        {
+          "angle_deg": 44.92,
+          "share": 0.028
+        }
+      ]
+    },
+    "walls": {
+      "measured": true,
+      "shelled": false,
+      "samples": 2000,
+      "p05_mm": 2.397,
+      "median_mm": 7.138,
+      "mode_mm": 6.0,
+      "min_mm": 2.0
+    },
+    "symmetry": {
+      "x": 0.3893,
+      "y": 0.2287,
+      "z": 0.298
+    },
+    "ratios": {
+      "radius_to_size": 0.0527
+    },
+    "config": {
+      "flat_deg": 0.5,
+      "soft_max_deg": 40.0,
+      "band_max_deg": 75.0,
+      "chamfer_min_deg": 15.0,
+      "min_chamfer_mm": 0.3,
+      "noise_radius_multiple": 5.0,
+      "width_ratio": 3.0,
+      "chamfer_width_ratio": 1.6,
+      "taper_tol": 1.15,
+      "turn_consistency": 0.7,
+      "mode_tol": 0.12,
+      "mode_min_share": 0.05,
+      "closed_turn_deg": 350.0,
+      "thickness_samples": 2000,
+      "symmetry_samples": 1500,
+      "vertical_tol_deg": 5.0
+    }
+  }
+}

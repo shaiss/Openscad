@@ -22,6 +22,7 @@ if command -v openscad >/dev/null 2>&1 \
   && command -v povray >/dev/null 2>&1 \
   && command -v prusa-slicer >/dev/null 2>&1 \
   && command -v printcheck >/dev/null 2>&1 \
+  && command -v stylelift >/dev/null 2>&1 \
   && command -v pytest >/dev/null 2>&1; then
   echo "OpenSCAD toolchain already installed"
   exit 0
@@ -38,10 +39,14 @@ export DEBIAN_FRONTEND=noninteractive
 $SUDO apt-get update -qq 2>/dev/null || true
 $SUDO apt-get install -y -qq openscad xvfb imagemagick povray povray-includes prusa-slicer
 
-# [test] extra brings pytest, so /preflight can run the printcheck unit
-# tests locally exactly as CI does
+# [test] extra brings pytest, so /preflight can run the unit tests locally
+# exactly as CI does
 if ! command -v printcheck >/dev/null 2>&1 || ! command -v pytest >/dev/null 2>&1; then
   pip install -q -e "$REPO_DIR/tools/printcheck[test]"
 fi
+# stylelift backs scripts/style-lift.sh and the style gate; same mesh stack
+if ! command -v stylelift >/dev/null 2>&1; then
+  pip install -q -e "$REPO_DIR/tools/stylelift[test]"
+fi
 
-echo "Installed: $(openscad --version 2>&1); prusa-slicer + printcheck ready"
+echo "Installed: $(openscad --version 2>&1); prusa-slicer + printcheck + stylelift ready"
