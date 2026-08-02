@@ -37,7 +37,10 @@ Multiple STLs compose one scene (e.g. a two-tone assembly); --color repeats
 in the same order. Coordinates are OpenSCAD's (z-up, millimeters); the model
 is grounded on the floor plane automatically.
 
-Requires: bpy (`pip install bpy`, installed by the session-start hook).
+Requires: bpy (`pip install 'bpy~=4.5.0'`, installed by the session-start
+hook). Pinned to the 4.5 LTS series — output is byte-reproducible across
+point releases within a series, not promised across them — and its wheels
+are built per Python minor version, so it needs Python 3.11.
 """
 
 import argparse
@@ -349,9 +352,15 @@ def build_scene(bpy, stl_paths, colors, args):
         # completes in the headless bpy module — it returns {'CANCELLED'} and
         # silently smooths nothing. shade_smooth() plus the mesh-level
         # set_sharp_from_angle() is the same result through the data API.
-        bpy.ops.object.shade_smooth()
+        # Order matters: shade_smooth() on its own smooths EVERY face, including
+        # the hard edges of a box. Only pair it with the angle pass — falling
+        # back to flat is right if that API is ever unavailable, since flat is
+        # honest about the mesh while all-smooth actively misrepresents it.
         if hasattr(obj.data, "set_sharp_from_angle"):
+            bpy.ops.object.shade_smooth()
             obj.data.set_sharp_from_angle(angle=math.radians(SMOOTH_ANGLE))
+        else:
+            bpy.ops.object.shade_flat()
         obj.select_set(False)
 
     studio_floor(bpy, diag)

@@ -86,9 +86,16 @@ holes are design problems it deliberately won't paper over.
   T-junctions) if manifold3d union ever isn't enough — subprocess only,
   keep the GPL boundary clean.
 - Ruled out: MeshLib (non-commercial license), PyMeshFix (AGPL),
-  Open3D (no release in 19 months), bpy headless (401 MB wheel),
-  vedo (duplicates trimesh), PySLM (metal-AM heavy; only credible
-  support-*volume* estimator if we ever want one).
+  Open3D (no release in 19 months), vedo (duplicates trimesh),
+  PySLM (metal-AM heavy; only credible support-*volume* estimator if we
+  ever want one).
+- **Reversed:** bpy headless was ruled out here on wheel size alone. It
+  was later *adopted* as the product-shot renderer (`tools/photoshot/`),
+  replacing POV-Ray: it is the only OSS renderer that is simultaneously
+  alive, pip-installable (the sole reachable registry in these sessions),
+  headless without an X display, and CPU-competent — and unlike POV-Ray
+  it is thread-count invariant, so reproducible output costs no render
+  time. The wheel is 356 MB (801 MB installed), which is the price.
 - **3MF as CI artifact**: [lib3mf](https://github.com/3MFConsortium/lib3mf)
   2.5.0 is healthy, but STL stays right for this repo until the nightly's
   color-3MF quirks settle and slicer support catches up.

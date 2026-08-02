@@ -48,7 +48,8 @@ scripts wrap every OpenSCAD call in `xvfb-run -a` themselves; you only need
 the prefix for raw `openscad` commands you run by hand), ImageMagick
 (`montage`, for preview sheets), `prusa-slicer` (for `gate.sh --slice`),
 Python `bpy` — Blender as an importable module, `pip install 'bpy~=4.5.0'`
-(for `product-shot.sh`) — and [printcheck](tools/printcheck/)
+(for `product-shot.sh`; its wheels are built per Python minor version, so
+this needs Python 3.11) — and [printcheck](tools/printcheck/)
 (`pip install -e tools/printcheck`).
 
 ## How designs get made

@@ -1,6 +1,6 @@
 ---
 name: product-shots
-description: Give a design's product page real-world-looking product shots — raytraced studio renders of the printed part (deterministic, CI-gated), plus an optional AI-restyled lifestyle shot when the session has an image-generation tool. Use when asked for product shots, hero images, photoreal/real-world renders, or when invoked as /product-shots [name].
+description: Give a design's product page real-world-looking product shots — path-traced studio renders of the printed part (deterministic, CI-gated), plus an optional AI-restyled lifestyle shot when the session has an image-generation tool. Use when asked for product shots, hero images, photoreal/real-world renders, or when invoked as /product-shots [name].
 ---
 
 # Product shots — real-world-looking images for the product page
@@ -12,7 +12,7 @@ should lead with one.
 
 Two tiers, in order:
 
-1. **Studio raytrace (always — this is the CI-gated deliverable).**
+1. **Studio render (always — this is the CI-gated deliverable).**
    `./scripts/product-shot.sh <name>` exports the geometry-true STL with
    OpenSCAD and path-traces it with Blender's Cycles: seamless backdrop,
    soft key/fill/rim lighting, glossy floor with contact shadows, plastic
