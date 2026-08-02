@@ -46,10 +46,18 @@ Pick a kebab-case name. Then create:
 - Multi-part designs: one `.scad` with a `part` parameter or
   `<name>-<part>.scad` wrappers — either way, record the choice in
   NOTES.md.
+- Design has a tuned fit (threads, sliders, press-fits) →
+  **`<name>-coupon.scad`**: a ≤10-line include-and-override wrapper on the
+  production modules (`include <<name>.scad>` then override the grid/part
+  parameters — overrides must stay above any geometry; see
+  sushi-battleship-coupon.scad), plus a "Print this first" section in
+  NOTES.md stating what to tune and in what steps. gate.sh gates the
+  coupon STL automatically.
 - If previews will be reviewed across rounds, start
-  **`previews/CAMERAS.md`** with the exact render command per shot;
-  cameras are fixed once a reviewer has seen them — new region, new
-  camera entry.
+  **`previews/cameras.conf`** (format in `scripts/render.sh`) so
+  `./scripts/render.sh <name> --previews` regenerates every shot, and
+  describe what each shot shows in `previews/CAMERAS.md`; cameras are
+  fixed once a reviewer has seen them — new region, new camera entry.
 - Animated previews are opt-in: add **`animations.conf`** (see the format
   note in CLAUDE.md) and render with `./scripts/animate.sh <name>` — the
   readme-gate then requires each manifest entry's GIF to be committed and

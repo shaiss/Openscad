@@ -212,13 +212,15 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Install xvfb and PrusaSlicer (cached)
+      - name: Install xvfb, PrusaSlicer and f3d (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
           # PrusaSlicer stays on the Ubuntu package: upstream stopped
           # shipping Linux binaries after 2.9.0 (Flatpak-only now), so
-          # apt 2.7.x is the newest CI-practical build.
-          packages: xvfb prusa-slicer
+          # apt 2.7.x is the newest CI-practical build. f3d likewise uses
+          # the Ubuntu package (2.2.x; upstream 3.x ships .debs if we ever
+          # need newer) — it only renders artifact previews here.
+          packages: xvfb prusa-slicer f3d
           # cache key; bump to pull fresh package versions (see scad-check)
           version: "2026-08"
       - name: Install OpenSCAD nightly (OBS repo)
@@ -265,8 +267,15 @@ jobs:
       - name: Upsert sticky PR comment
         # Same-repo PRs only: fork PR tokens are read-only and the comment
         # would fail; this repo's PRs all come from session branches anyway.
+        #
+        # !cancelled() rather than always(): a run superseded by the next
+        # push (concurrency cancels it mid-gate) would otherwise overwrite a
+        # complete report with a truncated one — the log stops mid-part, so
+        # the table renders the in-flight part as "no printcheck score" and
+        # silently drops every part after it. Leave the previous comment
+        # standing; the superseding run posts the real result.
         if: >-
-          always() && github.event_name == 'pull_request' &&
+          !cancelled() && github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v8
         with:
@@ -279,12 +288,38 @@ jobs:
             } catch {
               report = '_gate produced no summary (job failed before printcheck ran)_';
             }
-            const sha = context.payload.pull_request.head.sha.slice(0, 7);
+            // !cancelled() on the step is evaluated before the step starts,
+            // so it cannot stop a run cancelled (or simply overtaken) once
+            // this script is already in flight — that run would finish its
+            // API calls and overwrite the newer run's report with stale
+            // output. Check we are still the PR head twice: once up front to
+            // skip the listComments call entirely, and again immediately
+            // before the write, since a push during the (paginated) list is
+            // the wider window of the two.
+            //
+            // This shrinks the race, it cannot remove it: there is no
+            // conditional-write primitive on the comments API, so some gap
+            // between the last check and the write always remains. The body
+            // carries the SHA it was built from, and the next run rewrites
+            // the comment, so a lost race is visible and self-correcting.
+            const built = context.payload.pull_request.head.sha;
+            const stillCurrent = async () => {
+              const { data: pr } = await github.rest.pulls.get({
+                ...context.repo, pull_number: context.issue.number,
+              });
+              if (pr.head.sha === built) return true;
+              core.info(`superseded: PR head is ${pr.head.sha.slice(0, 7)}, `
+                + `this run built ${built.slice(0, 7)} — leaving the comment alone`);
+              return false;
+            };
+            if (!await stillCurrent()) return;
+            const sha = built.slice(0, 7);
             const body = `${marker}\n${report}\n_Automated report for ${sha}._`;
             const comments = await github.paginate(github.rest.issues.listComments, {
               ...context.repo, issue_number: context.issue.number, per_page: 100,
             });
             const prev = comments.find(c => c.body && c.body.startsWith(marker));
+            if (!await stillCurrent()) return;
             if (prev) {
               await github.rest.issues.updateComment({
                 ...context.repo, comment_id: prev.id, body,
@@ -294,6 +329,31 @@ jobs:
                 ...context.repo, issue_number: context.issue.number, body,
               });
             }
+      - name: Render gated STLs with f3d
+        # Previews of the exported STLs — the meshes printcheck and the
+        # slicer actually see — as opposed to the OpenSCAD source-level
+        # contact sheets (which show modifier colors and assembled poses,
+        # not export artifacts). Non-blocking while f3d proves itself in
+        # this pipeline (issue #22).
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p stl-renders
+          shopt -s nullglob
+          for stl in build/*.stl; do
+            base="$(basename "${stl%.stl}")"
+            xvfb-run -a f3d "$stl" --output="stl-renders/${base}.png" \
+              --resolution=1200,900 2>/dev/null \
+              || echo "f3d failed on ${stl} (non-blocking)"
+          done
+      - name: Upload STL renders
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v5
+        with:
+          name: stl-renders
+          path: stl-renders/*.png
+          if-no-files-found: warn
       - name: Upload STLs
         if: always()
         uses: actions/upload-artifact@v5
@@ -301,3 +361,205 @@ jobs:
           name: stls
           path: build/*.stl
           if-no-files-found: error
+
+  # Geometric diff of the rendered STLs, base vs head, on design PRs:
+  # bodies added/removed/modified, volume/mass deltas, interference —
+  # posted as a second sticky comment. argus-diff is v0.1.x (weeks old at
+  # adoption), so the whole job is continue-on-error and gates nothing;
+  # revisit --fail-on-interference once it proves stable (issue #21).
+  geo-diff:
+    name: Geometric STL diff (argus-diff, non-blocking)
+    needs: changes
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.gate == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          # full history so the merge base with the base branch is reachable
+          fetch-depth: 0
+      - name: Check out the merge base for comparison renders
+        # Deliberately the merge base, not `ref: github.base_ref` — that
+        # resolves to the base branch's MOVING TIP, so once main advances
+        # past this PR's fork point the diff would attribute other people's
+        # merges to this PR. The merge base is what `git diff main...HEAD`
+        # compares against, and what the `changes` job above already uses.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          base_sha="$(git merge-base "origin/${BASE_REF}" HEAD)"
+          echo "diffing against merge base ${base_sha}"
+          git worktree add base "$base_sha"
+      - name: Install xvfb (cached)
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          packages: xvfb
+          version: "2026-08"
+      - name: Install OpenSCAD nightly (OBS repo)
+        # Same engine as render-gate so base and head render identically.
+        run: |
+          echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
+            | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
+          curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
+          sudo apt-get update
+          sudo apt-get install -y openscad-nightly
+          openscad-nightly --version
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install argus-diff
+        run: pip install 'argus-diff[render]'
+      - name: Render base + head parts, diff each
+        env:
+          GATE_DESIGNS: ${{ needs.changes.outputs.gate_designs }}
+          OPENSCAD_BIN: openscad-nightly
+          OPENSCAD_ARGS: --backend=manifold
+        run: |
+          set -o pipefail
+          mkdir -p argus-renders head-stl base-stl
+          : > argus-report.md
+          read -ra osc_args <<<"$OPENSCAD_ARGS"
+
+          render_part() {  # root name part outdir -> 0/1
+            local root="$1" name="$2" part="$3" outdir="$4"
+            local src="${root}/designs/${name}/${name}.scad"
+            [ -f "$src" ] || return 1
+            local dargs=()
+            [ -n "$part" ] && dargs=(-D "part=\"${part}\"")
+            OPENSCADPATH="${root}/lib" xvfb-run -a "$OPENSCAD_BIN" \
+              "${osc_args[@]}" -o "${outdir}/${name}${part:+-$part}.stl" \
+              "${dargs[@]}" "$src"
+          }
+
+          if [ "$GATE_DESIGNS" = ALL ] || [ -z "$GATE_DESIGNS" ]; then
+            designs="$(for d in designs/*/; do
+              n="$(basename "$d")"
+              [ -f "designs/$n/$n.scad" ] && echo "$n"
+            done)"
+          else
+            designs="$(tr ' ' '\n' <<<"$GATE_DESIGNS")"
+          fi
+
+          while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            if [ -f "designs/${name}/ci.parts" ]; then
+              # `|| true`: grep exits 1 on a comment-only file, and the
+              # default Actions shell is `bash -e` (same guard gate.sh uses)
+              parts="$(grep -vE '^(#|$)' "designs/${name}/ci.parts" || true)"
+            else
+              parts=""
+            fi
+            # empty part = the design's default render
+            printf '%s\n' "${parts:-''}" | while IFS= read -r part; do
+              [ "$part" = "''" ] && part=""
+              label="${name}${part:+-$part}"
+              if ! render_part . "$name" "$part" head-stl; then
+                echo "skip ${label}: head render failed"; continue
+              fi
+              # A missing base source is a genuinely new design; a base
+              # source that fails to render is a signal worth reporting, not
+              # something to mislabel as new.
+              if [ ! -f "base/designs/${name}/${name}.scad" ]; then
+                {
+                  echo "### \`${label}\`"
+                  echo
+                  echo "_new on this PR (no base version to diff against)_"
+                  echo
+                } >> argus-report.md
+                continue
+              fi
+              if ! render_part base "$name" "$part" base-stl; then
+                {
+                  echo "### \`${label}\`"
+                  echo
+                  echo "_base render failed — no diff produced (see job log)_"
+                  echo
+                } >> argus-report.md
+                continue
+              fi
+              out="$(xvfb-run -a argus diff \
+                "base-stl/${label}.stl" "head-stl/${label}.stl" \
+                --density 1.24 --render "argus-renders/${label}.png" \
+                2>&1)" || true
+              {
+                echo "### \`${label}\`"
+                echo
+                echo '```'
+                echo "$out"
+                echo '```'
+                echo
+              } >> argus-report.md
+            done
+          done <<<"$designs"
+      - name: Upload diff renders
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: argus-diff-renders
+          path: argus-renders/*.png
+          if-no-files-found: ignore
+      - name: Upsert sticky PR comment
+        # Same-repo PRs only, same reason as render-gate's sticky comment.
+        # !cancelled() for the same reason too: a cancelled run has no
+        # argus-report.md, so always() would replace a good geometric diff
+        # with "job failed before diffing" every time a push supersedes a
+        # run in flight.
+        if: >-
+          !cancelled() &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- argus-diff-report -->';
+            let report;
+            try {
+              report = fs.readFileSync('argus-report.md', 'utf8');
+            } catch {
+              report = '_argus-diff produced no report (job failed before diffing)_';
+            }
+            if (!report.trim()) {
+              report = '_no gated parts to diff on this PR_';
+            }
+            // Same stale-run guard as render-gate's sticky comment, with the
+            // same two call sites and the same caveat: the step-level
+            // !cancelled() cannot stop an already-running script, and no
+            // conditional-write primitive exists, so this narrows the race
+            // rather than closing it.
+            const built = context.payload.pull_request.head.sha;
+            const stillCurrent = async () => {
+              const { data: pr } = await github.rest.pulls.get({
+                ...context.repo, pull_number: context.issue.number,
+              });
+              if (pr.head.sha === built) return true;
+              core.info(`superseded: PR head is ${pr.head.sha.slice(0, 7)}, `
+                + `this run built ${built.slice(0, 7)} — leaving the comment alone`);
+              return false;
+            };
+            if (!await stillCurrent()) return;
+            const sha = built.slice(0, 7);
+            const body = `${marker}\n### Geometric diff vs base (non-blocking)\n` +
+              `${report}\n_Before/after/overlay renders are in the ` +
+              `argus-diff-renders artifact. Automated report for ${sha}._`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo, issue_number: context.issue.number, per_page: 100,
+            });
+            const prev = comments.find(c => c.body && c.body.startsWith(marker));
+            if (!await stillCurrent()) return;
+            if (prev) {
+              await github.rest.issues.updateComment({
+                ...context.repo, comment_id: prev.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: context.issue.number, body,
+              });
+            }

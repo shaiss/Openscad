@@ -28,7 +28,8 @@ All commands run from the repo root.
 # Render STL + 4-view preview PNG for one design (or all designs with no args)
 ./scripts/render.sh <name>
 
-# Fast syntax/eval check of every .scad in the repo + lib geometry regression test
+# Fast syntax/eval check of every .scad in the repo + lib geometry regression
+# test + docs-drift check (scripts/docs-check.sh: docs must match the tree)
 ./scripts/check.sh
 
 # Report-only sca2d static analysis of first-party .scad files (pip install sca2d)
@@ -45,6 +46,17 @@ All commands run from the repo root.
 # Render animated GIF previews (designs/<name>/animations.conf, if present)
 # into designs/<name>/previews/; commit the GIFs like the PNG previews
 ./scripts/animate.sh [<name>]
+
+# Re-render a design's frozen preview shots from previews/cameras.conf
+# (cameras are fixed across review rounds — see Design conventions)
+./scripts/render.sh <name> --previews
+
+# Labeled tolerance-sweep strip: N copies of the design's coupon (or entry
+# part) across a parameter range, value embossed next to each copy
+./scripts/render.sh <name> --sweep thread_tol=0.15:0.35:0.05
+
+# Regenerate the README design gallery (check.sh fails when it's stale)
+./scripts/gallery.sh
 
 # Render a design to STL manually (full CGAL render, catches geometry errors)
 xvfb-run -a openscad -o build/<name>.stl designs/<name>/<name>.scad
@@ -63,6 +75,7 @@ Workflow skills (`.claude/skills/`):
 
 - **`/preflight`** — before any push: runs the exact checks CI runs (check.sh, gate.sh --slice, printcheck tests), scoped to what changed the same way CI scopes them, and answers "would CI pass?".
 - **`/new-design <name>`** — scaffolds `designs/<name>/` with everything CI and reviewers expect: entry `.scad` from the template, NOTES.md, `ci.parts` / `printcheck.args` when relevant, then first-renders it.
+- **`/resume-design <name>`** — picks an existing design up cold: reads the recorded state (NOTES.md and friends), verifies it against fresh renders and the gate before trusting it, then briefs the human on where the design stands.
 
 ## Repository layout
 
@@ -71,8 +84,11 @@ Workflow skills (`.claude/skills/`):
 - `designs/<name>/animations.conf` — optional GIF-preview manifest (format documented in `scripts/animate.sh`). Each entry renders to a committed `previews/<anim>.gif` showing a key feature in motion — a turntable needs no model changes (camera spin); mechanism animations drive model motion from `$t` via an `anim` parameter (see sushi-battleship's shutter). The gate checks every entry has its GIF, embedded in the README, within the size budget. Compute `$t`-dependent values inside a geometry block, not in top-level assignments — top-level assignments evaluate before a `-D '$t=...'` override lands.
 - `lib/` — shared OpenSCAD modules. With `OPENSCADPATH` set, designs reference them as `use <printability.scad>` / `include <BOSL2/std.scad>`. Anything used by two or more designs belongs here. `lib/BOSL2/` is vendored third-party code — never edit it.
 - `build/` — generated STLs and PNGs; gitignored. STLs are regenerated from source, never hand-edited or committed.
-- `scripts/` — `render.sh` and `check.sh`, described above.
+- `scripts/` — the full toolchain: `render.sh`, `check.sh`, `gate.sh`, `readme-gate.sh`, `animate.sh`, `gallery.sh`, `lint-scad.sh` (all described above), plus `docs-check.sh` (docs-drift assertions, run by check.sh), `gate-summary.py` (turns a gate.sh log into the markdown table CI posts as the job summary and sticky PR comment) and `preview-budget.sh` (sourced helper defining the GIF size budget).
 - `templates/design.scad` — starting point for new designs; demonstrates the parameter conventions below.
+- `tools/printcheck/` — the STL printability analyzer gate.sh runs on every rendered part; has its own README and pytest suite (CI runs it when the tool changes).
+- `docs/` — repo-level research and reference notes (e.g. `oss-libraries-research.md`, the OSS-library evaluation behind the adoption backlog).
+- `audits/` — preserved before/after render comparisons from design review rounds (e.g. `audits/pr3/`). Review history: keep it, never treat it as disposable scratch.
 
 ## Design conventions
 
@@ -83,6 +99,9 @@ Workflow skills (`.claude/skills/`):
   - Orient the model so it prints flat-side-down without supports where possible; chamfer (45°) rather than fillet the bottom edges of overhangs.
   - Holes for fasteners get 0.2–0.4 mm diameter clearance; press-fit and sliding fits get explicit tolerance parameters so the user can tune for their printer.
   - Avoid features thinner than 0.8 mm (2 extrusion widths).
+- **Frozen preview cameras.** A design whose previews are reviewed across rounds keeps its shots in `designs/<name>/previews/`, driven by `previews/cameras.conf` (rendered via `./scripts/render.sh <name> --previews`; format documented in `scripts/render.sh`) with per-shot descriptions in `previews/CAMERAS.md`. Once a reviewer has seen a shot its camera is **frozen** — before/after comparisons across rounds must align — so a new region gets a new cameras.conf line; never move or reframe an existing one. The same policy applies to `animations.conf` entries.
+- Designs may carry extra per-design docs beyond NOTES.md when a work phase needs its own brief — e.g. `sushi-battleship/HARDENING.md`, the review-round hardening work plan. They are preserved history, same as NOTES.md: keep them current or mark them closed, don't delete them.
+- Designs with a tuned fit (threads, sliding doors, press-fits) ship a **"print this first" coupon**: `designs/<name>/<name>-coupon.scad`, a ≤10-line include-and-override wrapper on the production modules — never copied geometry — plus a "Print this first" section in NOTES.md saying what to tune and in what steps. The wrapper relies on OpenSCAD's include-then-override semantics: keep the overrides above any geometry statements. `gate.sh` picks the wrapper up automatically and gates `build/<name>-coupon.stl` (printcheck + test-slice) like any other part.
 - A design is not done until `render.sh <name>` succeeds (STL render completes without CGAL errors, PNG visually checked) **and** `gate.sh --slice <name>` exits 0 — printcheck watertightness/printability plus a PrusaSlicer test-slice. That is the bar CI enforces; `render.sh` alone is not it.
 
 ## Co-design workflow

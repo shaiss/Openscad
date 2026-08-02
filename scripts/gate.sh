@@ -17,6 +17,9 @@
 #   designs/<name>/printcheck.args extra printcheck flags, e.g.
 #                                  --build-volume 256x256x256 for designs
 #                                  that target a larger printer
+#   designs/<name>/<name>-coupon.scad  "print this first" coupon wrapper;
+#                                  rendered as build/<name>-coupon.stl and
+#                                  gated like any other part
 set -euo pipefail
 
 SLICE=0
@@ -50,8 +53,12 @@ slice_one() {
   local gcode="${stl%.stl}.gcode"
   echo "== test-slice ${stl} =="
   local out
+  # --filament-density: without it PrusaSlicer emits "total filament used
+  # [g] = 0.00" — the grams line the summary parses would silently read zero
+  # for every part. 1.24 g/cm³ is PLA; the summary labels the assumption.
   if ! out=$(prusa-slicer --export-gcode -o "$gcode" \
       --layer-height 0.2 --nozzle-diameter 0.4 --filament-diameter 1.75 \
+      --filament-density 1.24 \
       "$stl" 2>&1); then
     tail -20 <<<"$out"
     echo "FAIL  ${stl}: slicing failed"
@@ -60,6 +67,7 @@ slice_one() {
   fi
   grep -i "warning" <<<"$out" | sed 's/^/      /' || true
   grep -m1 "estimated printing time" "$gcode" | sed 's/^; */      /' || true
+  grep -m1 "^; total filament used \[g\]" "$gcode" | sed 's/^; */      /' || true
 }
 
 # Failures inside gate_one set fail=1 and keep going (matching how the
@@ -98,6 +106,23 @@ gate_one() {
       return 0
     fi
     stls+=("build/${name}.stl")
+  fi
+
+  # "Print this first" coupon wrapper (repo convention, see CLAUDE.md): a
+  # ≤10-line include-and-override wrapper on the production modules. It is
+  # the first STL a user prints, so it gets the same printcheck + test-slice
+  # treatment as the parts it stands in for.
+  local coupon="designs/${name}/${name}-coupon.scad"
+  if [[ -f "$coupon" ]]; then
+    local coupon_stl="build/${name}-coupon.stl"
+    echo "== ${name} (coupon): render =="
+    if ! xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
+        -o "$coupon_stl" "$coupon"; then
+      echo "FAIL  ${name} (coupon): render failed"
+      fail=1
+    else
+      stls+=("$coupon_stl")
+    fi
   fi
 
   local args=()

@@ -2,6 +2,7 @@
 # Fast validation of every .scad file in the repo (no STL output).
 #   1. Syntax/eval check of all designs and lib files (echo export — seconds)
 #   2. Full CGAL render of the lib demo to catch geometry regressions
+#   3. Docs-drift check (scripts/docs-check.sh): docs must match the tree
 # Run before committing. For full STL+PNG output use scripts/render.sh.
 set -euo pipefail
 
@@ -47,6 +48,11 @@ if xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
   fail=1
 else
   echo "ok    lib demo renders clean"
+fi
+
+echo "-- docs-drift check: scripts/docs-check.sh"
+if ! ./scripts/docs-check.sh; then
+  fail=1
 fi
 
 exit "$fail"
