@@ -40,8 +40,8 @@ What a new design must do to belong to this family. `stylelift check` enforces t
 | `corner-radius` | `edges.rounding.dominant_r_mm` = 4 ±35% | required | the family reuses one radius (4 mm) on its rounded edges; a part that rounds at a different scale reads as a different family |
 | `curve-smoothness` | `edges.rounding.implied_fn` ≥ 44 | required | curves in this family are drawn at about $fn=64; visibly faceted curves break the family look |
 | `chamfer-size` | `edges.chamfers.dominant_leg_mm` = 0.6 ±40% | advisory | chamfers in the reference are cut at about 0.6 mm |
-| `soft-edges` | `edges.softness` ≥ 0.474 | required | this is a soft family: most of its edge length curves rather than turning a corner |
-| `grammar-rounded` | `edges.grammar.rounded_share` ≥ 0.443 | required | the reference treats 74% of its shaped edge length as rounded; that is the family's dominant edge grammar |
+| `soft-edges` | `edges.softness` ≥ 0.474 | advisory | this is a soft family: most of its edge length curves rather than turning a corner (a share of edge length, which falls as a part grows at fixed radius — advisory so a big tray in this family is not failed for being big) |
+| `grammar-rounded` | `edges.grammar.rounded_share` ≥ 0.443 | advisory | the reference treats 74% of its shaped edge length as rounded; that is the family's dominant edge grammar (a share of edge length, which falls as a part grows at fixed radius — advisory so a big tray in this family is not failed for being big) |
 | `hole-vocabulary` | `features.dominant_hole_d_mm` = 3.4 ±12% | advisory | the family's fastener vocabulary is a 3.4 mm hole; mixing fastener sizes across a family is what makes a set of parts feel unrelated |
 <!-- /stylelift:rules -->
 

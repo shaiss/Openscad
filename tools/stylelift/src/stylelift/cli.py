@@ -94,13 +94,20 @@ def cmd_lift(args) -> int:
 
 
 def cmd_check(args) -> int:
-    """Check meshes against a style spec; exit 1 on a required-rule failure."""
+    """Check meshes against a style spec.
+
+    Exit 1 when a part breaks a required rule *or* when the style could not
+    judge it at all: a part that shares none of the family's features has not
+    passed, and a gate that says otherwise would wave through anything
+    sufficiently unlike the reference.
+    """
     spec = StyleSpec.load(_style_path(args.style))
     failed = False
     payload = []
     for model in args.model:
         results = conform(measure(model), spec)
-        if any(r.status is Status.FAIL for r in results):
+        if (any(r.status is Status.FAIL for r in results)
+                or verdict(results).startswith("NOT COMPARABLE")):
             failed = True
         if args.json:
             payload.append({"model": model, "style": spec.name,

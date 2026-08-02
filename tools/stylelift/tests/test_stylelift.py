@@ -11,8 +11,9 @@ import numpy as np
 import pytest
 import trimesh
 
-from make_probe_models import (chamfered_prism, drilled_plate, rounded_prism,
-                               rounded_slab, sharp_prism, shelled_tube)
+from make_probe_models import (chamfered_prism, chamfered_slab, drilled_plate,
+                               rounded_prism, rounded_slab, sharp_prism,
+                               shelled_tube)
 from stylelift import measure
 from stylelift.cli import main
 from stylelift.emit import lift, render_tokens, sync
@@ -97,6 +98,34 @@ def test_chamfer_is_measured_as_a_chamfer_not_a_fillet(tmp_path):
     assert r["edges"]["grammar"]["chamfered_share"] > 0.15
 
 
+@pytest.mark.parametrize("height", [2.0, 3.0, 8.0, 20.0])
+def test_a_chamfer_reads_the_same_however_thin_the_plate(tmp_path, height):
+    # Regression: chamfer-vs-curve used to be decided by comparing the band
+    # against its neighbour's size, so the *same* 0.6 mm chamfer on a thinner
+    # plate stopped looking like a chamfer once the wall above it got short —
+    # and the part then reported a corner radius (2.12 mm) and a curve
+    # resolution ($fn=8) that exist nowhere in it.
+    r = measure(save(tmp_path, chamfered_slab(height=height, leg=0.6),
+                     f"slab{height}.stl"))
+    assert r["edges"]["chamfers"]["dominant_leg_mm"] == pytest.approx(0.6, abs=0.02)
+    assert r["edges"]["chamfers"]["count"] == 4
+    assert r["edges"]["rounding"]["dominant_r_mm"] is None
+
+
+def test_a_coarse_curve_is_not_mistaken_for_chamfers(tmp_path):
+    # The other side of that coin: an 8-sided cylinder has the same topology as
+    # a chamfered box — eight faces meeting at eight 45-degree folds. What
+    # separates them is that a chamfer is narrow between wide faces, while a
+    # coarse curve's facets are all the same width. Read as chamfers, this
+    # would report a 7.6 mm "chamfer leg" and lose the radius entirely.
+    for sections in (8, 12, 20):
+        barrel = trimesh.creation.cylinder(radius=10.0, height=20.0,
+                                           sections=sections)
+        r = measure(save(tmp_path, barrel, f"barrel{sections}.stl"))
+        assert r["edges"]["chamfers"]["count"] == 0
+        assert r["edges"]["form"]["dominant_r_mm"] == pytest.approx(10.0, abs=0.05)
+
+
 def test_edge_rounding_is_kept_apart_from_bores(tmp_path):
     # A part rounded at 6 mm that also has 3.4 mm holes: the corner radius is
     # 6 mm and the holes are features. Averaging the two into "4.7 mm rounding"
@@ -166,6 +195,20 @@ def test_a_solid_block_reports_no_wall(tmp_path):
     # Rays through a solid part measure the part, not a wall; calling that a
     # 15 mm "wall thickness" would poison every style lifted from a solid.
     r = measure(save(tmp_path, sharp_prism(), "solid.stl"))
+    assert r["walls"]["shelled"] is False
+    assert "radius_to_wall" not in r["ratios"]
+
+
+def test_a_solid_part_with_a_boss_is_still_not_shelled(tmp_path):
+    # A boss makes the bounding box taller than the body, so the rays crossing
+    # it return the boss's width as the commonest thickness. Judging "shelled"
+    # on that number alone called a 100% solid block a shell and fed its boss
+    # diameter into styles as a wall thickness.
+    solid = trimesh.util.concatenate([
+        trimesh.creation.box(extents=(40, 30, 15)),
+        trimesh.creation.cylinder(radius=4, height=20).apply_translation(
+            [0, 0, 15])])
+    r = measure(save(tmp_path, solid, "boss.stl"))
     assert r["walls"]["shelled"] is False
     assert "radius_to_wall" not in r["ratios"]
 
@@ -249,19 +292,31 @@ def test_a_rule_that_cannot_apply_is_skipped_not_failed(soft_style, tmp_path):
     # softness rule has no precondition and *should* fail — that is the finding.
     spec, _ = soft_style
     part = save(tmp_path, sharp_prism(), "sharp.stl")
-    by_rule = {r.rule: r for r in conform(measure(part), spec)}
+    results = conform(measure(part), spec)
+    by_rule = {r.rule: r for r in results}
     assert by_rule["corner-radius"].status is Status.SKIP
     assert by_rule["corner-radius"].detail
     assert by_rule["curve-smoothness"].status is Status.SKIP
-    assert by_rule["soft-edges"].status is Status.FAIL
+    # ...and the softness advisory does flag it, without pretending the radius
+    # rules judged anything: with no required rule evaluable, the honest
+    # verdict is that the two parts cannot be compared at all.
+    assert by_rule["soft-edges"].status is Status.WARN
+    assert verdict(results).startswith("NOT COMPARABLE")
 
 
 def test_advisory_rules_warn_but_do_not_fail(soft_style, tmp_path):
     spec, _ = soft_style
-    spec.rules = [{"id": "advice", "metric": "edges.softness", "op": "min",
-                   "value": 0.99, "severity": "advisory", "why": "just saying"}]
+    spec.rules = [
+        {"id": "identity", "metric": "edges.rounding.dominant_r_mm",
+         "op": "near", "value": 3.0, "tol": 0.35, "severity": "required",
+         "why": "the family radius"},
+        {"id": "advice", "metric": "edges.softness", "op": "min",
+         "value": 0.99, "severity": "advisory", "why": "just saying"},
+    ]
     results = conform(measure(save(tmp_path, rounded_prism(), "r.stl")), spec)
-    assert results[0].status is Status.WARN
+    by_rule = {r.rule: r for r in results}
+    assert by_rule["identity"].status is Status.PASS
+    assert by_rule["advice"].status is Status.WARN
     assert verdict(results) == "IN STYLE (with advisories)"
 
 
@@ -272,7 +327,7 @@ def test_verdict_when_nothing_is_comparable(soft_style, tmp_path):
                                           "dominant_share", "op": "min",
                                           "value": 0.9}}]
     results = conform(measure(save(tmp_path, sharp_prism(), "s.stl")), spec)
-    assert verdict(results) == "NOT COMPARABLE (every rule skipped)"
+    assert verdict(results).startswith("NOT COMPARABLE")
 
 
 # --------------------------------------------------------------------------

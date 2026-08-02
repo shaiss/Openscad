@@ -213,10 +213,12 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - name: Install xvfb and ImageMagick (cached)
+      - name: Install xvfb (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
-          packages: xvfb imagemagick
+          # No ImageMagick: style-check.sh refreshes the swatch preview only
+          # when montage is present, and this job is here to judge conformance.
+          packages: xvfb
           # cache key; bump to pull fresh package versions (see scad-check)
           version: "2026-08"
       - name: Install OpenSCAD nightly (OBS repo)

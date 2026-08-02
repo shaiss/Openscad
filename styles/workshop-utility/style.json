@@ -75,16 +75,16 @@
       "metric": "edges.softness",
       "op": "min",
       "value": 0.474,
-      "severity": "required",
-      "why": "this is a soft family: most of its edge length curves rather than turning a corner"
+      "severity": "advisory",
+      "why": "this is a soft family: most of its edge length curves rather than turning a corner (a share of edge length, which falls as a part grows at fixed radius \u2014 advisory so a big tray in this family is not failed for being big)"
     },
     {
       "id": "grammar-rounded",
       "metric": "edges.grammar.rounded_share",
       "op": "min",
       "value": 0.443,
-      "severity": "required",
-      "why": "the reference treats 74% of its shaped edge length as rounded; that is the family's dominant edge grammar"
+      "severity": "advisory",
+      "why": "the reference treats 74% of its shaped edge length as rounded; that is the family's dominant edge grammar (a share of edge length, which falls as a part grows at fixed radius \u2014 advisory so a big tray in this family is not failed for being big)"
     },
     {
       "id": "hole-vocabulary",

@@ -62,7 +62,7 @@ done
 for dir in styles/*/; do
   n="$(basename "$dir")"
   [[ -f "styles/${n}/style.json" ]] || continue
-  for f in STYLE.md style.scad swatch.scad; do
+  for f in STYLE.md style.scad swatch.scad previews/swatch.png; do
     [[ -f "styles/${n}/${f}" ]] || err "styles/${n}/ has no ${f}"
   done
   grep -q "${n}/STYLE.md" styles/README.md \

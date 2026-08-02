@@ -86,12 +86,43 @@ class StyleSpec:
 
     @classmethod
     def load(cls, path: str | Path) -> "StyleSpec":
-        """Read a style.json written by `stylelift --emit`."""
+        """Read a style.json, rejecting a malformed one before it is used.
+
+        style.json is hand-edited, so a typo in a rule is ordinary. Checking the
+        shape here turns it into a named error on the file; letting it through
+        would raise somewhere inside evaluation instead, and the process would
+        exit 1 — the code that means "this part is off-style". The gate would
+        then blame the part for a mistake in the spec.
+        """
         doc = json.loads(Path(path).read_text())
         schema = doc.get("schema")
         if schema != SCHEMA:
             raise ValueError(f"{path}: unsupported schema {schema!r} "
                              f"(this build reads {SCHEMA!r})")
+        for i, rule in enumerate(doc.get("rules", [])):
+            where = f"{path}: rule {rule.get('id', i)!r}"
+            if not isinstance(rule, dict):
+                raise ValueError(f"{where}: each rule must be an object")
+            for key in ("metric", "value"):
+                if key not in rule:
+                    raise ValueError(f"{where}: missing {key!r}")
+            op = rule.get("op", "near")
+            if op not in ("min", "max", "near", "range"):
+                raise ValueError(f"{where}: unknown op {op!r} "
+                                 "(min, max, near or range)")
+            if op == "range" and (not isinstance(rule["value"], (list, tuple))
+                                  or len(rule["value"]) != 2):
+                raise ValueError(f"{where}: op 'range' wants value [low, high]")
+            if op != "range" and not isinstance(rule["value"], (int, float)):
+                raise ValueError(f"{where}: value must be a number")
+            when = rule.get("when")
+            if when is not None and (not isinstance(when, dict)
+                                     or "metric" not in when
+                                     or "value" not in when):
+                raise ValueError(
+                    f"{where}: 'when' wants an object with 'metric' and 'value'")
+            if rule.get("severity", "required") not in ("required", "advisory"):
+                raise ValueError(f"{where}: severity must be required or advisory")
         return cls(name=doc["name"], title=doc.get("title", ""),
                    summary=doc.get("summary", ""), tokens=doc.get("tokens", {}),
                    rules=doc.get("rules", []), asserted=doc.get("asserted", {}),
@@ -149,13 +180,24 @@ def conform(measurement: dict, spec: StyleSpec) -> list[Result]:
 
 
 def verdict(results: list[Result]) -> str:
-    """One-line summary of a conformance run."""
+    """One-line summary of a conformance run.
+
+    "Nothing to check" must not read as "passed". Every rule that carries a
+    family's identity is gated on the feature it measures — a corner radius
+    rule cannot judge a part with no rounded edges — so a part sharing none of
+    the family's features skips all of them and would otherwise sail through on
+    the advisories alone. A plain turned knob is not in the same family as a
+    chamfered utility box; it is simply not comparable, and saying so is the
+    only honest answer.
+    """
     if any(r.status is Status.FAIL for r in results):
         return "OFF-STYLE"
+    judged = [r for r in results
+              if r.severity == "required" and r.status is not Status.SKIP]
+    if not judged:
+        return "NOT COMPARABLE (no required rule could be evaluated)"
     if any(r.status is Status.WARN for r in results):
         return "IN STYLE (with advisories)"
-    if not [r for r in results if r.status is not Status.SKIP]:
-        return "NOT COMPARABLE (every rule skipped)"
     return "IN STYLE"
 
 
@@ -247,16 +289,22 @@ def derive(measurement: dict, name: str) -> tuple[dict, list]:
                 "id": "soft-edges",
                 "metric": "edges.softness",
                 "op": "min", "value": round(max(0.25, softness * 0.6), 3),
-                "severity": "required",
+                # Advisory, not required: this is a share of edge *length*, and
+                # at a fixed corner radius it falls as the part grows — a tray
+                # built from these very tokens measures 0.47 where the small
+                # swatch measures 0.81. A rule that fails a part for being big
+                # is a rule people learn to ignore.
+                "severity": "advisory",
                 "why": "this is a soft family: most of its edge length curves "
-                       "rather than turning a corner",
+                       "rather than turning a corner (falls as a part grows, "
+                       "so advisory)",
             })
         elif softness <= 0.2:
             rules.append({
                 "id": "crisp-edges",
                 "metric": "edges.softness",
                 "op": "max", "value": round(min(0.45, softness * 2 + 0.15), 3),
-                "severity": "required",
+                "severity": "advisory",      # a length share; see soft-edges
                 "why": "this is a crisp family: edges meet at a corner and are "
                        "broken by chamfers, not rounded away",
             })
@@ -273,7 +321,7 @@ def derive(measurement: dict, name: str) -> tuple[dict, list]:
             "id": f"grammar-{top.split('_')[0]}",
             "metric": f"edges.grammar.{top}",
             "op": "min", "value": round(top_value * 0.6, 3),
-            "severity": "required",
+            "severity": "advisory",          # a length share; see soft-edges
             "why": f"the reference treats {top_value:.0%} of its shaped edge "
                    f"length as {top.split('_')[0]}; that is the family's "
                    "dominant edge grammar",

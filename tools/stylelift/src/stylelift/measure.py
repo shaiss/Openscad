@@ -50,6 +50,11 @@ class Config:
     # Two strips of a common curved band have comparable width; a curve meeting
     # a large flat face does not. Guards the radius estimate at tangent joins.
     width_ratio: float = 3.0
+    # How much narrower than its neighbours a band must be to read as a chamfer
+    # rather than one facet of a coarsely drawn curve. Deliberately separate
+    # from width_ratio above: that one guards an arithmetic estimate, this one
+    # answers a question about design intent.
+    chamfer_width_ratio: float = 1.6
     # Radius modes: half-width of the refinement window, and the share of
     # folded length below which a mode is noise rather than vocabulary.
     mode_tol: float = 0.12
@@ -195,44 +200,64 @@ def _edge_treatment(mesh: trimesh.Trimesh, cfg: Config) -> dict:
     shaped = soft_len + hard_len
 
     # --- pass 1: chamfer bands -------------------------------------------
-    # A chamfer is one narrow face bridging two much wider ones, bounded by two
-    # decisive folds. Both bounding folds fail the comparable-width test, which
-    # is exactly what separates a chamfer from a fillet's first strip.
+    # A chamfer is a single flat band that bridges two faces across a decisive
+    # fold. What separates it from one strip of a coarsely tessellated curve is
+    # *topology, not size*: a chamfer stands alone between two ordinary faces,
+    # while a curve's strip continues into another strip just like it.
+    #
+    # Deciding this by comparing the band's width against its neighbour's is
+    # what an earlier version did, and it broke on exactly the parts this tool
+    # exists to measure: put the same 0.6 mm chamfer on a 3 mm plate instead of
+    # an 8 mm one and the neighbouring wall becomes short enough to look
+    # "comparable", after which the chamfer is read as a curve and the part
+    # reports a corner radius it does not have.
     band = (~flat) & (angles <= np.radians(cfg.band_max_deg))
-    wmin = np.minimum(widths[:, 0], widths[:, 1])
-    wmax = np.maximum(widths[:, 0], widths[:, 1])
-    comparable = (wmin > 0) & (wmax <= cfg.width_ratio * wmin)
-    candidate = band & (~comparable) & (angles > np.radians(cfg.chamfer_min_deg))
+    candidate = band & (angles > np.radians(cfg.chamfer_min_deg))
 
-    by_facet: dict[int, list] = {}
+    # Both sides of every decisive fold, so each facet's own width and its
+    # neighbours' are known together.
+    by_facet: dict[int, dict[int, list]] = {}
     for k in np.where(candidate)[0]:
-        narrow = 0 if widths[k, 0] <= widths[k, 1] else 1
-        by_facet.setdefault(int(keys[k, narrow]), []).append(
-            (float(angles[k]), float(widths[k, narrow]), float(lengths[k]),
-             int(keys[k, 1 - narrow]), bool(convex[k])))
+        for side in (0, 1):
+            facet, other = int(keys[k, side]), int(keys[k, 1 - side])
+            by_facet.setdefault(facet, {}).setdefault(other, []).append(
+                (float(angles[k]), float(widths[k, side]),
+                 float(widths[k, 1 - side]), float(lengths[k]), bool(convex[k])))
 
     chamfer_facets: set[int] = set()
     bands: list[dict] = []
-    for facet, folds in by_facet.items():
-        # group by the facet on the far side: one chamfer has exactly two
-        # neighbours however finely either of them is triangulated
-        sides: dict[int, list] = {}
-        for angle, width, length, other, cvx in folds:
-            sides.setdefault(other, []).append((angle, width, length, cvx))
-        if len(sides) != 2:
+    for facet, sides in by_facet.items():
+        if len(sides) < 2:
             continue
+        # The band's two long sides are the folds carrying the most edge
+        # length. A chamfer running along a box edge also meets the little
+        # mitre pieces at each end, so demanding exactly two neighbours would
+        # miss every chamfer on a part with square corners.
+        principal = sorted(sides.values(),
+                           key=lambda entries: -sum(e[3] for e in entries))[:2]
         turn = 0.0
         length_total = 0.0
         widths_seen = []
+        neighbour_widths = []
         convexity = []
-        for entries in sides.values():
-            w = np.array([e[2] for e in entries])
+        for entries in principal:
+            w = np.array([e[3] for e in entries])
             a = np.degrees([e[0] for e in entries])
             turn += float(np.average(a, weights=w) if w.sum() else a.mean())
             length_total += float(w.sum())
             widths_seen += [e[1] for e in entries]
-            convexity += [e[3] for e in entries]
+            neighbour_widths.append(float(np.median([e[2] for e in entries])))
+            convexity += [e[4] for e in entries]
         width = float(np.median(widths_seen))
+        # A chamfer is *narrow between wide*. An octagonal prism and a cylinder
+        # drawn at $fn=8 have identical topology — both are eight faces meeting
+        # at eight 45-degree folds — and the only thing that says "these four
+        # are chamfers on a box" rather than "this is a coarse circle" is that
+        # they are much narrower than what they sit between. Compared against
+        # the *narrower* neighbour, so a chamfer next to a short wall still
+        # reads as a chamfer.
+        if width <= 0 or min(neighbour_widths) < cfg.chamfer_width_ratio * width:
+            continue
         # A symmetric chamfer cutting a corner of total turn T with equal legs
         # c presents a face of width w = 2 c cos(T/2).
         half = np.radians(min(turn, 179.0)) / 2
@@ -246,15 +271,22 @@ def _edge_treatment(mesh: trimesh.Trimesh, cfg: Config) -> dict:
                       "convex": bool(np.mean(convexity) >= 0.5)})
 
     # --- pass 2: rounding vocabulary --------------------------------------
-    # Folds bounding a chamfer band on *both* sides describe the chamfer's own
-    # tessellation (a chamfer swept around a cylinder is a cone; a chamfer
-    # swept around a rounded corner is a torus slice). Reporting their
-    # osculating radius as a rounding radius would invent a radius the designer
-    # never chose, so they are excluded here and accounted as chamfer.
+    # Any fold touching a chamfer band is chamfer geometry and has already been
+    # accounted as such: its own bounding folds, and — where a chamfer is swept
+    # around a corner or a bore, making it a cone or a torus slice — the folds
+    # within it. Letting either kind through would invent a radius the designer
+    # never chose.
     on_chamfer = np.array([
-        (int(keys[k, 0]) in chamfer_facets) and (int(keys[k, 1]) in chamfer_facets)
+        (int(keys[k, 0]) in chamfer_facets) or (int(keys[k, 1]) in chamfer_facets)
         for k in range(len(angles))]) if chamfer_facets else np.zeros(len(angles), bool)
 
+    # `comparable` still guards the radius estimate itself: where a curve meets
+    # a large flat face the fold is half-sized, which would report twice the
+    # true radius. That is a different job from telling a chamfer from a curve,
+    # which pass 1 now decides on topology.
+    wmin = np.minimum(widths[:, 0], widths[:, 1])
+    wmax = np.maximum(widths[:, 0], widths[:, 1])
+    comparable = (wmin > 0) & (wmax <= cfg.width_ratio * wmin)
     usable = band & comparable & (~on_chamfer)
     radii = np.full(len(angles), np.nan)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -592,11 +624,19 @@ def _walls(mesh: trimesh.Trimesh, cfg: Config) -> dict:
     # coarse to report as "this family builds at 2.5 mm".
     window = thickness[(thickness >= centre * 0.88) & (thickness <= centre * 1.12)]
     mode = float(np.median(window)) if len(window) else centre
-    # On a solid part these rays measure the part, not a wall: the commonest
-    # "thickness" is simply its shortest dimension. Saying so keeps a solid
-    # block from contributing a 15 mm "wall thickness" token to a style.
+    # On a solid part these rays measure the part, not a wall, and the answer
+    # must not become a "wall thickness" token in somebody's style.
+    #
+    # Two things have to hold for a shell. The commonest thickness must be well
+    # under the part's shortest dimension — and it must account for much of the
+    # surface, because a shell is *mostly* wall. Size alone is not enough: any
+    # solid part with a boss or a post on it has a bounding box taller than the
+    # body, so the rays crossing that boss return its width as the commonest
+    # thickness and a perfectly solid block reads as shelled.
     thinnest_extent = float(np.min(mesh.extents))
-    shelled = bool(mode < 0.85 * thinnest_extent)
+    at_mode = float(((thickness >= mode * 0.88) & (thickness <= mode * 1.12)
+                     ).mean())
+    shelled = bool(mode < 0.85 * thinnest_extent and at_mode >= 0.5)
     return {
         "measured": True,
         "shelled": shelled,

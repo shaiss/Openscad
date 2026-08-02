@@ -67,6 +67,23 @@ def shelled_tube(width=40.0, depth=30.0, height=15.0, wall=2.4) -> trimesh.Trime
     return trimesh.creation.extrude_polygon(outer.difference(inner), height)
 
 
+def chamfered_slab(width=60.0, depth=40.0, height=3.0, leg=0.6) -> trimesh.Trimesh:
+    """A plate whose bottom edges are cut back at 45 degrees — the repo's own
+    `bottom_chamfer`, on a plate thin enough that the wall above the chamfer is
+    only a few times its width.
+
+    Built as the convex hull of an inset bottom rectangle and the full-size
+    rectangle above it, which is exactly a 45-degree chamfer and needs no
+    boolean engine. The point of the probe is the *proportion*: measuring this
+    must not depend on how tall the wall above the chamfer happens to be.
+    """
+    w, d, c = width / 2, depth / 2, leg
+    points = ([[x, y, 0.0] for x in (-w + c, w - c) for y in (-d + c, d - c)]
+              + [[x, y, z] for x in (-w, w) for y in (-d, d)
+                 for z in (c, height)])
+    return trimesh.PointCloud(np.array(points)).convex_hull
+
+
 def rounded_slab(**kw) -> trimesh.Trimesh:
     """A different *part* in the same language as rounded_prism: same radius and
     the same curve resolution, less than half the size. A style check has to

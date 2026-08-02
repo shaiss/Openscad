@@ -75,20 +75,29 @@ check_style() {
     return 0
   fi
 
-  mkdir -p "${dir}/previews"
-  local pngs=() view label rot png
-  for view in "iso:55,0,25" "top:0,0,0" "front:90,0,0" "bottom:235,0,55"; do
-    label="${view%%:*}"; rot="${view#*:}"
-    png="build/.swatch-${name}-${label}.png"
-    if render "${dir}/swatch.scad" "$png" --imgsize=800,600 \
-        --camera="0,0,0,${rot},140" --viewall --autocenter; then
-      montage -label "$label" "$png" -geometry +0+0 -pointsize 24 "$png"
-      pngs+=("$png")
+  # The swatch preview is a convenience, not a verdict: refreshing it needs
+  # ImageMagick, and the gate's job — tokens in sync, swatch renders, swatch
+  # obeys its own rules — does not. Skip it rather than failing a conformance
+  # run over a missing image tool. The committed PNG's existence is checked by
+  # scripts/docs-check.sh, which needs no tools at all.
+  if command -v montage >/dev/null 2>&1; then
+    mkdir -p "${dir}/previews"
+    local pngs=() view label rot png
+    for view in "iso:55,0,25" "top:0,0,0" "front:90,0,0" "bottom:235,0,55"; do
+      label="${view%%:*}"; rot="${view#*:}"
+      png="build/.swatch-${name}-${label}.png"
+      if render "${dir}/swatch.scad" "$png" --imgsize=800,600 \
+          --camera="0,0,0,${rot},140" --viewall --autocenter; then
+        montage -label "$label" "$png" -geometry +0+0 -pointsize 24 "$png"
+        pngs+=("$png")
+      fi
+    done
+    if [[ ${#pngs[@]} -gt 0 ]]; then
+      montage "${pngs[@]}" -tile 2x2 -geometry +2+2 "${dir}/previews/swatch.png"
+      rm -f "${pngs[@]}"
     fi
-  done
-  if [[ ${#pngs[@]} -gt 0 ]]; then
-    montage "${pngs[@]}" -tile 2x2 -geometry +2+2 "${dir}/previews/swatch.png"
-    rm -f "${pngs[@]}"
+  else
+    echo "note  montage not installed — leaving ${dir}/previews/swatch.png as committed"
   fi
 
   if ! stylelift check "$stl" --style "$dir"; then
