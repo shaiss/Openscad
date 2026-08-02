@@ -17,7 +17,7 @@ watertight single bodies with no CRITICAL findings:
 | straight | 76/100 | 160.6 g | small bed contact patch — see open items |
 | bulkhead_in | 84/100 | 57.3 g | |
 | bulkhead_out | 84/100 | 38.0 g | |
-| coupon | 84/100 | 222.9 g | coupon is heavier than a bulkhead — see open items |
+| coupon | 76/100 | 111.2 g | was 222.9 g until the override-order bug below was fixed |
 
 A green gate is **not** validation. Nothing has been printed, and the lock
 kinematics have not been verified by mating two rendered copies. Treat every
@@ -132,13 +132,65 @@ budget. Expect the first coupon to be wrong.
    of the flange pointed every sector at the bed: 30 % overhang, CRITICAL,
    `gate.sh` exit 1. Mirrored and lifted by the collar height it reads 3 %.
    This is the one failure in the round the gate *did* catch on its own.
-3. Both body-count bugs were found by splitting the STL with trimesh and printing each
+3. **The coupon was rendering the entire assembly.** The wrapper had its
+   overrides *above* `include <nuggs.scad>`, so the entry file's own
+   `part = "assembled"` won — OpenSCAD's include semantics are
+   include-then-override, and `sushi-battleship-coupon.scad` shows the
+   correct order. The "print this first" part was a 130 × 130 × 188 mm,
+   223 g, 16-hour full assembly, and the gate happily gated it. Now 111 g.
+   Still heavy for a fit coupon: at an 80 mm bore even two 25 mm stubs are
+   ~98 cm³, nothing like the dossier's 30 g estimate.
+4. Both body-count bugs were found by splitting the STL with trimesh and printing each
    body's volume, extents and centroid — the disconnected pieces were all
    exactly 1.5 mm tall at the tip radii, which named the culprit instantly.
    Worth doing on any multi-sector part before trusting the gate.
 
+## Verified: the coupling fails (round 1 measurements)
+
+`nuggs-matetest.scad` renders the **intersection** of two identical straights
+joined face to face — the mate is the same part mirrored and clocked by
+`pitch/2`. Any non-zero volume is geometry that cannot be assembled. This is
+the check that should have existed before anything was called done: every
+part gates green individually, and the gate can never see an assembled joint.
+
+**1. The ports do not nest — 1645 mm³ of interference at the insertion
+clocking.** The `bite` that fuses each inner sector into *our* tube also
+drives it 0.8 mm into the **mate's** tube OD, where the projecting half runs
+alongside it. Predicted π(42.4² − 41.6²) × (165/360) × 10 ≈ 967 mm³ per side,
+~1.9 cm³ total; measured 1645. The fix is to split the inner sector so only
+the anchoring half (our side) bites, and it does drop the interference to
+**exactly 0** — but the split introduces coincident cylindrical surfaces that
+make CGAL return a non-watertight mesh, and rebuilding it as a full shell
+plus an offset root web did not clear that either. Reverted; unresolved.
+
+**2. The bayonet assert encodes the wrong constraint.** It reads
+`twist_deg + lug_deg <= pitch`. The real limit is **`pitch/2`**: the mate's
+*like-radius* sectors sit half a pitch away, so free travel is
+`pitch/2 - lug_deg`, not `pitch - lug_deg`. The committed defaults
+(55 + 40 = 95) satisfy the written assert and violate the true one by 35°,
+so the outer sectors collide the moment you try to twist — measured 6902 mm³
+of interference at the locked clocking. `lug_deg = 30, twist_deg = 25`
+(55 ≤ 60) takes both the insertion and locked interference to **0.0 mm³**.
+The parameters cannot be changed without fix (1), because they were what
+exposed it.
+
+**3. Nothing retains axially, in either twist direction.** With the parts
+seated and clocked to lock, pulling them apart is free at 0.5, 2.0 and
+5.0 mm — zero interference, so there is no bayonet at all. Two causes:
+the groove floor is cut to r = 44.1 while the rib's inner face is at
+r = 44.4, so the rib passes clean over the material that should catch it;
+and the lead-in taper is a **solid subtracted cone**, which removes
+everything *inside* it — at the ribs' z it deletes all material below
+r ≈ 46.9, i.e. the ribs themselves. Removing the taper restores the ribs
+and also breaks watertightness, so the tip treatment and the rib have to be
+redesigned together.
+
 ## Open items — next round
 
+- **THE JOINT DOES NOT WORK YET.** Verified this round with
+  `nuggs-matetest.scad`, not guessed. Three separate defects, all still
+  present in the committed geometry — see "Verified: the coupling fails" —
+  and fixing them is the whole of the next round.
 - **Bed contact is the live problem.** Printed upright the part now stands
   on its sector tips, not a full annulus: printcheck reports "Small bed
   contact patch" and the score is 76. The plain-tube 100/100 in the dossier
