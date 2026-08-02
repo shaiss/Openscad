@@ -47,7 +47,9 @@ The scripts expect: `openscad`, `xvfb-run` (headless rendering — the
 scripts wrap every OpenSCAD call in `xvfb-run -a` themselves; you only need
 the prefix for raw `openscad` commands you run by hand), ImageMagick
 (`montage`, for preview sheets), `prusa-slicer` (for `gate.sh --slice`),
-and [printcheck](tools/printcheck/) (`pip install -e tools/printcheck`).
+`povray` plus Python `trimesh` (for `product-shot.sh`; trimesh comes with
+printcheck), and [printcheck](tools/printcheck/)
+(`pip install -e tools/printcheck`).
 
 ## How designs get made
 
@@ -75,9 +77,12 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `gate-summary.py` — turns a gate log into the CI results table
   - `readme-gate.sh` — every design must ship a product-page README
   - `animate.sh` — animated GIF previews from `animations.conf`
+  - `product-shot.sh` — real-world-looking studio product shots from
+    `shots.conf`, raytraced from the design's own STL export
   - `gallery.sh` — regenerates the design gallery above
   - `lint-scad.sh` — report-only [sca2d](https://gitlab.com/bath_open_instrumentation_group/sca2d) static analysis
-  - `preview-budget.sh` — sourced helper defining the GIF size budget
+  - `preview-budget.sh` — sourced helper defining the GIF and product-shot
+    size budgets
 - `templates/` — starting points for a new design and its product page
 - `docs/` — repo-level research and reference notes
 - `tools/printcheck/` — STL printability analyzer; scores rendered models

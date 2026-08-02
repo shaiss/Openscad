@@ -9,6 +9,8 @@ cannot be lifted, so nobody peeks. No supports, no hardware, no
 assembly — the shutters print captive in the lid and free up with one
 firm push each.
 
+![Product shot: the assembled board in charcoal PLA, D1 shutter opened](previews/product-hero.png)
+
 ![A hit on D1: the shutter slides to its end stop, lifts out, and reveals the piece](previews/shutter-slide.gif)
 
 ![4-view contact sheet](previews/contact-sheet.png)

@@ -6,6 +6,8 @@ the lid screws on with real trapezoidal threads and a ribbed grip edge —
 easy to open even with dry-box gloves on. Both parts print support-free
 on FDM, with vents sized for a standard 0.4 mm nozzle.
 
+![Product shot: the assembled capsule, teal PLA on a studio backdrop](previews/product-hero.png)
+
 ![Assembled capsule turntable: vent pattern and lid ribs all the way around](previews/turntable.gif)
 
 ![4-view contact sheet](previews/contact-sheet.png)
