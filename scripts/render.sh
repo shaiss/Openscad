@@ -204,14 +204,25 @@ render_sweep() {
   # while, not a comma-operator for-loop: POSIX awk (and mawk, what runs
   # here) has no comma operator, so `for (v = a, i = 0; ...)` is a syntax
   # error and every sweep would die reporting "step must be > 0".
+  # exit 2 (cap hit) is distinct from exit 1 (step <= 0) so an oversized
+  # range is refused outright rather than silently rendering the first 1000
+  # coupons as if that were what was asked for.
+  local rc=0
   values="$(awk -v a="$start" -v b="$end" -v s="$step" \
     'BEGIN { a += 0; b += 0; s += 0;
              if (s <= 0) exit 1;
              v = a; i = 0;
-             while (v <= b + s/2 && i < 1000) {
+             while (v <= b + s/2) {
+               if (i >= 1000) exit 2;
                printf "%g\n", v; v += s; i++;
-             } }')" || {
-    echo "error: step must be > 0" >&2; return 1; }
+             } }')" || rc=$?
+  case "$rc" in
+    0) ;;
+    1) echo "error: step must be > 0" >&2; return 1 ;;
+    2) echo "error: --sweep '$spec' spans more than 1000 values — widen the step or narrow the range" >&2
+       return 1 ;;
+    *) echo "error: sweep value generation failed (awk exit $rc)" >&2; return 1 ;;
+  esac
 
   if [[ -z "$values" ]]; then
     echo "error: --sweep range '$spec' produced no values (start > end?)" >&2
