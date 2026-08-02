@@ -11,7 +11,7 @@ the animal still inside it.
 > closes geometrically, but nothing here has been printed, the lock has not
 > been verified on assembled copies, and the design has not yet passed
 > `gate.sh --slice`. Bed adhesion in particular is an open problem. Track it
-> in [issue #34](https://github.com/shaiss/Openscad/issues/34) and see
+> in [issue #34](https://github.com/shaiss/print-bench/issues/34) and see
 > `NOTES.md` for the open items.
 
 ![4-view contact sheet](previews/contact-sheet.png)
