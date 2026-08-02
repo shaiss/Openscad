@@ -292,22 +292,34 @@ jobs:
             // so it cannot stop a run cancelled (or simply overtaken) once
             // this script is already in flight — that run would finish its
             // API calls and overwrite the newer run's report with stale
-            // output. Re-read the PR head and bail if we are no longer it.
-            const { data: pr } = await github.rest.pulls.get({
-              ...context.repo, pull_number: context.issue.number,
-            });
+            // output. Check we are still the PR head twice: once up front to
+            // skip the listComments call entirely, and again immediately
+            // before the write, since a push during the (paginated) list is
+            // the wider window of the two.
+            //
+            // This shrinks the race, it cannot remove it: there is no
+            // conditional-write primitive on the comments API, so some gap
+            // between the last check and the write always remains. The body
+            // carries the SHA it was built from, and the next run rewrites
+            // the comment, so a lost race is visible and self-correcting.
             const built = context.payload.pull_request.head.sha;
-            if (pr.head.sha !== built) {
+            const stillCurrent = async () => {
+              const { data: pr } = await github.rest.pulls.get({
+                ...context.repo, pull_number: context.issue.number,
+              });
+              if (pr.head.sha === built) return true;
               core.info(`superseded: PR head is ${pr.head.sha.slice(0, 7)}, `
                 + `this run built ${built.slice(0, 7)} — leaving the comment alone`);
-              return;
-            }
+              return false;
+            };
+            if (!await stillCurrent()) return;
             const sha = built.slice(0, 7);
             const body = `${marker}\n${report}\n_Automated report for ${sha}._`;
             const comments = await github.paginate(github.rest.issues.listComments, {
               ...context.repo, issue_number: context.issue.number, per_page: 100,
             });
             const prev = comments.find(c => c.body && c.body.startsWith(marker));
+            if (!await stillCurrent()) return;
             if (prev) {
               await github.rest.issues.updateComment({
                 ...context.repo, comment_id: prev.id, body,
@@ -517,17 +529,22 @@ jobs:
             if (!report.trim()) {
               report = '_no gated parts to diff on this PR_';
             }
-            // Same stale-run guard as render-gate's sticky comment: the
-            // step-level !cancelled() cannot stop an already-running script.
-            const { data: pr } = await github.rest.pulls.get({
-              ...context.repo, pull_number: context.issue.number,
-            });
+            // Same stale-run guard as render-gate's sticky comment, with the
+            // same two call sites and the same caveat: the step-level
+            // !cancelled() cannot stop an already-running script, and no
+            // conditional-write primitive exists, so this narrows the race
+            // rather than closing it.
             const built = context.payload.pull_request.head.sha;
-            if (pr.head.sha !== built) {
+            const stillCurrent = async () => {
+              const { data: pr } = await github.rest.pulls.get({
+                ...context.repo, pull_number: context.issue.number,
+              });
+              if (pr.head.sha === built) return true;
               core.info(`superseded: PR head is ${pr.head.sha.slice(0, 7)}, `
                 + `this run built ${built.slice(0, 7)} — leaving the comment alone`);
-              return;
-            }
+              return false;
+            };
+            if (!await stillCurrent()) return;
             const sha = built.slice(0, 7);
             const body = `${marker}\n### Geometric diff vs base (non-blocking)\n` +
               `${report}\n_Before/after/overlay renders are in the ` +
@@ -536,6 +553,7 @@ jobs:
               ...context.repo, issue_number: context.issue.number, per_page: 100,
             });
             const prev = comments.find(c => c.body && c.body.startsWith(marker));
+            if (!await stillCurrent()) return;
             if (prev) {
               await github.rest.issues.updateComment({
                 ...context.repo, comment_id: prev.id, body,
