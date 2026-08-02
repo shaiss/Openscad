@@ -79,3 +79,11 @@ This repo is used in a session-per-design pattern: the user starts a fresh sessi
 5. **Commit.** Commit the design directory (`.scad`, `README.md`, `NOTES.md`, any variants) with message `Add design: <name>` (or `Update design: <name>`). If a module written for this design is generally reusable, move it into `lib/` and mention it in the commit. Push to the branch designated for the session.
 
 Multi-part designs (lids, hinged pairs, assemblies) stay in one design directory: either one `.scad` with a `part` parameter selecting what to render, or `<name>-<part>.scad` files next to the entry point — note the choice in NOTES.md.
+
+## Review skills
+
+Reviewer personas live in `.claude/skills/` and can be invoked on any design PR or `designs/<name>/` directory:
+
+- **`/jane-review`** — printability/profile review: re-derives margin math from source, exports and shell-counts the model, checks the design against what stock slicer profiles actually do (bed exclusion zones, seam defaults, bridge-angle auto-selection), and QAs preview cameras before they freeze.
+- **`/drik-review`** — end-user/fitness-for-purpose review as the design's first real customer: independently recomputes every claimed number with the arithmetic shown, re-ranks the backlog by real-usage frequency, and audits for information leaks (fog-of-war) that geometry checks can't catch.
+- **`/design-coach`** — becomes the dedicated review coach for one open design PR and drives verification-first rounds until it merges.
