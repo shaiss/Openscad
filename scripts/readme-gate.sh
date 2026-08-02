@@ -169,7 +169,10 @@ check_one() {
   local conf="${dir}/animations.conf" max_gif_bytes=$((6 * 1024 * 1024))
   if [[ -f "$conf" ]]; then
     local anim gif bytes
-    while IFS= read -r anim; do
+    # `|| [[ -n ... ]]`: a final line without a trailing newline still makes
+    # read populate the variable while returning nonzero — without the guard
+    # that entry would silently escape the gate (false pass).
+    while IFS= read -r anim || [[ -n "$anim" ]]; do
       anim="${anim%%#*}"
       anim="${anim%%|*}"
       anim="$(tr -d '[:space:]' <<<"$anim")"

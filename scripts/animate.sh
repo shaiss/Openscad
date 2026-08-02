@@ -62,7 +62,9 @@ animate_one() {
   mkdir -p "$outdir"
 
   local line
-  while IFS= read -r line; do
+  # `|| [[ -n ... ]]`: don't silently drop a final manifest line that lacks
+  # a trailing newline (read returns nonzero but still fills the variable).
+  while IFS= read -r line || [[ -n "$line" ]]; do
     # strip comments and surrounding whitespace; skip blank lines
     line="${line%%#*}"
     [[ "$line" =~ [^[:space:]] ]] || continue
