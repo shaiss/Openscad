@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""Raytrace a studio product shot from one or more STLs.
+
+Turns a geometry-true STL (exported by OpenSCAD) into a product-page hero
+image: seamless studio backdrop, soft key/fill/rim lighting, glossy floor
+with contact shadows and reflections, and a plastic material with visible
+FDM layer lines. Deterministic — same STL + args = same pixels — so shots
+are reproducible in CI and comparable across review rounds.
+
+Usage:
+    photoshot.py part.stl -o shot.png --color '#e8734a'
+    photoshot.py body.stl lid.stl --color '#333' --color '#e8734a' -o shot.png
+
+Multiple STLs compose one scene (e.g. a two-tone assembly); --color repeats
+in the same order. Coordinates are OpenSCAD's (z-up, millimeters); the model
+is grounded on the floor plane automatically.
+
+Requires: trimesh (STL loading), povray (rendering).
+"""
+
+import argparse
+import math
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import trimesh
+
+FINISHES = {
+    # diffuse, specular, roughness, reflection min/max
+    "satin": (0.72, 0.30, 0.012, 0.015, 0.05),
+    "gloss": (0.62, 0.55, 0.004, 0.03, 0.12),
+    "matte": (0.85, 0.08, 0.060, 0.0, 0.0),
+}
+
+
+def parse_color(s):
+    s = s.lstrip("#")
+    if len(s) == 3:
+        s = "".join(c * 2 for c in s)
+    if len(s) != 6:
+        raise argparse.ArgumentTypeError(f"bad color {s!r} (want #rrggbb)")
+    return tuple(int(s[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+
+def srgb_to_linear(c):
+    return tuple(
+        v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in c
+    )
+
+
+def mesh2_block(mesh, color, finish, layer_h):
+    v = mesh.vertices
+    f = mesh.faces
+    verts = ", ".join(f"<{x:.4f},{y:.4f},{z:.4f}>" for x, y, z in v)
+    faces = ", ".join(f"<{a},{b},{c}>" for a, b, c in f)
+    r, g, b = srgb_to_linear(color)
+    diffuse, spec, rough, rmin, rmax = FINISHES[finish]
+    # Faint z-gradient ridges ~ layer_h apart read as FDM layer lines.
+    normal = (
+        f"normal {{ gradient z, 0.35 triangle_wave scale <1,1,{layer_h}> }}"
+        if layer_h > 0
+        else ""
+    )
+    reflection = (
+        f"reflection {{ {rmin}, {rmax} fresnel }} conserve_energy"
+        if rmax > 0
+        else ""
+    )
+    return f"""
+mesh2 {{
+  vertex_vectors {{ {len(v)}, {verts} }}
+  face_indices {{ {len(f)}, {faces} }}
+  texture {{
+    pigment {{ rgb <{r:.4f},{g:.4f},{b:.4f}> }}
+    finish {{ diffuse {diffuse} specular {spec} roughness {rough}
+              {reflection} ambient 0 }}
+    {normal}
+  }}
+  interior {{ ior 1.46 }}
+}}
+"""
+
+
+def scene(meshes, args):
+    bounds = [m.bounds for m, _ in meshes]
+    lo = [min(b[0][i] for b in bounds) for i in range(3)]
+    hi = [max(b[1][i] for b in bounds) for i in range(3)]
+    # ground the model at the origin
+    dx, dy, dz = -(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -lo[2]
+    for m, _ in meshes:
+        m.apply_translation((dx, dy, dz))
+    ex, ey, ez = hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]
+    diag = math.sqrt(ex * ex + ey * ey + ez * ez)
+
+    az = math.radians(args.rotz)
+    el = math.radians(args.elev)
+    dist = diag * 2.1 / args.zoom
+    cx = dist * math.cos(el) * math.sin(az)
+    cy = -dist * math.cos(el) * math.cos(az)
+    cz = ez * 0.45 + dist * math.sin(el)
+    look = f"<0,0,{ez * 0.42:.3f}>"
+    w, h = args.size
+    key = diag * 1.5
+
+    blocks = "".join(mesh2_block(m, c, args.finish, args.layers) for m, c in meshes)
+    radiosity = (
+        "radiosity { count 80 error_bound 0.6 recursion_limit 2 "
+        "nearest_count 8 brightness 0.75 }"
+        if not args.no_radiosity
+        else ""
+    )
+    return f"""#version 3.7;
+global_settings {{ assumed_gamma 1.0 max_trace_level 8 {radiosity} }}
+#default {{ finish {{ ambient {0.0 if not args.no_radiosity else 0.28} }} }}
+
+camera {{
+  location <{cx:.3f},{cy:.3f},{cz:.3f}>
+  sky z
+  look_at {look}
+  right -x*{w}/{h}
+  up z
+  angle 30
+}}
+
+// seamless white-studio environment (also the radiosity light bath)
+sky_sphere {{
+  pigment {{
+    gradient z
+    color_map {{ [0.0 rgb <0.88,0.89,0.91>] [0.6 rgb <0.99,0.99,1.00>] }}
+  }}
+}}
+
+// key: large area light, high and camera-left
+light_source {{
+  <{-key:.1f},{-key * 0.9:.1f},{key * 1.5:.1f}> rgb <1.02,1.01,0.99> * 0.95
+  area_light x*{diag * 0.9:.1f}, y*{diag * 0.9:.1f}, 3, 3
+  adaptive 1 jitter circular orient
+}}
+// fill: soft, camera-right, no shadows
+light_source {{ <{key:.1f},{-key * 0.6:.1f},{key * 0.8:.1f}> rgb 0.30 shadowless }}
+// rim: behind and above, edge highlight
+light_source {{ <{key * 0.3:.1f},{key:.1f},{key * 1.2:.1f}> rgb 0.35 shadowless }}
+
+// glossy studio floor
+plane {{
+  z, 0
+  pigment {{ rgb <0.94,0.945,0.955> }}
+  finish {{ diffuse 0.8 specular 0.06 roughness 0.02
+            reflection {{ 0.03, 0.09 fresnel }} conserve_energy ambient 0 }}
+  interior {{ ior 1.5 }}
+}}
+
+{blocks}
+"""
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("stl", nargs="+", help="input STL(s), composed into one scene")
+    ap.add_argument("-o", "--output", required=True, help="output PNG")
+    ap.add_argument(
+        "--color",
+        action="append",
+        type=parse_color,
+        help="#rrggbb per STL, in order (default: one warm orange)",
+    )
+    ap.add_argument("--finish", choices=FINISHES, default="satin")
+    ap.add_argument("--rotz", type=float, default=35, help="orbit angle, degrees")
+    ap.add_argument("--elev", type=float, default=18, help="camera elevation, degrees")
+    ap.add_argument("--zoom", type=float, default=1.0)
+    ap.add_argument(
+        "--size",
+        default="1280x960",
+        type=lambda s: tuple(int(x) for x in s.lower().split("x")),
+        help="WxH pixels",
+    )
+    ap.add_argument(
+        "--layers",
+        type=float,
+        default=0.2,
+        help="FDM layer-line height in mm for the surface texture (0 = smooth)",
+    )
+    ap.add_argument("--no-radiosity", action="store_true", help="faster, flatter light")
+    ap.add_argument("--keep-pov", action="store_true", help="keep the .pov next to the PNG")
+    args = ap.parse_args()
+
+    colors = args.color or []
+    default = parse_color("#e8734a")
+    meshes = []
+    for i, path in enumerate(args.stl):
+        m = trimesh.load(path, force="mesh")
+        if m.is_empty or len(m.faces) == 0:
+            sys.exit(f"error: {path} loaded empty")
+        meshes.append((m, colors[i] if i < len(colors) else default))
+
+    pov = scene(meshes, args)
+    out = Path(args.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    w, h = args.size
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".pov", delete=False, dir=out.parent
+    ) as fh:
+        fh.write(pov)
+        povfile = Path(fh.name)
+    try:
+        subprocess.run(
+            [
+                "povray",
+                f"+I{povfile}",
+                f"+O{out}",
+                f"+W{w}",
+                f"+H{h}",
+                "+A0.3",
+                "+AM2",
+                "+R3",
+                "+Q9",
+                "-D",
+                "+WT4",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"povray failed:\n{e.stderr[-3000:]}")
+    finally:
+        if args.keep_pov:
+            povfile.replace(out.with_suffix(".pov"))
+        else:
+            povfile.unlink(missing_ok=True)
+    print(f"wrote {out} ({w}x{h})")
+
+
+if __name__ == "__main__":
+    main()

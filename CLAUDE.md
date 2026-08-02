@@ -41,6 +41,12 @@ All commands run from the repo root.
 # into designs/<name>/previews/; commit the GIFs like the PNG previews
 ./scripts/animate.sh [<name>]
 
+# Render real-world-looking product shots (designs/<name>/shots.conf, if
+# present) into designs/<name>/previews/: OpenSCAD exports the STL, POV-Ray
+# raytraces it in a studio scene (soft lighting, glossy floor, FDM layer
+# lines). Commit the PNGs like the other previews; see /product-shots.
+./scripts/product-shot.sh [<name>]
+
 # Render a design to STL manually (full CGAL render, catches geometry errors)
 xvfb-run -a openscad -o build/<name>.stl designs/<name>/<name>.scad
 
@@ -58,12 +64,14 @@ Workflow skills (`.claude/skills/`):
 
 - **`/preflight`** — before any push: runs the exact checks CI runs (check.sh, gate.sh --slice, printcheck tests), scoped to what changed the same way CI scopes them, and answers "would CI pass?".
 - **`/new-design <name>`** — scaffolds `designs/<name>/` with everything CI and reviewers expect: entry `.scad` from the template, NOTES.md, `ci.parts` / `printcheck.args` when relevant, then first-renders it.
+- **`/product-shots [name]`** — gives the product page its real-world-looking hero image: writes `shots.conf`, raytraces the studio product shot, embeds it in the README, plus an optional AI-restyled lifestyle scene when the session has an image-generation tool.
 
 ## Repository layout
 
 - `designs/<name>/<name>.scad` — one directory per design; the `.scad` file matching the directory name is the entry point. Notes, dimensions sketches, or variants live alongside it.
 - `designs/<name>/README.md` — the design's **product page**, required and CI-gated (`scripts/readme-gate.sh`): what it is, preview images, print settings, and the parameters worth tuning — everything a stranger needs to decide to print it and succeed. `NOTES.md` stays the engineering log (decisions, derivations, session-resume context); don't duplicate it here. Start from `templates/README.md`.
 - `designs/<name>/animations.conf` — optional GIF-preview manifest (format documented in `scripts/animate.sh`). Each entry renders to a committed `previews/<anim>.gif` showing a key feature in motion — a turntable needs no model changes (camera spin); mechanism animations drive model motion from `$t` via an `anim` parameter (see sushi-battleship's shutter). The gate checks every entry has its GIF, embedded in the README, within the size budget. Compute `$t`-dependent values inside a geometry block, not in top-level assignments — top-level assignments evaluate before a `-D '$t=...'` override lands.
+- `designs/<name>/shots.conf` — optional product-shot manifest (format documented in `scripts/product-shot.sh`). Each entry raytraces the exported STL into a committed `previews/<shot>.png` studio product shot for the README — the hero image a stranger sees first. The gate checks every entry has its PNG, embedded in the README, within the size budget. Shots are geometry-true (rendered from the same STL export the printable part uses), so they can never show a feature the print doesn't have.
 - `lib/` — shared OpenSCAD modules. With `OPENSCADPATH` set, designs reference them as `use <printability.scad>` / `include <BOSL2/std.scad>`. Anything used by two or more designs belongs here. `lib/BOSL2/` is vendored third-party code — never edit it.
 - `build/` — generated STLs and PNGs; gitignored. STLs are regenerated from source, never hand-edited or committed.
 - `scripts/` — `render.sh` and `check.sh`, described above.
@@ -87,7 +95,7 @@ This repo is used in a session-per-design pattern: the user starts a fresh sessi
 1. **Brief.** Get the essentials before modeling: what the part does, the dimensions that matter (what it must fit/hold — ask for measurements), and anything printer-specific. Don't block on details you can default sensibly; state your assumptions.
 2. **Scaffold.** Pick a kebab-case name, copy `templates/design.scad` to `designs/<name>/<name>.scad`, copy `templates/README.md` to `designs/<name>/README.md` (the product page — fill it in as the design takes shape; CI's readme-gate rejects designs without one), and create `designs/<name>/NOTES.md` recording: the goal, given measurements, key decisions, and intended print orientation. NOTES.md is what lets a later session resume the design cold — keep it current as decisions are made.
 3. **Iterate preview-first.** After each meaningful change, run `./scripts/render.sh <name>` and send the user `build/<name>.png` (SendUserFile) so they react to the shape, not the code. Look at the bottom-iso view yourself for overhang/bed-contact problems before sending.
-4. **Finish.** Complete the product page scaffolded in step 2 (commit the preview images it shows under `designs/<name>/previews/`). A design is done when the user approves the preview and `/preflight` comes back green (`check.sh`, `readme-gate.sh <name>`, `render.sh <name>`, and `gate.sh --slice <name>` all clean). Send the final STL to the user as well — it's the deliverable they'll slice.
+4. **Finish.** Complete the product page scaffolded in step 2 (commit the preview images it shows under `designs/<name>/previews/`). Give the page a real product shot: add a `shots.conf`, run `./scripts/product-shot.sh <name>` (see `/product-shots`), and lead the README with the result. A design is done when the user approves the preview and `/preflight` comes back green (`check.sh`, `readme-gate.sh <name>`, `render.sh <name>`, and `gate.sh --slice <name>` all clean). Send the final STL to the user as well — it's the deliverable they'll slice.
 5. **Commit.** Commit the design directory (`.scad`, `README.md`, `NOTES.md`, any variants) with message `Add design: <name>` (or `Update design: <name>`). If a module written for this design is generally reusable, move it into `lib/` and mention it in the commit. Push to the branch designated for the session.
 
 Multi-part designs (lids, hinged pairs, assemblies) stay in one design directory: either one `.scad` with a `part` parameter selecting what to render, or `<name>-<part>.scad` files next to the entry point — note the choice in NOTES.md.

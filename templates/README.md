@@ -11,6 +11,11 @@
 One- or two-sentence pitch: what the thing is, what problem it solves,
 who would want to print it.
 
+<!-- Lead with the product shot (studio raytrace of the printed part):
+     add a shots.conf, run ./scripts/product-shot.sh <name>, and embed
+     the result here. See /product-shots. -->
+![Product shot](previews/product-hero.png)
+
 ![4-view contact sheet](previews/contact-sheet.png)
 
 ## What you get

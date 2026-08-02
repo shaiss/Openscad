@@ -6,6 +6,8 @@ edges carry a 0.6 mm 45° chamfer so the first layer releases cleanly, and the
 top face is engraved with the cube's edge length, so every print labels its
 own intended size.
 
+![Product shot: the printed cube, satin orange PLA on a studio backdrop](previews/product-hero.png)
+
 ![Turntable: chamfered bottom edges and the engraved size marker](previews/turntable.gif)
 
 ![4-view contact sheet](previews/contact-sheet.png)

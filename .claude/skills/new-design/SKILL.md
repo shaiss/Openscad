@@ -54,6 +54,10 @@ Pick a kebab-case name. Then create:
   note in CLAUDE.md) and render with `./scripts/animate.sh <name>` — the
   readme-gate then requires each manifest entry's GIF to be committed and
   embedded in README.md.
+- Product shots are opt-in the same way: add **`shots.conf`** and render
+  with `./scripts/product-shot.sh <name>` (see `/product-shots`) — the
+  readme-gate then requires each entry's PNG committed and embedded. Every
+  finished design should lead its README with one.
 
 ## 3. First render before first commit
 

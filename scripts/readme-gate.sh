@@ -21,6 +21,10 @@
 #      scripts/animate.sh): every manifest entry must have its committed
 #      previews/<name>.gif, the README must embed it, and each GIF must
 #      stay within the size budget — GIFs live in git history forever
+#   7. if the design ships a shots.conf (product shots, rendered by
+#      scripts/product-shot.sh): every manifest entry must have its
+#      committed previews/<name>.png, the README must embed it, and each
+#      shot must stay within the size budget
 #
 # Fenced code blocks and HTML comments are ignored throughout: an example
 # snippet or commented-out line is not page content, so it neither
@@ -195,6 +199,36 @@ check_one() {
         ok=0
       fi
     done <"$conf"
+  fi
+
+  # 6. Product shots: every shots.conf entry needs its committed PNG,
+  #    embedded in the README, within the size budget (keep the budget in
+  #    sync with scripts/product-shot.sh).
+  local shotsconf="${dir}/shots.conf"
+  if [[ -f "$shotsconf" ]]; then
+    local shot png sbytes
+    # same no-trailing-newline guard as the animations loop above
+    while IFS= read -r shot || [[ -n "$shot" ]]; do
+      shot="${shot%%#*}"
+      shot="${shot%%|*}"
+      shot="$(tr -d '[:space:]' <<<"$shot")"
+      [[ -n "$shot" ]] || continue
+      png="previews/${shot}.png"
+      if [[ ! -f "${dir}/${png}" ]]; then
+        err "$name" "shots.conf lists \"${shot}\" but ${png} is missing — run ./scripts/product-shot.sh ${name}"
+        ok=0
+        continue
+      fi
+      sbytes="$(stat -c %s "${dir}/${png}")"
+      if (( sbytes > MAX_SHOT_BYTES )); then
+        err "$name" "${png} is $(( (sbytes + 1023) / 1024 )) KiB, over the $((MAX_SHOT_BYTES / 1024 / 1024)) MiB budget — use a smaller size"
+        ok=0
+      fi
+      if ! grep -qF "](${png})" <<<"$cleaned"; then
+        err "$name" "README.md doesn't embed ${png} — a product shot nobody sees isn't a product page"
+        ok=0
+      fi
+    done <"$shotsconf"
   fi
 
   if [[ "$ok" == 1 ]]; then
