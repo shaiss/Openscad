@@ -13,6 +13,12 @@ import sys
 
 
 def main() -> int:
+    """Render the summary table for the gate log named in argv[1].
+
+    Returns a shell exit status: 2 on usage/IO error, 0 otherwise —
+    including when the log yielded no rows, since the gate's own exit code,
+    not this reporter, decides whether CI fails.
+    """
     if len(sys.argv) != 2:
         print(__doc__.strip(), file=sys.stderr)
         return 2
@@ -30,7 +36,8 @@ def main() -> int:
         m = re.match(r"== .*: printcheck (\S+) ==", line)
         if m:
             cur = {"stl": m.group(1), "score": "?", "verdict": "no report",
-                   "criticals": 0, "warnings": 0, "time": "—", "slice_fail": False}
+                   "criticals": 0, "warnings": 0, "time": "—", "grams": "—",
+                   "slice_fail": False}
             rows.append(cur)
             continue
         m = re.match(r"FAIL\s+(.+: (?:render failed|\S+ not found))$", line)
@@ -53,6 +60,13 @@ def main() -> int:
         if m:
             cur["time"] = m.group(1).strip()
             continue
+        m = re.search(r"total filament used \[g\] = (.+)", line)
+        if m:
+            # gate.sh passes --filament-density 1.24 (PLA); a 0.00 here means
+            # the density flag was lost — surface it rather than a bare zero
+            grams = m.group(1).strip()
+            cur["grams"] = f"{grams} ⚠️" if grams == "0.00" else grams
+            continue
         if re.search(r"FAIL\s+\S+: slicing failed", line):
             cur["slice_fail"] = True
 
@@ -62,8 +76,8 @@ def main() -> int:
         print("_no gate output captured_")
         return 0
     if rows:
-        print("| Part | Score | Verdict | Findings | Est. print time |")
-        print("|---|---|---|---|---|")
+        print("| Part | Score | Verdict | Findings | Est. print time | Filament (g, PLA est.) |")
+        print("|---|---|---|---|---|---|")
     for r in rows:
         findings = []
         if r["criticals"]:
@@ -79,7 +93,7 @@ def main() -> int:
         icon = ("❌" if r["criticals"] or r["slice_fail"] or no_report
                 else ("⚠️" if r["warnings"] else "✅"))
         print(f"| `{r['stl']}` | {icon} {r['score']}/100 | {verdict} "
-              f"| {', '.join(findings) or '—'} | {r['time']} |")
+              f"| {', '.join(findings) or '—'} | {r['time']} | {r['grams']} |")
     if pre_fails:
         print()
         print("**Failed before printcheck ran:**")

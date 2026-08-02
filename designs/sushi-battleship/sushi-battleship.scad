@@ -158,6 +158,16 @@ echo(str("Door slide travel: ", slide, " mm"));
 
 eps = 0.01;
 
+// Lips stop this far below the rail top. A lip top exactly coplanar with
+// the rail top leaves a shared-plane strip that the Manifold backend
+// exports as a non-manifold seam (288 bad edges at z = rail top in CI);
+// CGAL papered over the same seam as zero-area triangles. Purely a mesh-
+// hygiene step on the non-functional filler web above the lip slope —
+// engagement geometry (lip_z .. lip_z + lip_d) is untouched.
+lip_top_drop = 0.4;
+assert(lip_top_drop > 0 && lip_top_drop < rail_ext,
+       "lip_top_drop must be greater than 0 and below rail_ext");
+
 // column letter + row number, e.g. "B3"
 function cell_label(i, j) = str(chr(65 + i), j + 1);
 function cell_cx(i) = (i - (grid_x - 1)/2) * pitch;
@@ -233,22 +243,27 @@ module lid_body() {
                     square([lid_x - 2*rail_w, lid_y - 2*rail_w], center = true);
                 }
 
-            // rail walls along every column boundary
+            // rail walls along every column boundary (buried eps into the
+            // plate: an exact z = plate_t seat is a kiss contact — CGAL
+            // fuses it, Manifold exports it as a separate shell)
             for (i = [0 : grid_x])
-                translate([-play_x/2 + i*pitch - rail_w/2, -lid_y/2 + 1, plate_t])
-                    cube([rail_w, lid_y - 2, rail_h]);
+                translate([-play_x/2 + i*pitch - rail_w/2, -lid_y/2 + 1,
+                           plate_t - eps])
+                    cube([rail_w, lid_y - 2, rail_h + eps]);
 
-            // castellated lips (3 per rail side per cell), 45 deg underside
+            // castellated lips (3 per rail side per cell), 45 deg underside;
+            // root edge buried s*eps into the rail wall so the lip and rail
+            // share volume, not just a face (see rail-wall comment)
             for (i = [0 : grid_x - 1], j = [0 : grid_y - 1],
                  s = [-1, 1], c = [-tab_c, 0, tab_c])
                 translate([cell_cx(i) + s*(pitch/2 - rail_w/2),
                            cell_cy(j) + c + tab_len/2, plate_t])
                     rotate([90, 0, 0])
                         linear_extrude(tab_len)
-                            polygon([[0, lip_z],
+                            polygon([[s*eps, lip_z],
                                      [-s*lip_d, lip_z + lip_d],
-                                     [-s*lip_d, rail_h],
-                                     [0, rail_h]]);
+                                     [-s*lip_d, rail_h - lip_top_drop],
+                                     [s*eps, rail_h - lip_top_drop]]);
 
             // door end-stop ridges on every row boundary (kept narrower than
             // the door body so they never reach the tab/lip zone, and a full
@@ -257,8 +272,8 @@ module lid_body() {
             for (i = [0 : grid_x - 1], j = [0 : grid_y])
                 translate([cell_cx(i) - (door_w/2 - 2.8),
                            -play_y/2 + j*pitch + m_y - ridge_w - ridge_gap,
-                           plate_t])
-                    cube([door_w - 5.6, ridge_w, 1.4]);
+                           plate_t - eps])
+                    cube([door_w - 5.6, ridge_w, 1.4 + eps]);
         }
 
         // windows, with per-edge 45-degree lead-in chamfers (deep ramp on

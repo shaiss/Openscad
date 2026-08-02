@@ -4,18 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "printcheck"
-version = "0.1.0"
+version = "0.2.0"
 description = "STL printability analysis: geometric heuristics for FDM 3D printing, with optional AI summary on top"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
-    "trimesh>=4.0",
+    # trimesh 5.0 (2026-08) verified; <6 guards against the next major.
+    "trimesh>=4.0,<6",
     "numpy>=1.24",
     "scipy>=1.10",
     "shapely>=2.0",
     "rtree>=1.0",
-    "manifold3d>=2.0",
+    # >=3.0 for MeshGL merge()/batch_boolean used by --repair
+    "manifold3d>=3.0",
 ]
 
 [project.optional-dependencies]
