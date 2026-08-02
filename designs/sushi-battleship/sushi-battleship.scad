@@ -165,7 +165,8 @@ eps = 0.01;
 // hygiene step on the non-functional filler web above the lip slope —
 // engagement geometry (lip_z .. lip_z + lip_d) is untouched.
 lip_top_drop = 0.4;
-assert(rail_ext > lip_top_drop, "lip_top_drop must stay below rail_ext");
+assert(lip_top_drop > 0 && lip_top_drop < rail_ext,
+       "lip_top_drop must be greater than 0 and below rail_ext");
 
 // column letter + row number, e.g. "B3"
 function cell_label(i, j) = str(chr(65 + i), j + 1);
