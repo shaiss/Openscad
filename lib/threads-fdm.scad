@@ -8,7 +8,7 @@
 // coarse multi-start lead so the lid spins closed in a fraction of a turn, and
 // a single tunable radial clearance instead of a fit class.
 //
-// KNOWN DEVIATION (issue #34): the flanks are NOT 45 degrees. The profile runs
+// KNOWN DEVIATION (issue #37): the flanks are NOT 45 degrees. The profile runs
 // from r_maj to r_min - sink, so its slope is depth/(depth + sink) — 36.87 deg
 // from horizontal at the capsule's numbers, measured on the export as
 // |nz| = 0.795..0.799 == cos(36.87). Two things follow, both inherited from
@@ -42,7 +42,7 @@
 // the radial gap still measures correctly — the failure that motivated the
 // derivation.
 //
-// Caveat, issue #34: the built profile's m is depth/(depth + sink), not 1, so
+// Caveat, issue #37: the built profile's m is depth/(depth + sink), not 1, so
 // the delivered flank gap is short of `tol` — 0.2794 against 0.300 at the
 // capsule's numbers (6.9% tight), and worse as depth shrinks (13% at
 // depth 0.6, 15% at depth 0.5). Crest and root clearance are unaffected: those
@@ -63,8 +63,8 @@ _sink = 0.4;
 
 // One trapezoidal helix as a single polyhedron, swept `starts` times.
 //   d_major  outer (crest) diameter
-//   depth    radial thread depth; flanks are 45 degrees, so this also sets
-//            the axial flank run
+//   depth    radial thread depth; also sets the axial flank run, so the flank
+//            slope comes out depth/(depth + _sink) — see issue #37
 //   pitch    axial rise per start; lead = pitch * starts
 //   starts   number of thread starts (>= 1)
 //   length   threaded length; the helix runs one lead past each end so the
