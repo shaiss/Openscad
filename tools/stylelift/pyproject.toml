@@ -19,7 +19,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=7"]
+# mapbox-earcut is what trimesh's extrude_polygon triangulates with, and the
+# probe meshes in examples/ are all extruded polygons. Without it trimesh
+# raises "No available triangulation engine!" — which passes locally only
+# because printcheck happens to pull in manifold3d.
+test = ["pytest>=7", "mapbox-earcut>=1.0"]
 
 [project.scripts]
 stylelift = "stylelift.cli:main"
