@@ -34,6 +34,8 @@ jobs:
     outputs:
       scad: ${{ steps.filter.outputs.scad }}
       printcheck_tests: ${{ steps.filter.outputs.printcheck_tests }}
+      stylelift_tests: ${{ steps.filter.outputs.stylelift_tests }}
+      styles: ${{ steps.filter.outputs.styles }}
       gate: ${{ steps.filter.outputs.gate }}
       gate_designs: ${{ steps.filter.outputs.gate_designs }}
     steps:
@@ -47,10 +49,12 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          scad=false; ptests=false; gate=false; designs=""
+          scad=false; ptests=false; stests=false; styles=false
+          gate=false; designs=""
           if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
             # Default-branch push: run everything, gate every design.
-            scad=true; ptests=true; gate=true; designs=ALL
+            scad=true; ptests=true; stests=true; styles=true
+            gate=true; designs=ALL
           else
             # Capture via command substitution so a git failure fails the
             # step: mapfile < <(git diff ...) would swallow the error and
@@ -69,6 +73,13 @@ jobs:
                   infra=true ;;
               esac
               case "$f" in
+                # A style, the tool behind it, or anything a swatch includes
+                # can change what the style gate concludes.
+                styles/*|tools/stylelift/*|lib/*|scripts/style-*.sh|\
+                designs/*/style.conf|.github/workflows/ci.yml)
+                  styles=true ;;
+              esac
+              case "$f" in
                 designs/*/*)
                   n=${f#designs/}; n=${n%%/*}
                   # skip names whose entry point no longer exists (deleted
@@ -79,9 +90,19 @@ jobs:
                 tools/printcheck/*|.github/workflows/ci.yml) ptests=true ;;
               esac
               case "$f" in
-                designs/*|lib/*|templates/*|scripts/*|.github/workflows/ci.yml)
+                tools/stylelift/*|.github/workflows/ci.yml) stests=true ;;
+              esac
+              case "$f" in
+                designs/*|lib/*|templates/*|scripts/*|styles/*|\
+                .github/workflows/ci.yml)
                   scad=true ;;
               esac
+            done
+            # A changed design that claims a style has to be re-checked
+            # against it: the claim is about its geometry, and its geometry
+            # is what just moved.
+            for n in "${!names[@]}"; do
+              [ -f "designs/$n/style.conf" ] && styles=true
             done
             if $infra; then
               gate=true; designs=ALL
@@ -92,6 +113,8 @@ jobs:
           {
             echo "scad=$scad"
             echo "printcheck_tests=$ptests"
+            echo "stylelift_tests=$stests"
+            echo "styles=$styles"
             echo "gate=$gate"
             echo "gate_designs=$designs"
           } >> "$GITHUB_OUTPUT"
@@ -159,6 +182,67 @@ jobs:
         run: pip install -e 'tools/printcheck[test]'
       - name: Run tests
         run: python -m pytest tools/printcheck/tests -q
+
+  stylelift-tests:
+    name: stylelift unit tests
+    needs: changes
+    if: needs.changes.outputs.stylelift_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install stylelift
+        run: pip install -e 'tools/stylelift[test]'
+      - name: Run tests
+        run: python -m pytest tools/stylelift/tests -q
+
+  style-gate:
+    # Every style pack must stay internally consistent (style.scad and
+    # STYLE.md generated from style.json) and its swatch must still satisfy
+    # its own rules — plus any design that declares a style in style.conf.
+    name: Style packs and conformance
+    needs: changes
+    if: needs.changes.outputs.styles == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install xvfb (cached)
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          # No ImageMagick: style-check.sh refreshes the swatch preview only
+          # when montage is present, and this job is here to judge conformance.
+          packages: xvfb
+          # cache key; bump to pull fresh package versions (see scad-check)
+          version: "2026-08"
+      - name: Install OpenSCAD nightly (OBS repo)
+        # Same engine as render-gate, so a swatch measures the same here as
+        # it does in the gate that judges the printable parts.
+        run: |
+          echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
+            | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
+          curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
+          sudo apt-get update
+          sudo apt-get install -y openscad-nightly
+          openscad-nightly --version
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install stylelift
+        run: pip install -e tools/stylelift
+      - name: Check style packs and declared designs
+        env:
+          OPENSCAD_BIN: openscad-nightly
+          OPENSCAD_ARGS: --backend=manifold
+        run: ./scripts/style-check.sh
 
   design-docs:
     # Deliberately not gated behind `changes`: it needs no installs, runs in
@@ -469,7 +553,9 @@ jobs:
             [ -f "$src" ] || return 1
             local dargs=()
             [ -n "$part" ] && dargs=(-D "part=\"${part}\"")
-            OPENSCADPATH="${root}/lib" xvfb-run -a "$OPENSCAD_BIN" \
+            # same search path the scripts export: lib/ for shared modules,
+            # the tree root for `include <styles/<name>/style.scad>`
+            OPENSCADPATH="${root}/lib:${root}" xvfb-run -a "$OPENSCAD_BIN" \
               "${osc_args[@]}" -o "${outdir}/${name}${part:+-$part}.stl" \
               "${dargs[@]}" "$src"
           }

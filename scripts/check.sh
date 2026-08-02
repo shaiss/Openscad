@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Fast validation of every .scad file in the repo (no STL output).
-#   1. Syntax/eval check of all designs and lib files (echo export — seconds)
+#   1. Syntax/eval check of all designs, lib, template and style files
+#      (echo export — seconds)
 #   2. Full CGAL render of the lib demo to catch geometry regressions
 #   3. Docs-drift check (scripts/docs-check.sh): docs must match the tree
 # Run before committing. For full STL+PNG output use scripts/render.sh.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-export OPENSCADPATH="$PWD/lib"
+# lib/ resolves `use <printability.scad>`; the repo root resolves
+# `include <styles/<name>/style.scad>` (see scripts/style-lift.sh).
+export OPENSCADPATH="$PWD/lib:$PWD"
 
 # OPENSCAD_BIN selects the binary (e.g. openscad-nightly); OPENSCAD_ARGS
 # passes extra flags (e.g. --backend=manifold — nightly-only, 2021.01 has
@@ -51,7 +54,7 @@ check() {
 }
 
 shopt -s nullglob
-for f in designs/*/*.scad lib/*.scad templates/*.scad; do
+for f in designs/*/*.scad lib/*.scad templates/*.scad styles/*/*.scad; do
   check "$f"
 done
 
@@ -62,8 +65,12 @@ done
 # OPENSCADPATH gives you a threadless neck that passes every downstream gate.
 # So resolve the links statically instead of hoping a render complains.
 echo "-- library-link check"
-lib_search=("$PWD/lib" /usr/share/openscad/libraries)
-for f in designs/*/*.scad lib/*.scad templates/*.scad; do
+# Search path mirrors what the scripts export: lib/ for shared modules, the
+# repo root for `include <styles/<name>/style.scad>`. A style's swatch is a
+# .scad like any other and gets link-checked too — a swatch that silently
+# loses its tokens would render an unstyled shape and still pass the gate.
+lib_search=("$PWD/lib" "$PWD" /usr/share/openscad/libraries)
+for f in designs/*/*.scad lib/*.scad templates/*.scad styles/*/*.scad; do
   while read -r ref; do
     [[ -f "$(dirname "$f")/$ref" ]] && continue     # sibling file
     found=0

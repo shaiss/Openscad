@@ -10,7 +10,9 @@
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 2
-export OPENSCADPATH="$PWD/lib"   # sca2d resolves use/include through this
+# lib/ resolves `use <printability.scad>`; the repo root resolves
+# `include <styles/<name>/style.scad>` (see scripts/style-lift.sh).
+export OPENSCADPATH="$PWD/lib:$PWD"   # sca2d resolves use/include through this
 
 REPORT_ONLY=1
 

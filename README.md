@@ -41,6 +41,23 @@ the top of each file. To tune a fit without editing files:
 renders one labeled strip of test coupons across the range instead of five
 sequential guess-prints.
 
+## Want it to look a certain way?
+
+Point the toolchain at a model whose look you like and it writes down *why*
+it looks that way — the radius reused on its edges, chamfer or fillet, how
+smooth its curves are, what size holes it drills — as a style you can build
+new designs to and check them against:
+
+```bash
+./scripts/style-lift.sh <name> <reference.stl> --source <url> --license <terms>
+./scripts/style-check.sh <name>        # does a part actually belong to the family?
+```
+
+Styles live in [`styles/`](styles/); pick one from the catalog there and a
+design can `include <styles/<name>/style.scad>` to build from its numbers
+directly. See [stylelift](tools/stylelift/README.md) for how the measuring
+works, and the `/style-spec` skill for lifting a new one.
+
 ## Dependencies
 
 The scripts expect: `openscad`, `xvfb-run` (headless rendering — the
@@ -48,8 +65,9 @@ scripts wrap every OpenSCAD call in `xvfb-run -a` themselves; you only need
 the prefix for raw `openscad` commands you run by hand), ImageMagick
 (`montage`, for preview sheets), `prusa-slicer` (for `gate.sh --slice`),
 `povray` plus Python `trimesh` (for `product-shot.sh`; trimesh comes with
-printcheck), and [printcheck](tools/printcheck/)
-(`pip install -e tools/printcheck`).
+printcheck), [printcheck](tools/printcheck/)
+(`pip install -e tools/printcheck`), and [stylelift](tools/stylelift/)
+(`pip install -e tools/stylelift`, for the style scripts).
 
 ## How designs get made
 
@@ -82,9 +100,14 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `product-shot.sh` — real-world-looking studio product shots from
     `shots.conf`, raytraced from the design's own STL export
   - `gallery.sh` — regenerates the design gallery above
+  - `style-lift.sh` — lift a design style out of a reference mesh into
+    `styles/<name>/`
+  - `style-check.sh` — gate the style packs and any design that declares one
   - `lint-scad.sh` — report-only [sca2d](https://gitlab.com/bath_open_instrumentation_group/sca2d) static analysis
   - `preview-budget.sh` — sourced helper defining the GIF and product-shot
     size budgets
+- `styles/` — design languages lifted from reference models: the spec, the
+  tokens a design builds from, and the rules CI checks parts against
 - `templates/` — starting points for a new design and its product page
 - `docs/` — repo-level research and reference notes
 - `tools/printcheck/` — STL printability analyzer; scores rendered models
@@ -94,5 +117,8 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   `product-shot.sh`, which turns a design's own STL export into the
   photographed-looking hero image on its product page — see its
   [README](tools/photoshot/README.md)
+- `tools/stylelift/` — measures how a model is *shaped* (edge treatment,
+  rounding vocabulary, proportion) and turns it into a checkable style
+  spec — see its [README](tools/stylelift/README.md)
 - `audits/` — preserved before/after render comparisons from design
   reviews (review history — don't delete)
