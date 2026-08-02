@@ -48,9 +48,9 @@ All commands run from the repo root.
 ./scripts/animate.sh [<name>]
 
 # Render real-world-looking product shots (designs/<name>/shots.conf, if
-# present) into designs/<name>/previews/: OpenSCAD exports the STL, POV-Ray
-# raytraces it in a studio scene (soft lighting, glossy floor, FDM layer
-# lines). Commit the PNGs like the other previews; see /product-shots.
+# present) into designs/<name>/previews/: OpenSCAD exports the STL, Blender's
+# Cycles path-traces it in a studio scene (soft lighting, glossy floor, FDM
+# layer lines). Commit the PNGs like the other previews; see /product-shots.
 ./scripts/product-shot.sh [<name>]
 
 # Re-render a design's frozen preview shots from previews/cameras.conf
