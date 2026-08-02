@@ -17,6 +17,10 @@
 #   5. contain non-empty "## Print settings" and "## Parameters" sections
 #      (### subheadings belong to their parent ## section; a section needs
 #      at least one line of real content — prose, list, or table)
+#   6. if the design ships an animations.conf (GIF previews, rendered by
+#      scripts/animate.sh): every manifest entry must have its committed
+#      previews/<name>.gif, the README must embed it, and each GIF must
+#      stay within the size budget — GIFs live in git history forever
 #
 # Fenced code blocks and HTML comments are ignored throughout: an example
 # snippet or commented-out line is not page content, so it neither
@@ -157,6 +161,35 @@ check_one() {
   if [[ "$has_local" == 0 ]]; then
     err "$name" "README.md needs at least one committed preview image (![...](previews/...)); remote URLs don't count"
     ok=0
+  fi
+
+  # 5. Animated previews: every animations.conf entry needs its committed
+  #    GIF, embedded in the README, within the size budget (keep the budget
+  #    in sync with scripts/animate.sh).
+  local conf="${dir}/animations.conf" max_gif_bytes=$((6 * 1024 * 1024))
+  if [[ -f "$conf" ]]; then
+    local anim gif bytes
+    while IFS= read -r anim; do
+      anim="${anim%%#*}"
+      anim="${anim%%|*}"
+      anim="$(tr -d '[:space:]' <<<"$anim")"
+      [[ -n "$anim" ]] || continue
+      gif="previews/${anim}.gif"
+      if [[ ! -f "${dir}/${gif}" ]]; then
+        err "$name" "animations.conf lists \"${anim}\" but ${gif} is missing — run ./scripts/animate.sh ${name}"
+        ok=0
+        continue
+      fi
+      bytes="$(stat -c %s "${dir}/${gif}")"
+      if (( bytes > max_gif_bytes )); then
+        err "$name" "${gif} is $(( (bytes + 1023) / 1024 )) KiB, over the $((max_gif_bytes / 1024 / 1024)) MiB budget — fewer frames or a smaller size"
+        ok=0
+      fi
+      if ! grep -qF "](${gif})" <<<"$cleaned"; then
+        err "$name" "README.md doesn't embed ${gif} — an animation nobody sees isn't a product-page feature"
+        ok=0
+      fi
+    done <"$conf"
   fi
 
   if [[ "$ok" == 1 ]]; then
