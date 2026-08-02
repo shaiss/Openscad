@@ -5,6 +5,9 @@ build/
 *.scad.bak
 *-backup.scad
 
-# Python bytecode (tools/photoshot, tools/printcheck)
+# Python bytecode (tools/photoshot, tools/printcheck, tools/stylelift)
 __pycache__/
 *.pyc
+
+# setuptools metadata from `pip install -e tools/<tool>`
+*.egg-info/

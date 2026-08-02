@@ -34,6 +34,20 @@ Pick a kebab-case name. Then create:
   height the design assumes). Keep it current; a decision that isn't in
   NOTES.md didn't happen.
 
+**Following a style?** If the brief settled on one (see `styles/`,
+`./scripts/style-lift.sh --list`), record it in `designs/<name>/style.conf`
+now — one line, the style's name — and build the geometry from its tokens:
+
+```scad
+include <styles/<style>/style.scad>
+$fn = style_fn;
+```
+
+`./scripts/style-check.sh <name>` then holds every printable part to that
+style on each push. Adding it later means redoing geometry, so decide at
+scaffold time; `/style-spec` lifts a new style if the user has a reference
+they like rather than one of the packs already here.
+
 ## 2. CI configuration — decide now, not in review
 
 - Default render is an assembled preview, or the design has multiple
@@ -68,14 +82,14 @@ Pick a kebab-case name. Then create:
   until you add **`shots.conf`** and render with
   `./scripts/product-shot.sh <name>` (see `/product-shots`). That is
   deliberate — every finished design leads its README with one. Rendering
-  needs povray locally; CI only checks the committed PNG.
+  needs the `bpy` module locally; CI only checks the committed PNG.
 
 ## 3. First render before first commit
 
 ```bash
 ./scripts/render.sh <name>       # STL + contact sheet must succeed
 ./scripts/gate.sh --slice <name> # printcheck + PrusaSlicer test-slice must exit 0
-./scripts/product-shot.sh <name> # the hero shot the README embeds (needs povray)
+./scripts/product-shot.sh <name> # the hero shot the README embeds (needs bpy)
 ./scripts/readme-gate.sh <name>  # product page must pass
 ```
 

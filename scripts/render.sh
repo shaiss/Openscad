@@ -41,7 +41,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 mkdir -p build
-export OPENSCADPATH="$PWD/lib"
+# lib/ resolves `use <printability.scad>`; the repo root resolves
+# `include <styles/<name>/style.scad>` (see scripts/style-lift.sh).
+export OPENSCADPATH="$PWD/lib:$PWD"
 
 # OPENSCAD_BIN selects the binary (e.g. openscad-nightly); OPENSCAD_ARGS
 # passes extra flags (e.g. --backend=manifold — nightly-only, 2021.01 has

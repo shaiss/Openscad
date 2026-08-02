@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stylelift"
+version = "0.1.0"
+description = "Translate a reference mesh into a reusable, checkable design-style spec"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    # Same pins as tools/printcheck: one mesh stack for the whole repo.
+    "trimesh>=4.0,<6",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "shapely>=2.0",
+    "rtree>=1.0",
+]
+
+[project.optional-dependencies]
+# mapbox-earcut is what trimesh's extrude_polygon triangulates with, and the
+# probe meshes in examples/ are all extruded polygons. Without it trimesh
+# raises "No available triangulation engine!" — which passes locally only
+# because printcheck happens to pull in manifold3d.
+test = ["pytest>=7", "mapbox-earcut>=1.0"]
+
+[project.scripts]
+stylelift = "stylelift.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -56,6 +56,19 @@ for dir in designs/*/; do
   [[ -f "designs/${n}/NOTES.md" ]] || err "designs/${n}/ has no NOTES.md"
 done
 
+# 3b. Every style ships a complete pack, and appears in the styles catalog.
+#     (The pack's internal consistency — style.scad and STYLE.md matching
+#     style.json — is scripts/style-check.sh's job; this is the file census.)
+for dir in styles/*/; do
+  n="$(basename "$dir")"
+  [[ -f "styles/${n}/style.json" ]] || continue
+  for f in STYLE.md style.scad swatch.scad previews/swatch.png; do
+    [[ -f "styles/${n}/${f}" ]] || err "styles/${n}/ has no ${f}"
+  done
+  grep -q "${n}/STYLE.md" styles/README.md \
+    || err "style ${n} is not listed in styles/README.md"
+done
+
 # 4. The README gallery has one fresh row per design, no orphans.
 ./scripts/gallery.sh --check >/dev/null || err "README gallery is stale — run ./scripts/gallery.sh"
 

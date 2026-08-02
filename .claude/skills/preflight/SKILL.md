@@ -20,6 +20,10 @@ Classify exactly like CI's `changes` job:
 
 - **Infra changed** (`lib/`, `scripts/`, `tools/printcheck/`, the CI
   workflow) → everything below runs, gate **all** designs.
+- **`styles/`, `tools/stylelift/`, `lib/`, `scripts/style-*.sh` or a
+  `designs/*/style.conf` changed** → run the style gate. So does a change to
+  a design that *declares* a style: the claim is about geometry that just
+  moved.
 - **`designs/<name>/...` changed** (and no infra) → gate just those designs
   (skip names whose `designs/<name>/<name>.scad` no longer exists).
 - **`templates/` changed** → run `check.sh` (templates are echo-checked),
@@ -41,10 +45,12 @@ actionlint .github/workflows/*.yml   # if missing: install pinned, same as ci.ym
 ./scripts/readme-gate.sh                             # product pages + committed GIFs + configured product shots (every PR)
 ./scripts/check.sh                                   # syntax/eval of every .scad
 ./scripts/gate.sh --slice <changed-names...>         # or no args when infra changed
+./scripts/style-check.sh                             # if styles/, stylelift or a style.conf changed
 python -m pytest tools/printcheck/tests -q           # if tools/printcheck or the workflow changed
+python -m pytest tools/stylelift/tests -q            # if tools/stylelift or the workflow changed
 ```
 
-Missing tools (openscad, prusa-slicer, printcheck) mean the SessionStart
+Missing tools (openscad, prusa-slicer, printcheck, stylelift) mean the SessionStart
 hook hasn't run — run `.claude/hooks/session-start.sh` first, don't skip
 the gate.
 

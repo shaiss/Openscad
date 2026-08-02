@@ -30,6 +30,7 @@ if command -v openscad >/dev/null 2>&1 \
   && has_bpy \
   && command -v prusa-slicer >/dev/null 2>&1 \
   && command -v printcheck >/dev/null 2>&1 \
+  && command -v stylelift >/dev/null 2>&1 \
   && command -v pytest >/dev/null 2>&1; then
   echo "OpenSCAD toolchain already installed"
   exit 0
@@ -55,10 +56,14 @@ if ! has_bpy; then
   pip install -q 'bpy~=4.5.0'
 fi
 
-# [test] extra brings pytest, so /preflight can run the printcheck unit
-# tests locally exactly as CI does
+# [test] extra brings pytest, so /preflight can run the unit tests locally
+# exactly as CI does
 if ! command -v printcheck >/dev/null 2>&1 || ! command -v pytest >/dev/null 2>&1; then
   pip install -q -e "$REPO_DIR/tools/printcheck[test]"
 fi
+# stylelift backs scripts/style-lift.sh and the style gate; same mesh stack
+if ! command -v stylelift >/dev/null 2>&1; then
+  pip install -q -e "$REPO_DIR/tools/stylelift[test]"
+fi
 
-echo "Installed: $(openscad --version 2>&1); prusa-slicer + printcheck ready"
+echo "Installed: $(openscad --version 2>&1); prusa-slicer + printcheck + stylelift ready"
