@@ -4,8 +4,18 @@
 Turns a geometry-true STL (exported by OpenSCAD) into a product-page hero
 image: seamless studio backdrop, soft key/fill/rim lighting, glossy floor
 with contact shadows and reflections, and a plastic material with visible
-FDM layer lines. Deterministic — same STL + args = same pixels — so shots
-are reproducible in CI and comparable across review rounds.
+FDM layer lines.
+
+Renders are reproducible: the same STL and args give byte-identical pixels
+on the same machine, so shots re-render on demand and diff cleanly across
+review rounds. Two POV-Ray features would break that and are handled here
+rather than left to chance:
+
+  * area-light `jitter` randomizes shadow-ray offsets per run, so it is
+    never used; shadow quality comes from a denser sample grid instead.
+  * radiosity's sample cache is gathered in thread-completion order, so a
+    radiosity render is single-threaded by default. `--threads N` trades
+    that reproducibility for speed; without radiosity, threads are safe.
 
 Usage:
     photoshot.py part.stl -o shot.png --color '#e8734a'
@@ -20,6 +30,7 @@ Requires: trimesh (STL loading), povray (rendering).
 
 import argparse
 import math
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -33,6 +44,58 @@ FINISHES = {
     "gloss": (0.62, 0.55, 0.004, 0.03, 0.12),
     "matte": (0.85, 0.08, 0.060, 0.0, 0.0),
 }
+
+
+# PNG chunks POV-Ray stamps with the wall-clock time of the render. They carry
+# no image data, but they change every run, so a re-render of unchanged
+# geometry would still show up as a git diff. Dropped for byte-stable output.
+_VOLATILE_PNG_CHUNKS = {b"tIME", b"tEXt", b"zTXt", b"iTXt"}
+
+
+def strip_png_metadata(path):
+    """Rewrite a PNG without its timestamp/text chunks, leaving pixels alone.
+
+    Chunks are self-contained (each carries its own CRC), so dropping whole
+    chunks needs no re-encoding and cannot alter the decoded image.
+    """
+    data = path.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        return
+    out = bytearray(data[:8])
+    i = 8
+    while i + 8 <= len(data):
+        length = int.from_bytes(data[i : i + 4], "big")
+        ctype = data[i + 4 : i + 8]
+        end = i + 12 + length
+        if ctype not in _VOLATILE_PNG_CHUNKS:
+            out += data[i:end]
+        i = end
+        if ctype == b"IEND":
+            break
+    path.write_bytes(bytes(out))
+
+
+def parse_size(s):
+    parts = s.lower().split("x")
+    if len(parts) != 2:
+        raise argparse.ArgumentTypeError(f"bad size {s!r} (want WxH, e.g. 1280x960)")
+    try:
+        w, h = (int(p) for p in parts)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"bad size {s!r} (want WxH, e.g. 1280x960)")
+    if w < 1 or h < 1:
+        raise argparse.ArgumentTypeError(f"bad size {s!r} (both dimensions must be > 0)")
+    return w, h
+
+
+def positive_float(s):
+    try:
+        v = float(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{s!r} is not a number")
+    if v <= 0:
+        raise argparse.ArgumentTypeError(f"must be greater than 0, got {v}")
+    return v
 
 
 def parse_color(s):
@@ -132,11 +195,13 @@ sky_sphere {{
   }}
 }}
 
-// key: large area light, high and camera-left
+// key: large area light, high and camera-left. No `jitter` — it randomizes
+// per run and would break reproducibility; a 5x5 sample grid (and no
+// `adaptive`, which prunes samples by contrast) keeps the penumbra smooth.
 light_source {{
   <{-key:.1f},{-key * 0.9:.1f},{key * 1.5:.1f}> rgb <1.02,1.01,0.99> * 0.95
-  area_light x*{diag * 0.9:.1f}, y*{diag * 0.9:.1f}, 3, 3
-  adaptive 1 jitter circular orient
+  area_light x*{diag * 0.9:.1f}, y*{diag * 0.9:.1f}, 5, 5
+  circular orient
 }}
 // fill: soft, camera-right, no shadows
 light_source {{ <{key:.1f},{-key * 0.6:.1f},{key * 0.8:.1f}> rgb 0.30 shadowless }}
@@ -169,13 +234,8 @@ def main():
     ap.add_argument("--finish", choices=FINISHES, default="satin")
     ap.add_argument("--rotz", type=float, default=35, help="orbit angle, degrees")
     ap.add_argument("--elev", type=float, default=18, help="camera elevation, degrees")
-    ap.add_argument("--zoom", type=float, default=1.0)
-    ap.add_argument(
-        "--size",
-        default="1280x960",
-        type=lambda s: tuple(int(x) for x in s.lower().split("x")),
-        help="WxH pixels",
-    )
+    ap.add_argument("--zoom", type=positive_float, default=1.0)
+    ap.add_argument("--size", default="1280x960", type=parse_size, help="WxH pixels")
     ap.add_argument(
         "--layers",
         type=float,
@@ -183,8 +243,26 @@ def main():
         help="FDM layer-line height in mm for the surface texture (0 = smooth)",
     )
     ap.add_argument("--no-radiosity", action="store_true", help="faster, flatter light")
+    ap.add_argument(
+        "--threads",
+        type=int,
+        default=0,
+        help="POV-Ray render threads (default: 1 with radiosity, 4 without — "
+        "radiosity's sample cache is thread-order dependent, so raising this "
+        "with radiosity on trades reproducible pixels for speed)",
+    )
     ap.add_argument("--keep-pov", action="store_true", help="keep the .pov next to the PNG")
     args = ap.parse_args()
+
+    # Default threading is whatever is reproducible for the chosen lighting.
+    threads = args.threads if args.threads > 0 else (4 if args.no_radiosity else 1)
+
+    povray = shutil.which("povray")
+    if povray is None:
+        sys.exit(
+            "error: povray not found on PATH — run "
+            "`.claude/hooks/session-start.sh --force` to install the toolchain"
+        )
 
     colors = args.color or []
     default = parse_color("#e8734a")
@@ -207,7 +285,7 @@ def main():
     try:
         subprocess.run(
             [
-                "povray",
+                povray,
                 f"+I{povfile}",
                 f"+O{out}",
                 f"+W{w}",
@@ -217,7 +295,7 @@ def main():
                 "+R3",
                 "+Q9",
                 "-D",
-                "+WT4",
+                f"+WT{threads}",
             ],
             check=True,
             capture_output=True,
@@ -230,6 +308,7 @@ def main():
             povfile.replace(out.with_suffix(".pov"))
         else:
             povfile.unlink(missing_ok=True)
+    strip_png_metadata(out)
     print(f"wrote {out} ({w}x{h})")
 
 

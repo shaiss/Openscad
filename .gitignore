@@ -4,3 +4,7 @@ build/
 # OpenSCAD backup files
 *.scad.bak
 *-backup.scad
+
+# Python bytecode (tools/photoshot, tools/printcheck)
+__pycache__/
+*.pyc

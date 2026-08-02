@@ -22,7 +22,10 @@
 # shot can never show geometry the printable part doesn't have), then
 # tools/photoshot/photoshot.py raytraces it in a studio scene (POV-Ray):
 # seamless backdrop, soft key/fill/rim light, glossy floor, FDM layer-line
-# texture. Deterministic — same source + manifest = same pixels.
+# texture. Re-rendering an unchanged design reproduces the committed PNG
+# pixel for pixel (photoshot.py documents what that costs: no light jitter,
+# and radiosity renders single-threaded), so a shot that changes in a diff
+# means the geometry changed.
 #
 # Like animations.conf entries, shots are FIXED across review rounds so
 # before/after images align; add a new entry rather than moving one.
@@ -63,6 +66,13 @@ shoot_one() {
   fi
   mkdir -p "$outdir"
 
+  # One scratch dir for the whole design, removed on every exit path — a
+  # failed export must not strand a multi-hundred-MB STL in /tmp.
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  # shellcheck disable=SC2064  # expand tmpdir now: it is gone at trap time
+  trap "rm -rf '$tmpdir'" RETURN
+
   local line
   # `|| [[ -n ... ]]`: don't silently drop a final manifest line that lacks
   # a trailing newline (read returns nonzero but still fills the variable).
@@ -90,17 +100,26 @@ shoot_one() {
     fi
 
     echo "== ${design}: ${name}.png =="
-    local tmpdir
-    tmpdir="$(mktemp -d)"
     local dargs=() d
     for d in $defines; do dargs+=(-D "$d"); done
 
-    xvfb-run -a openscad -o "${tmpdir}/part.stl" "${dargs[@]}" "$src" 2>/dev/null
+    # OpenSCAD's CGAL statistics are noise here, so the log is kept quiet on
+    # success — but diagnostics are never swallowed: warnings are echoed
+    # (a shot is only "geometry-true" if the export was clean) and the whole
+    # log is dumped when the export fails.
+    local log="${tmpdir}/openscad.log"
+    if ! xvfb-run -a openscad -o "${tmpdir}/part.stl" "${dargs[@]}" "$src" \
+         >"$log" 2>&1; then
+      echo "error: openscad failed exporting ${design} (${name}):" >&2
+      cat "$log" >&2
+      return 1
+    fi
+    grep -E '^(WARNING|ERROR):' "$log" >&2 || true
+
     local png="${outdir}/${name}.png"
     python3 tools/photoshot/photoshot.py "${tmpdir}/part.stl" -o "$png" \
       --color "$color" --finish "$finish" \
       --rotz "$rotz" --elev "$elev" --zoom "$zoom" --size "$size"
-    rm -rf "$tmpdir"
 
     local bytes
     bytes="$(stat -c %s "$png")"

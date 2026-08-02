@@ -16,9 +16,11 @@ Two tiers, in order:
    `./scripts/product-shot.sh <name>` exports the geometry-true STL with
    OpenSCAD and raytraces it with POV-Ray: seamless backdrop, soft
    key/fill/rim lighting, glossy floor with contact shadows, plastic
-   material with FDM layer lines. Deterministic — same source + manifest =
-   same pixels — so shots re-render in any session and diff cleanly across
-   review rounds.
+   material with FDM layer lines. Re-rendering an unchanged design
+   reproduces the committed PNG pixel for pixel, so shots diff cleanly
+   across review rounds — if a shot changes, the geometry changed. That
+   costs render time (radiosity is single-threaded to stay reproducible;
+   expect tens of seconds for a small part, minutes for a large one).
 2. **AI-restyled lifestyle shot (optional — only when the session has an
    image-generation tool).** Restyle the committed raytrace into a
    real-world scene. Never a substitute for tier 1, and never the only
@@ -29,7 +31,7 @@ Two tiers, in order:
 1. **Write the manifest** `designs/<name>/shots.conf` (format documented in
    `scripts/product-shot.sh`), one line per shot:
 
-   ```
+   ```text
    product-hero | e8734a | satin | 35,18,0.85 | 1280x960 | part="assembled"
    ```
 
@@ -98,3 +100,10 @@ shot, don't silently re-frame it. Regenerate (same manifest line) whenever
 the model changes; the gate can't detect a stale PNG, so re-running
 `./scripts/product-shot.sh <name>` after geometry changes is part of the
 design's definition of done, alongside `render.sh` and `gate.sh --slice`.
+
+Because renders are reproducible, staleness is *checkable* even though the
+gate doesn't check it: re-run the shot on an unchanged design and the PNG
+should come back byte-identical (`git status` stays clean). A shot that
+moves without a geometry change means something else drifted — the
+manifest, the scene code, or the POV-Ray version — and is worth
+understanding before committing.
