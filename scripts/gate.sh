@@ -17,6 +17,9 @@
 #   designs/<name>/printcheck.args extra printcheck flags, e.g.
 #                                  --build-volume 256x256x256 for designs
 #                                  that target a larger printer
+#   designs/<name>/<name>-coupon.scad  "print this first" coupon wrapper;
+#                                  rendered as build/<name>-coupon.stl and
+#                                  gated like any other part
 set -euo pipefail
 
 SLICE=0
@@ -103,6 +106,23 @@ gate_one() {
       return 0
     fi
     stls+=("build/${name}.stl")
+  fi
+
+  # "Print this first" coupon wrapper (repo convention, see CLAUDE.md): a
+  # ≤10-line include-and-override wrapper on the production modules. It is
+  # the first STL a user prints, so it gets the same printcheck + test-slice
+  # treatment as the parts it stands in for.
+  local coupon="designs/${name}/${name}-coupon.scad"
+  if [[ -f "$coupon" ]]; then
+    local coupon_stl="build/${name}-coupon.stl"
+    echo "== ${name} (coupon): render =="
+    if ! xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
+        -o "$coupon_stl" "$coupon"; then
+      echo "FAIL  ${name} (coupon): render failed"
+      fail=1
+    else
+      stls+=("$coupon_stl")
+    fi
   fi
 
   local args=()

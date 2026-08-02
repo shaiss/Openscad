@@ -83,6 +83,7 @@ Workflow skills (`.claude/skills/`):
   - Orient the model so it prints flat-side-down without supports where possible; chamfer (45°) rather than fillet the bottom edges of overhangs.
   - Holes for fasteners get 0.2–0.4 mm diameter clearance; press-fit and sliding fits get explicit tolerance parameters so the user can tune for their printer.
   - Avoid features thinner than 0.8 mm (2 extrusion widths).
+- Designs with a tuned fit (threads, sliding doors, press-fits) ship a **"print this first" coupon**: `designs/<name>/<name>-coupon.scad`, a ≤10-line include-and-override wrapper on the production modules — never copied geometry — plus a "Print this first" section in NOTES.md saying what to tune and in what steps. The wrapper relies on OpenSCAD's include-then-override semantics: keep the overrides above any geometry statements. `gate.sh` picks the wrapper up automatically and gates `build/<name>-coupon.stl` (printcheck + test-slice) like any other part.
 - A design is not done until `render.sh <name>` succeeds (STL render completes without CGAL errors, PNG visually checked) **and** `gate.sh --slice <name>` exits 0 — printcheck watertightness/printability plus a PrusaSlicer test-slice. That is the bar CI enforces; `render.sh` alone is not it.
 
 ## Co-design workflow
