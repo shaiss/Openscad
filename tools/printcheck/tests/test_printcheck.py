@@ -125,3 +125,59 @@ def test_fail_under_gate(tmp_path):
     ball = trimesh.creation.icosphere(subdivisions=3, radius=10)
     path = _save(tmp_path, ball, "ball.stl")
     assert main([str(path), "--fail-under", "90", "--json"]) == 1
+
+
+def test_repair_unions_overlapping_shells(tmp_path):
+    # Two overlapping cubes concatenated without a union: the classic
+    # "shells concatenated instead of boolean-unioned" export mistake.
+    a = trimesh.creation.box(extents=(10, 10, 10))
+    a.apply_translation((5, 5, 5))
+    b = a.copy()
+    b.apply_translation((5, 5, 0))
+    bad = trimesh.util.concatenate([a, b])
+
+    from printcheck.repair import repair
+    bad.merge_vertices()
+    result = repair(bad)
+    assert result.mesh is not None, result.note
+    assert result.mesh.is_watertight
+    assert result.mesh.body_count == 1
+    # union volume: 1000 + 1000 - (5*5*10 overlap) = 1750
+    assert abs(float(result.mesh.volume) - 1750.0) < 1.0
+
+
+def test_repair_cli_writes_artifact_and_keeps_exit_code(tmp_path, capsys):
+    from printcheck.cli import main
+    a = trimesh.creation.box(extents=(10, 10, 10))
+    a.apply_translation((5, 5, 5))
+    b = a.copy()
+    b.apply_translation((5, 5, 0))
+    # Duplicate overlapping shells trip the integrity checks (multi-body
+    # overlap is reported non-INFO), so --repair kicks in.
+    bad = trimesh.util.concatenate([a, b])
+    path = _save(tmp_path, bad, "bad-union.stl")
+
+    code = main([str(path), "--repair"])
+    out = capsys.readouterr().out
+    repaired = tmp_path / "bad-union.repaired.stl"
+    assert "repair: wrote" in out
+    assert repaired.exists()
+    fixed = trimesh.load(str(repaired))
+    fixed.merge_vertices()
+    assert fixed.is_watertight
+    assert fixed.body_count == 1
+    # Exit code always reflects the ORIGINAL mesh, repaired or not.
+    assert code == main([str(path)])
+
+
+def test_repair_skips_clean_plate_of_parts(tmp_path, capsys):
+    from printcheck.cli import main
+    # Two separate, clean parts on a plate: INFO-level multi-body only —
+    # --repair must NOT weld them together.
+    a = trimesh.creation.box(extents=(10, 10, 10))
+    b = trimesh.creation.box(extents=(10, 10, 10))
+    b.apply_translation((30, 0, 0))
+    plate = trimesh.util.concatenate([a, b])
+    path = _save(tmp_path, plate, "plate.stl")
+    main([str(path), "--repair"])
+    assert not (tmp_path / "plate.repaired.stl").exists()
