@@ -13,6 +13,12 @@ import sys
 
 
 def main() -> int:
+    """Render the summary table for the gate log named in argv[1].
+
+    Returns a shell exit status: 2 on usage/IO error, 0 otherwise —
+    including when the log yielded no rows, since the gate's own exit code,
+    not this reporter, decides whether CI fails.
+    """
     if len(sys.argv) != 2:
         print(__doc__.strip(), file=sys.stderr)
         return 2

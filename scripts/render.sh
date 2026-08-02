@@ -211,6 +211,13 @@ import struct, sys
 wrapper, param, stls = sys.argv[1], sys.argv[2], sys.argv[3:]
 
 def bbox(path):
+    """Return ([min_x, min_y, min_z], [max_x, max_y, max_z]) of a binary STL.
+
+    Reads the 80-byte header, the uint32 triangle count, then each 50-byte
+    record (normal + 3 vertices + attribute count), tracking extremes across
+    the 3 vertices. Binary is guaranteed: render_sweep exports with
+    --export-format binstl.
+    """
     with open(path, "rb") as f:
         f.read(80)
         n = struct.unpack("<I", f.read(4))[0]
