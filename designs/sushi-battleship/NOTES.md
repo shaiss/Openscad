@@ -189,6 +189,7 @@ top). Before committing to the full board:
   direction; grip bar for pushing/pulling.
 - Tray/lid fit: lid drops into a 3.4 mm rebate (0.35 mm/side clearance);
   thumb notches on left/right rim expose the lid edge for lifting it out.
+
 ## Print settings
 
 Everything below is **derived** from geometry and stock slicer
