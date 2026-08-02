@@ -80,6 +80,10 @@ module thread_helix(d_major, depth, pitch, starts, length, w_add = 0,
     // point list instead of a named error.
     assert(pitch > 0, "thread pitch must be positive.");
     assert(starts >= 1, "thread starts must be at least 1.");
+    // A fractional `starts` passes the bound above and then quietly disagrees
+    // with itself: `lead` scales continuously while the [0:starts-1] sweep
+    // rounds down, so starts = 1.5 builds ONE rib against a lead of 1.5*pitch.
+    assert(starts == floor(starts), "thread starts must be a whole number.");
     assert(seg >= 1, "thread seg must be at least 1.");
     // depth == 0 is allowed on purpose: it degenerates the rib to a sliver
     // buried in the core, which is how a design asks for a threadless
@@ -105,7 +109,13 @@ module thread_helix(d_major, depth, pitch, starts, length, w_add = 0,
     r_maj   = d_major / 2;
     r_min   = r_maj - depth;
     w_crest = 0.25 * pitch + w_add;
-    w_root  = w_crest + 2 * depth;           // flank slope m = depth/(depth+sink)
+    // w_add is caller-supplied (thread_bore_cut exposes it), and at
+    // w_add <= -0.25*pitch the crest collapses to zero or inverts. The profile
+    // points then coincide or cross before polyhedron() ever sees them.
+    assert(w_crest > 0, str(
+        "thread crest width 0.25*pitch + w_add = ", w_crest,
+        " must be positive; w_add is too negative for this pitch."));
+    w_root  = w_crest + 2 * depth;           // flank slope m = depth/(depth+_sink)
 
     // The profile is w_root tall axially and repeats every `lead`. If it does
     // not fit, consecutive turns collide and the sweep self-intersects — the

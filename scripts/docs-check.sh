@@ -93,11 +93,20 @@ done
 #    shared module was printability.scad. lib/*.scad is the top level only, so
 #    vendored lib/BOSL2/ is excluded by the glob; *-demo.scad files are the
 #    artifacts of the rule, not subjects of it.
+#
+#    README's match is scoped to its `## Layout` section and demands the
+#    backticked filename, for the same reason the scripts/ check is scoped to
+#    one bullet: a passing mention anywhere else in the file would let the
+#    layout list — the one place claiming to enumerate the libraries — go stale
+#    while the check stayed green.
+readme_layout="$(awk '/^## Layout/{f=1;next} /^## /{f=0} f' README.md)"
+[[ -n "$readme_layout" ]] || err "README.md has no '## Layout' section to check against"
 for f in lib/*.scad; do
   b="$(basename "$f" .scad)"
   [[ "$b" == *-demo ]] && continue
   grep -qF "lib/${b}.scad" CLAUDE.md || err "lib/${b}.scad not named in CLAUDE.md"
-  grep -qF "${b}.scad" README.md || err "lib/${b}.scad not named in README.md"
+  grep -qF "\`${b}.scad\`" <<<"$readme_layout" \
+    || err "lib/${b}.scad not named in README.md's \`## Layout\` section"
   [[ -f "lib/${b}-demo.scad" ]] \
     || err "lib/${b}.scad has no lib/${b}-demo.scad (CLAUDE.md requires one per first-party library)"
 done
