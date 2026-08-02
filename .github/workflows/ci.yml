@@ -1,7 +1,6 @@
 name: CI
 
-# push covers direct pushes to the default branch (which in this repo is
-# claude/3d-printable-openscad-5341we, not main); pull_request covers PR
+# push covers direct pushes to the default branch; pull_request covers PR
 # branches — scoping push this way avoids double-running every PR commit.
 #
 # The `changes` job decides what actually runs: docs/skills-only PRs skip
@@ -14,7 +13,7 @@ name: CI
 # branch protection matches on.
 on:
   push:
-    branches: [claude/3d-printable-openscad-5341we]
+    branches: [main]
   pull_request:
 
 # Superseded runs on the same PR are wasted minutes; cancel them. Default-
@@ -131,10 +130,12 @@ jobs:
         run: python -m pytest tools/printcheck/tests -q
 
   design-docs:
+    # Deliberately not gated behind `changes`: it needs no installs, runs in
+    # seconds, and always reporting keeps it usable as a required check.
     name: Design product pages
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
       - name: Every design ships a product-page README

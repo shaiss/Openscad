@@ -81,7 +81,7 @@ animate_one() {
       return 1
     fi
 
-    local rz dist prefix
+    local rz prefix
     # camera = tx,ty,tz,rx,ry,rz,dist — spin is applied to rz per frame
     IFS=',' read -r -a cam <<<"$camera"
     if [[ "${#cam[@]}" -ne 7 ]]; then

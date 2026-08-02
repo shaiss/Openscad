@@ -21,6 +21,12 @@ Pick a kebab-case name. Then create:
   parameter, Customizer `/* [Section] */` groups, `$fn` declared with the
   production value noted, FDM rules from CLAUDE.md (walls ≥ 1.2 mm,
   chamfered bed edges, clearance parameters for every fit).
+- **`designs/<name>/README.md`** — the product page, copied from
+  `templates/README.md`. CI's `design-docs` job rejects any design without
+  one that passes `./scripts/readme-gate.sh <name>` (H1 title, intro pitch,
+  a committed preview image, non-empty Print settings + Parameters
+  sections), so fill it in before the first push — the preview images it
+  embeds live under `designs/<name>/previews/`.
 - **`designs/<name>/NOTES.md`** — the file a later session resumes from.
   Sections: **Goal** (what the part does, for whom), **Given / assumed
   measurements** (mark which is which), **Key decisions** (append as they
@@ -44,12 +50,17 @@ Pick a kebab-case name. Then create:
   **`previews/CAMERAS.md`** with the exact render command per shot;
   cameras are fixed once a reviewer has seen them — new region, new
   camera entry.
+- Animated previews are opt-in: add **`animations.conf`** (see the format
+  note in CLAUDE.md) and render with `./scripts/animate.sh <name>` — the
+  readme-gate then requires each manifest entry's GIF to be committed and
+  embedded in README.md.
 
 ## 3. First render before first commit
 
 ```bash
 ./scripts/render.sh <name>       # STL + contact sheet must succeed
 ./scripts/gate.sh <name>         # printcheck must exit 0
+./scripts/readme-gate.sh <name>  # product page must pass
 ```
 
 Look at the bottom-iso quadrant of `build/<name>.png` for overhang and
