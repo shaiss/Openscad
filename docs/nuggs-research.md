@@ -1,7 +1,7 @@
 # N.U.G.G.S. — design research dossier
 
 Research and printability groundwork behind the **`design request`** issue
-[#34](https://github.com/shaiss/Openscad/issues/34): *N.U.G.G.S. — an
+[#34](https://github.com/shaiss/print-bench/issues/34): *N.U.G.G.S. — an
 interlocking 80 mm hamster tunnel bridging two enclosures*. Kept here the
 same way `docs/oss-libraries-research.md` backs the library-adoption
 backlog — the issue is the ask, this is the working behind it.
