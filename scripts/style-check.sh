@@ -101,10 +101,19 @@ check_design() {
   local name="$1"
   local dir="designs/${name}"
   local style
-  style="$(grep -vE '^[[:space:]]*(#|$)' "${dir}/style.conf" | head -1 \
-           | tr -d '[:space:]')"
-  echo "== design ${name} (style: ${style}) =="
+  # `|| true`: grep exits 1 on a file with nothing but comments, and under
+  # `set -e` that aborts the whole run with no output at all — a gate that
+  # fails silently is worse than one that does not run.
+  style="$(grep -vE '^[[:space:]]*(#|$)' "${dir}/style.conf" 2>/dev/null \
+           | head -1 | tr -d '[:space:]' || true)"
   checked=$((checked + 1))
+  if [[ -z "$style" ]]; then
+    echo "== design ${name} =="
+    echo "FAIL  ${dir}/style.conf names no style (it must contain one style name)"
+    fail=1
+    return 0
+  fi
+  echo "== design ${name} (style: ${style}) =="
   if [[ ! -f "styles/${style}/style.json" ]]; then
     echo "FAIL  ${dir}/style.conf names style '${style}', which does not exist"
     fail=1

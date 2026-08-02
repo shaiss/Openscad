@@ -40,9 +40,11 @@ list_styles() {
     [[ -f "${dir}style.json" ]] || continue
     found=1
     name="$(basename "$dir")"
+    # `|| true`: one unreadable pack must not stop the listing of the rest
     printf '%-24s %s\n' "$name" \
       "$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); \
-         print(d.get('summary') or d.get('title') or '')" "${dir}style.json")"
+         print(d.get('summary') or d.get('title') or '')" \
+         "${dir}style.json" 2>/dev/null || echo '(unreadable style.json)')"
   done
   [[ "$found" == 1 ]] || echo "no styles yet — ./scripts/style-lift.sh <name> <ref.stl>"
 }
