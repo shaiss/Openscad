@@ -28,7 +28,8 @@ All commands run from the repo root.
 # Render STL + 4-view preview PNG for one design (or all designs with no args)
 ./scripts/render.sh <name>
 
-# Fast syntax/eval check of every .scad in the repo + lib geometry regression test
+# Fast syntax/eval check of every .scad in the repo + lib geometry regression
+# test + docs-drift check (scripts/docs-check.sh: docs must match the tree)
 ./scripts/check.sh
 
 # Report-only sca2d static analysis of first-party .scad files (pip install sca2d)
@@ -83,7 +84,7 @@ Workflow skills (`.claude/skills/`):
 - `designs/<name>/animations.conf` — optional GIF-preview manifest (format documented in `scripts/animate.sh`). Each entry renders to a committed `previews/<anim>.gif` showing a key feature in motion — a turntable needs no model changes (camera spin); mechanism animations drive model motion from `$t` via an `anim` parameter (see sushi-battleship's shutter). The gate checks every entry has its GIF, embedded in the README, within the size budget. Compute `$t`-dependent values inside a geometry block, not in top-level assignments — top-level assignments evaluate before a `-D '$t=...'` override lands.
 - `lib/` — shared OpenSCAD modules. With `OPENSCADPATH` set, designs reference them as `use <printability.scad>` / `include <BOSL2/std.scad>`. Anything used by two or more designs belongs here. `lib/BOSL2/` is vendored third-party code — never edit it.
 - `build/` — generated STLs and PNGs; gitignored. STLs are regenerated from source, never hand-edited or committed.
-- `scripts/` — the full toolchain: `render.sh`, `check.sh`, `gate.sh`, `readme-gate.sh`, `animate.sh`, `gallery.sh`, `lint-scad.sh` (all described above), plus `gate-summary.py` (turns a gate.sh log into the markdown table CI posts as the job summary and sticky PR comment) and `preview-budget.sh` (sourced helper defining the GIF size budget).
+- `scripts/` — the full toolchain: `render.sh`, `check.sh`, `gate.sh`, `readme-gate.sh`, `animate.sh`, `gallery.sh`, `lint-scad.sh` (all described above), plus `docs-check.sh` (docs-drift assertions, run by check.sh), `gate-summary.py` (turns a gate.sh log into the markdown table CI posts as the job summary and sticky PR comment) and `preview-budget.sh` (sourced helper defining the GIF size budget).
 - `templates/design.scad` — starting point for new designs; demonstrates the parameter conventions below.
 - `tools/printcheck/` — the STL printability analyzer gate.sh runs on every rendered part; has its own README and pytest suite (CI runs it when the tool changes).
 - `docs/` — repo-level research and reference notes (e.g. `oss-libraries-research.md`, the OSS-library evaluation behind the adoption backlog).

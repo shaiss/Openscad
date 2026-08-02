@@ -69,7 +69,7 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `render.sh` — STL + 4-view preview sheet; `--previews` re-renders a
     design's frozen review shots, `--sweep` renders tolerance-test strips
   - `check.sh` — fast syntax/geometry validation of every `.scad` file,
-    plus docs-drift checks
+    plus the `docs-check.sh` docs-drift check (docs must match the tree)
   - `gate.sh` — render printable parts and gate the STLs with printcheck;
     `--slice` adds a PrusaSlicer test-slice (this is what CI enforces)
   - `gate-summary.py` — turns a gate log into the CI results table
@@ -77,7 +77,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `animate.sh` — animated GIF previews from `animations.conf`
   - `gallery.sh` — regenerates the design gallery above
   - `lint-scad.sh` — report-only [sca2d](https://gitlab.com/bath_open_instrumentation_group/sca2d) static analysis
+  - `preview-budget.sh` — sourced helper defining the GIF size budget
 - `templates/` — starting points for a new design and its product page
+- `docs/` — repo-level research and reference notes
 - `tools/printcheck/` — STL printability analyzer; scores rendered models
   for watertightness, overhangs, thin walls, and bed adhesion before
   slicing — see its [README](tools/printcheck/README.md)
