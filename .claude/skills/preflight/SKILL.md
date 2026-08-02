@@ -42,7 +42,7 @@ here either.
 shellcheck --severity=warning scripts/*.sh .claude/hooks/*.sh
 actionlint .github/workflows/*.yml   # if missing: install pinned, same as ci.yml's lint job
 
-./scripts/readme-gate.sh                             # product pages + committed GIFs (every PR)
+./scripts/readme-gate.sh                             # product pages + committed GIFs + configured product shots (every PR)
 ./scripts/check.sh                                   # syntax/eval of every .scad
 ./scripts/gate.sh --slice <changed-names...>         # or no args when infra changed
 ./scripts/style-check.sh                             # if styles/, stylelift or a style.conf changed

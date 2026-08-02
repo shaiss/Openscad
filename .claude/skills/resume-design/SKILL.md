@@ -40,11 +40,21 @@ Recorded state is a claim, not a fact. Before any new work:
 ```
 
 - Re-render the frozen shots (`./scripts/render.sh <name> --previews`,
-  driven by `previews/cameras.conf`) and diff each regenerated PNG against
-  the committed version (`git diff --stat`, or `compare -metric AE` from
-  ImageMagick). Committed previews that no longer derive from source are
-  drift; restore the frozen pixels (`git checkout`) unless the geometry
-  legitimately changed.
+  driven by `previews/cameras.conf`) and **look at** the regenerated PNGs
+  against the committed ones. Do **not** treat a non-zero pixel diff as
+  drift on its own: OpenSCAD renders are only byte-reproducible within one
+  environment, so a different OpenSCAD build, font set or GPU/driver
+  repaints every shot at the anti-aliasing level while the geometry is
+  identical. A `compare -metric AE` in the low thousands on a 1400×1000
+  shot is that, not a finding.
+
+  What counts as real drift is a *structural* difference — a feature that
+  moved, appeared or vanished, a reframed camera, a changed part count.
+  When the distinction matters, re-render twice in the current environment:
+  run-to-run must be AE=0, so anything that differs between two fresh
+  renders is nondeterminism, and anything that matches fresh-vs-fresh but
+  differs from the committed PNG is environment, not source. Only restore
+  or re-commit pixels when you can name the geometric change.
 - Take NOTES.md's claimed key numbers (clearances, wall thicknesses, bed
   footprint, part counts) and recompute them from the `.scad` source —
   read the parameters and redo the arithmetic; don't accept the prose.

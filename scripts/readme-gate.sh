@@ -36,7 +36,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 # shellcheck source=scripts/preview-budget.sh
-. scripts/preview-budget.sh   # defines MAX_GIF_BYTES (shared with animate.sh)
+# defines MAX_GIF_BYTES (shared with animate.sh) and MAX_SHOT_BYTES (the
+# product-shot budget enforced below)
+. scripts/preview-budget.sh
 
 fail=0
 

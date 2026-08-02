@@ -111,6 +111,10 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
 - `tools/printcheck/` — STL printability analyzer; scores rendered models
   for watertightness, overhangs, thin walls, and bed adhesion before
   slicing — see its [README](tools/printcheck/README.md)
+- `tools/photoshot/` — STL → POV-Ray studio renderer behind
+  `product-shot.sh`, which turns a design's own STL export into the
+  photographed-looking hero image on its product page — see its
+  [README](tools/photoshot/README.md)
 - `tools/stylelift/` — measures how a model is *shaped* (edge treatment,
   rounding vocabulary, proportion) and turns it into a checkable style
   spec — see its [README](tools/stylelift/README.md)

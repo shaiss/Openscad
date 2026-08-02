@@ -16,14 +16,24 @@ fail=0
 err() { echo "FAIL  docs: $1"; fail=1; }
 
 # 1. Every top-level directory appears in CLAUDE.md's and README.md's
-#    layout docs (generated/infra dirs allowlisted).
+#    layout docs (generated/infra dirs allowlisted). tools/ is expanded one
+#    level: each tool is its own component with its own docs, and checking
+#    only the `tools/` parent let tools/photoshot/ land undocumented in both
+#    files while the check stayed green.
 ALLOW=" build .git .claude .github "
+dirs=()
 for dir in */ .*/; do
   d="${dir%/}"
   [[ "$d" == "." || "$d" == ".." ]] && continue
   [[ "$ALLOW" == *" $d "* ]] && continue
-  grep -q "${d}/" CLAUDE.md || err "top-level ${d}/ not mentioned in CLAUDE.md"
-  grep -q "${d}/" README.md || err "top-level ${d}/ not mentioned in README.md"
+  dirs+=("$d")
+done
+for dir in tools/*/; do
+  [[ -d "$dir" ]] && dirs+=("${dir%/}")
+done
+for d in "${dirs[@]}"; do
+  grep -qF "${d}/" CLAUDE.md || err "${d}/ not mentioned in CLAUDE.md"
+  grep -qF "${d}/" README.md || err "${d}/ not mentioned in README.md"
 done
 
 # 2. Skills <-> CLAUDE.md, both directions. Boundary-aware match so a
@@ -65,11 +75,27 @@ done
 # 5. Freshness canary where docs quote reality: every file in scripts/ is
 #    named in both CLAUDE.md and README.md. Boundary-aware match so e.g.
 #    readme-gate.sh can't satisfy the check for gate.sh.
+#
+#    For CLAUDE.md the match is scoped to the `scripts/` layout bullet, not
+#    the whole file. Matching anywhere is what let product-shot.sh land: it
+#    was named in the Commands block, so the check passed while the layout
+#    bullet — the one place claiming to enumerate the toolchain — silently
+#    fell out of date. The bullet is one line starting "- `scripts/`".
+# `--` before the pattern: it starts with "-", which grep would otherwise
+# parse as an option bundle and reject.
+scripts_bullet="$(grep -m1 -F -- '- `scripts/`' CLAUDE.md || true)"
+[[ -n "$scripts_bullet" ]] \
+  || err "CLAUDE.md has no '- \`scripts/\`' layout bullet to check against"
 for f in scripts/*; do
+  # regular files only: `scripts/*` also globs generated directories such as
+  # __pycache__ (gitignored, but present after anything imports gate-summary),
+  # and demanding those be documented is nonsense.
+  [[ -f "$f" ]] || continue
   b="$(basename "$f")"
   b_re="${b//./\\.}"
   pat="(^|[^a-zA-Z0-9._-])${b_re}([^a-zA-Z0-9_-]|\$)"
-  grep -qE "$pat" CLAUDE.md || err "scripts/${b} not mentioned in CLAUDE.md"
+  grep -qE "$pat" <<<"$scripts_bullet" \
+    || err "scripts/${b} missing from CLAUDE.md's \`scripts/\` layout bullet"
   grep -qE "$pat" README.md || err "scripts/${b} not mentioned in README.md"
 done
 
