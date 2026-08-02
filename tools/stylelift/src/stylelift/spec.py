@@ -95,39 +95,73 @@ class StyleSpec:
         then blame the part for a mistake in the spec.
         """
         doc = json.loads(Path(path).read_text())
+        if not isinstance(doc, dict):
+            raise ValueError(f"{path}: a style must be a JSON object")
         schema = doc.get("schema")
         if schema != SCHEMA:
             raise ValueError(f"{path}: unsupported schema {schema!r} "
                              f"(this build reads {SCHEMA!r})")
-        for i, rule in enumerate(doc.get("rules", [])):
-            where = f"{path}: rule {rule.get('id', i)!r}"
-            if not isinstance(rule, dict):
-                raise ValueError(f"{where}: each rule must be an object")
+        name = doc.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"{path}: 'name' must be a non-empty string")
+        rules = doc.get("rules", [])
+        if not isinstance(rules, list):
+            raise ValueError(f"{path}: 'rules' must be a list")
+
+        def check_condition(cond: dict, where: str) -> None:
+            """Validate a comparator triple — a rule, or a rule's 'when' gate.
+
+            Both sides need this: an unvalidated `when` fails later inside
+            conform() instead, where a non-numeric bound raises TypeError,
+            escapes cli.main's except clause, and exits 1 — the code that means
+            "this part is off-style". A typo in the spec must never be
+            reported as a verdict on the part.
+            """
             for key in ("metric", "value"):
-                if key not in rule:
+                if key not in cond:
                     raise ValueError(f"{where}: missing {key!r}")
-            op = rule.get("op", "near")
+            if not isinstance(cond["metric"], str):
+                raise ValueError(f"{where}: 'metric' must be a string")
+            op = cond.get("op", "near")
             if op not in ("min", "max", "near", "range"):
                 raise ValueError(f"{where}: unknown op {op!r} "
                                  "(min, max, near or range)")
-            if op == "range" and (not isinstance(rule["value"], (list, tuple))
-                                  or len(rule["value"]) != 2):
-                raise ValueError(f"{where}: op 'range' wants value [low, high]")
-            if op != "range" and not isinstance(rule["value"], (int, float)):
-                raise ValueError(f"{where}: value must be a number")
+            value = cond["value"]
+            if op == "range":
+                if (not isinstance(value, (list, tuple)) or len(value) != 2
+                        or not all(isinstance(v, (int, float)) for v in value)):
+                    raise ValueError(
+                        f"{where}: op 'range' wants value [low, high]")
+            elif not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise ValueError(f"{where}: 'value' must be a number")
+            tol = cond.get("tol", 0.0)
+            if not isinstance(tol, (int, float)) or isinstance(tol, bool):
+                raise ValueError(f"{where}: 'tol' must be a number")
+
+        for i, rule in enumerate(rules):
+            if not isinstance(rule, dict):
+                raise ValueError(f"{path}: rule {i} must be an object")
+            where = f"{path}: rule {rule.get('id', i)!r}"
+            check_condition(rule, where)
             when = rule.get("when")
-            if when is not None and (not isinstance(when, dict)
-                                     or "metric" not in when
-                                     or "value" not in when):
-                raise ValueError(
-                    f"{where}: 'when' wants an object with 'metric' and 'value'")
+            if when is not None:
+                if not isinstance(when, dict):
+                    raise ValueError(f"{where}: 'when' must be an object")
+                check_condition(when, f"{where} 'when'")
             if rule.get("severity", "required") not in ("required", "advisory"):
                 raise ValueError(f"{where}: severity must be required or advisory")
-        return cls(name=doc["name"], title=doc.get("title", ""),
-                   summary=doc.get("summary", ""), tokens=doc.get("tokens", {}),
-                   rules=doc.get("rules", []), asserted=doc.get("asserted", {}),
-                   provenance=doc.get("provenance", {}),
-                   measured=doc.get("measured", {}))
+
+        def mapping(key: str) -> dict:
+            value = doc.get(key, {})
+            if not isinstance(value, dict):
+                raise ValueError(f"{path}: {key!r} must be an object")
+            return value
+
+        return cls(name=name, title=doc.get("title", ""),
+                   summary=doc.get("summary", ""), tokens=mapping("tokens"),
+                   rules=rules, asserted=mapping("asserted"),
+                   provenance=mapping("provenance"),
+                   measured=mapping("measured"))
 
     def to_dict(self) -> dict:
         """Return the whole spec as the JSON document that gets committed."""

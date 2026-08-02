@@ -412,6 +412,67 @@ def test_unknown_schema_is_rejected(tmp_path):
         StyleSpec.load(path)
 
 
+# style.json is the one file people hand-edit, so a typo in it is ordinary.
+# Every one of these must come back as a ValueError naming the offending rule —
+# which cli.main turns into exit 2. Anything that escapes as KeyError,
+# AttributeError or TypeError exits 1 instead, and exit 1 is the code that
+# means "this part is off-style": the gate would blame the part for a mistake
+# in the spec.
+BAD_SPECS = {
+    "missing name": (lambda d: d.pop("name"), "name"),
+    "name not a string": (lambda d: d.update(name=42), "name"),
+    "rules not a list": (lambda d: d.update(rules={}), "rules"),
+    "rule not an object": (lambda d: d["rules"].append("oops"), "must be an object"),
+    "rule missing metric": (lambda d: d["rules"].append({"value": 1}), "metric"),
+    "unknown op": (lambda d: d["rules"].append(
+        {"metric": "edges.softness", "op": "sideways", "value": 1}), "unknown op"),
+    "value not a number": (lambda d: d["rules"].append(
+        {"metric": "edges.softness", "value": "lots"}), "must be a number"),
+    "range wants two": (lambda d: d["rules"].append(
+        {"metric": "edges.softness", "op": "range", "value": [1]}), "low, high"),
+    "tol not a number": (lambda d: d["rules"].append(
+        {"metric": "edges.softness", "value": 1, "tol": "wide"}), "tol"),
+    "when not an object": (lambda d: d["rules"].append(
+        {"metric": "edges.softness", "value": 1, "when": "always"}), "when"),
+    "when missing value": (lambda d: d["rules"].append(
+        {"metric": "edges.softness", "value": 1,
+         "when": {"metric": "features.hole_count"}}), "value"),
+    "when value not a number": (lambda d: d["rules"].append(
+        {"metric": "edges.softness", "value": 1,
+         "when": {"metric": "features.hole_count", "value": "some"}}),
+        "must be a number"),
+    "bad severity": (lambda d: d["rules"].append(
+        {"metric": "edges.softness", "value": 1, "severity": "vital"}), "severity"),
+    "tokens not an object": (lambda d: d.update(tokens=[1, 2]), "tokens"),
+}
+
+
+@pytest.mark.parametrize("case", sorted(BAD_SPECS))
+def test_a_hand_edit_mistake_is_a_named_error_not_a_traceback(soft_style, tmp_path,
+                                                              case):
+    _, directory = soft_style
+    doc = json.loads((directory / "style.json").read_text())
+    break_it, expected = BAD_SPECS[case]
+    break_it(doc)
+    path = tmp_path / "broken.json"
+    path.write_text(json.dumps(doc))
+    with pytest.raises(ValueError, match=expected):
+        StyleSpec.load(path)
+
+
+def test_a_broken_spec_exits_2_not_1(soft_style, tmp_path, capsys):
+    # Exit 1 already means "off-style". A spec that cannot be read must not
+    # borrow that code, or CI reports a verdict on a part it never judged.
+    _, directory = soft_style
+    doc = json.loads((directory / "style.json").read_text())
+    doc["rules"][0]["when"] = {"metric": "edges.softness", "value": "lots"}
+    path = tmp_path / "broken.json"
+    path.write_text(json.dumps(doc))
+    model = save(tmp_path, rounded_prism(radius=3.0), "part.stl")
+    assert main(["check", model, "--style", str(path)]) == 2
+    assert "stylelift:" in capsys.readouterr().err
+
+
 def test_snap_fn_rounds_to_values_a_design_would_write():
     assert snap_fn(63.2) == 64
     assert snap_fn(64.0) == 64

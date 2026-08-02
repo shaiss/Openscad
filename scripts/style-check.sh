@@ -38,9 +38,18 @@ checked=0
 render() {  # src out [-D...] -> 0/1, quiet on a clean render
   local src="$1" out="$2"; shift 2
   local err
+  # Delete first, so what gets judged can only be what this run produced. An
+  # earlier failed render leaves its half-built STL behind, and a conformance
+  # verdict on a leftover is a verdict on nothing — worse than an error,
+  # because it looks like an answer.
+  rm -f "$out"
   if ! err="$(xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
       -o "$out" "$@" "$src" 2>&1)"; then
     tail -20 <<<"$err" >&2
+    return 1
+  fi
+  if [[ ! -s "$out" ]]; then
+    echo "      render exited 0 but wrote nothing to ${out}" >&2
     return 1
   fi
   # A swatch that references a token no longer in style.json still renders and
