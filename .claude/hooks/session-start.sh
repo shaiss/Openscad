@@ -1,8 +1,9 @@
 #!/bin/bash
 # SessionStart hook: install the OpenSCAD toolchain in Claude Code on the web.
 # The repo needs: openscad (renderer), xvfb (headless display), imagemagick
-# (montage, for multi-view preview sheets), povray (studio product shots via
-# ./scripts/product-shot.sh), prusa-slicer + printcheck (so
+# (montage, for multi-view preview sheets), bpy (Blender as a Python module —
+# studio product shots via ./scripts/product-shot.sh), prusa-slicer +
+# printcheck (so
 # ./scripts/gate.sh --slice — the exact gate CI runs — works locally before
 # a push). Idempotent — exits fast when everything is already present
 # (e.g. cached container state).
@@ -16,10 +17,17 @@ fi
 
 REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 
+# find_spec rather than `import bpy`: importing Blender costs seconds and
+# hundreds of MB, and this guard runs on every session start.
+has_bpy() {
+  python3 -c 'import importlib.util,sys; sys.exit(0 if importlib.util.find_spec("bpy") else 1)' \
+    >/dev/null 2>&1
+}
+
 if command -v openscad >/dev/null 2>&1 \
   && command -v xvfb-run >/dev/null 2>&1 \
   && command -v montage >/dev/null 2>&1 \
-  && command -v povray >/dev/null 2>&1 \
+  && has_bpy \
   && command -v prusa-slicer >/dev/null 2>&1 \
   && command -v printcheck >/dev/null 2>&1 \
   && command -v stylelift >/dev/null 2>&1 \
@@ -37,7 +45,28 @@ export DEBIAN_FRONTEND=noninteractive
 # Package indexes in the base image can be stale (404s on install); refresh
 # first and tolerate unrelated repo failures (e.g. blocked PPAs).
 $SUDO apt-get update -qq 2>/dev/null || true
-$SUDO apt-get install -y -qq openscad xvfb imagemagick povray povray-includes prusa-slicer
+$SUDO apt-get install -y -qq openscad xvfb imagemagick prusa-slicer
+
+# Blender ships on PyPI as `bpy`, a self-contained Python module — no apt
+# package, no X display. Pinned to the 4.5 LTS series: product shots are
+# byte-reproducible across point releases within a series, but not necessarily
+# across them, and the committed PNGs are diffed. Wheels are built per Python
+# minor version, so this needs the interpreter Blender 4.5 targets (3.11).
+#
+# `python3 -m pip`, never bare `pip`: they are not always the same interpreter
+# (here python3 is /usr/local/bin/python3 while pip is /usr/bin/pip), and bpy is
+# a compiled extension. Installing with one interpreter and importing with
+# another gives a "successful" install that cannot be imported. The check below
+# is the same python3 that scripts/product-shot.sh runs, so a mismatch fails
+# here rather than mid-render.
+if ! has_bpy; then
+  python3 -m pip install -q 'bpy~=4.5.0'
+  if ! python3 -c 'import bpy' >/dev/null 2>&1; then
+    echo "error: bpy installed but will not import under $(python3 -V 2>&1)." >&2
+    echo "       bpy 4.5 ships wheels for Python 3.11 only." >&2
+    exit 1
+  fi
+fi
 
 # [test] extra brings pytest, so /preflight can run the unit tests locally
 # exactly as CI does

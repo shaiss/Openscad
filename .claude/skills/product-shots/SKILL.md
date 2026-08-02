@@ -1,6 +1,6 @@
 ---
 name: product-shots
-description: Give a design's product page real-world-looking product shots — raytraced studio renders of the printed part (deterministic, CI-gated), plus an optional AI-restyled lifestyle shot when the session has an image-generation tool. Use when asked for product shots, hero images, photoreal/real-world renders, or when invoked as /product-shots [name].
+description: Give a design's product page real-world-looking product shots — path-traced studio renders of the printed part (deterministic, CI-gated), plus an optional AI-restyled lifestyle shot when the session has an image-generation tool. Use when asked for product shots, hero images, photoreal/real-world renders, or when invoked as /product-shots [name].
 ---
 
 # Product shots — real-world-looking images for the product page
@@ -12,16 +12,18 @@ should lead with one.
 
 Two tiers, in order:
 
-1. **Studio raytrace (always — this is the CI-gated deliverable).**
+1. **Studio render (always — this is the CI-gated deliverable).**
    `./scripts/product-shot.sh <name>` exports the geometry-true STL with
-   OpenSCAD and raytraces it with POV-Ray: seamless backdrop, soft
-   key/fill/rim lighting, glossy floor with contact shadows, plastic
+   OpenSCAD and path-traces it with Blender's Cycles: seamless backdrop,
+   soft key/fill/rim lighting, glossy floor with contact shadows, plastic
    material with FDM layer lines. Re-rendering an unchanged design
-   reproduces the committed PNG pixel for pixel, so shots diff cleanly
-   across review rounds: hold the manifest, the scene code and the
-   toolchain still, and a shot that moves means the geometry moved. That
-   costs render time (radiosity is single-threaded to stay reproducible;
-   expect tens of seconds for a small part, minutes for a large one).
+   reproduces the committed PNG pixel for pixel **on the same machine**, so
+   shots diff cleanly across review rounds: hold the manifest, the scene
+   code and the toolchain still, and a shot that moves means the geometry
+   moved. Expect roughly a minute per shot. One caveat before trusting a
+   byte-level comparison across machines: Cycles dispatches an SSE4.2 or
+   AVX2 CPU kernel by what the host supports, and their rounding differs,
+   so compare renders from different hardware perceptually, not byte-wise.
 2. **AI-restyled lifestyle shot (optional — only when the session has an
    image-generation tool).** Restyle the committed raytrace into a
    real-world scene. Never a substitute for tier 1, and never the only
@@ -76,8 +78,8 @@ geometry per shot, so compose multi-STL shots manually and name the output
 to match a manifest entry only if it is reproducible from source noted in
 NOTES.md.
 
-If `povray` is missing, run `.claude/hooks/session-start.sh --force` —
-don't work around the gap.
+If the `bpy` module is missing, run `.claude/hooks/session-start.sh --force`
+— don't work around the gap.
 
 ## Tier 2: AI-restyled lifestyle shot
 
@@ -112,5 +114,7 @@ Because renders are reproducible, staleness is *checkable* even though the
 gate doesn't check it: re-run the shot on an unchanged design and the PNG
 should come back byte-identical (`git status` stays clean). A shot that
 moves without a geometry change means something else drifted — the
-manifest, the scene code, or the POV-Ray version — and is worth
-understanding before committing.
+manifest, the scene code, or the Blender version — and is worth
+understanding before committing. Across two different machines, expect a
+near-identical but not byte-identical image; that is the CPU-kernel caveat
+above, not drift.

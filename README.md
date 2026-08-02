@@ -65,8 +65,9 @@ The scripts expect: `openscad`, `xvfb-run` (headless rendering — the
 scripts wrap every OpenSCAD call in `xvfb-run -a` themselves; you only need
 the prefix for raw `openscad` commands you run by hand), ImageMagick
 (`montage`, for preview sheets), `prusa-slicer` (for `gate.sh --slice`),
-`povray` plus Python `trimesh` (for `product-shot.sh`; trimesh comes with
-printcheck), [printcheck](tools/printcheck/)
+Python `bpy` — Blender as an importable module, `pip install 'bpy~=4.5.0'`
+(for `product-shot.sh`; its wheels are built per Python minor version, so
+this needs Python 3.11) — [printcheck](tools/printcheck/)
 (`pip install -e tools/printcheck`), and [stylelift](tools/stylelift/)
 (`pip install -e tools/stylelift`, for the style scripts).
 
@@ -99,7 +100,7 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `readme-gate.sh` — every design must ship a product-page README
   - `animate.sh` — animated GIF previews from `animations.conf`
   - `product-shot.sh` — real-world-looking studio product shots from
-    `shots.conf`, raytraced from the design's own STL export
+    `shots.conf`, path-traced from the design's own STL export
   - `gallery.sh` — regenerates the design gallery above
   - `style-lift.sh` — lift a design style out of a reference mesh into
     `styles/<name>/`
@@ -114,7 +115,7 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
 - `tools/printcheck/` — STL printability analyzer; scores rendered models
   for watertightness, overhangs, thin walls, and bed adhesion before
   slicing — see its [README](tools/printcheck/README.md)
-- `tools/photoshot/` — STL → POV-Ray studio renderer behind
+- `tools/photoshot/` — STL → Blender/Cycles studio renderer behind
   `product-shot.sh`, which turns a design's own STL export into the
   photographed-looking hero image on its product page — see its
   [README](tools/photoshot/README.md)

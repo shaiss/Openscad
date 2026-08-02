@@ -20,12 +20,13 @@
 #
 # Pipeline: OpenSCAD exports the geometry-true STL (full CGAL render, so a
 # shot can never show geometry the printable part doesn't have), then
-# tools/photoshot/photoshot.py raytraces it in a studio scene (POV-Ray):
-# seamless backdrop, soft key/fill/rim light, glossy floor, FDM layer-line
-# texture. Re-rendering an unchanged design reproduces the committed PNG
-# pixel for pixel (photoshot.py documents what that costs: no light jitter,
-# and radiosity renders single-threaded), so a shot that changes in a diff
-# means the geometry changed.
+# tools/photoshot/photoshot.py path-traces it in a studio scene (Blender's
+# Cycles, driven headlessly through the bpy module): seamless backdrop, soft
+# key/fill/rim light, glossy floor, FDM layer-line texture. Re-rendering an
+# unchanged design reproduces the committed PNG pixel for pixel on the same
+# machine (photoshot.py documents the one caveat: Cycles picks a CPU kernel by
+# instruction set, so pixels are not guaranteed identical across machines), so
+# a shot that changes in a local diff means the geometry changed.
 #
 # Like animations.conf entries, shots are FIXED across review rounds so
 # before/after images align; add a new entry rather than moving one.
@@ -33,7 +34,7 @@
 # verifies each manifest entry has a committed, README-embedded PNG within
 # the size budget.
 #
-# Requires: openscad, xvfb-run, povray, python3 + trimesh.
+# Requires: openscad, xvfb-run, python3 + bpy (`pip install 'bpy~=4.5.0'`).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
