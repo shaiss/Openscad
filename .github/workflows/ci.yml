@@ -106,6 +106,30 @@ jobs:
       - name: shellcheck
         # warning+: style-level nits (SC2001 etc.) don't fail the build
         run: shellcheck --severity=warning scripts/*.sh .claude/hooks/*.sh
+      - name: Python syntax check
+        # tools/photoshot/* matches no case in the `changes` classifier, so a
+        # PR touching only photoshot.py would otherwise run no verification
+        # at all. This job is ungated, so a syntax check here covers every
+        # first-party .py (photoshot, gate-summary, printcheck) on every PR
+        # without re-gating designs a renderer change cannot affect.
+        # ast.parse rather than py_compile: py_compile writes __pycache__ next
+        # to each source, which is gitignored but still litters the tree (and
+        # trips docs-check's scripts/ glob locally). This only parses.
+        run: |
+          set -euo pipefail
+          mapfile -t pyfiles < <(git ls-files '*.py' | grep -v '^lib/BOSL2/')
+          printf 'checking %s\n' "${pyfiles[@]}"
+          # feature_version pins the grammar to the oldest interpreter the repo
+          # supports (tools/printcheck/pyproject.toml: requires-python >=3.10),
+          # so syntax that only a newer runner default would accept still
+          # fails here rather than at a 3.10 user's install.
+          python3 -c '
+          import ast, sys
+          for f in sys.argv[1:]:
+              with open(f, encoding="utf-8") as fh:
+                  ast.parse(fh.read(), filename=f, feature_version=(3, 10))
+          print(f"{len(sys.argv)-1} file(s) parsed clean against Python 3.10 syntax")
+          ' "${pyfiles[@]}"
       - name: actionlint
         run: |
           bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
@@ -314,7 +338,18 @@ jobs:
             };
             if (!await stillCurrent()) return;
             const sha = built.slice(0, 7);
-            const body = `${marker}\n${report}\n_Automated report for ${sha}._`;
+            // Name the artifacts: the f3d renders are the only view of the
+            // exported meshes these numbers describe, and an artifact nobody
+            // is pointed at may as well not exist (geo-diff's comment names
+            // its own renders for the same reason).
+            // "when f3d succeeded": this step runs BEFORE the f3d render and
+            // its upload, and that upload is if-no-files-found: warn, so a
+            // render that produced nothing leaves no stl-renders artifact.
+            // Hedged wording beats reordering the steps to find out.
+            const body = `${marker}\n${report}\n`
+              + `_The meshes behind these numbers are in the \`stls\` artifact, `
+              + `and their renders in \`stl-renders\` when f3d succeeded. `
+              + `Automated report for ${sha}._`;
             const comments = await github.paginate(github.rest.issues.listComments, {
               ...context.repo, issue_number: context.issue.number, per_page: 100,
             });

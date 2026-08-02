@@ -62,18 +62,26 @@ Pick a kebab-case name. Then create:
   note in CLAUDE.md) and render with `./scripts/animate.sh <name>` — the
   readme-gate then requires each manifest entry's GIF to be committed and
   embedded in README.md.
-- Product shots are opt-in the same way: add **`shots.conf`** and render
-  with `./scripts/product-shot.sh <name>` (see `/product-shots`) — the
-  readme-gate then requires each entry's PNG committed and embedded. Every
-  finished design should lead its README with one.
+- Product shots are **expected, not optional**: `templates/README.md`
+  embeds `previews/product-hero.png` the same way it embeds the contact
+  sheet, so a scaffolded README fails the readme-gate on a missing image
+  until you add **`shots.conf`** and render with
+  `./scripts/product-shot.sh <name>` (see `/product-shots`). That is
+  deliberate — every finished design leads its README with one. Rendering
+  needs povray locally; CI only checks the committed PNG.
 
 ## 3. First render before first commit
 
 ```bash
 ./scripts/render.sh <name>       # STL + contact sheet must succeed
 ./scripts/gate.sh --slice <name> # printcheck + PrusaSlicer test-slice must exit 0
+./scripts/product-shot.sh <name> # the hero shot the README embeds (needs povray)
 ./scripts/readme-gate.sh <name>  # product page must pass
 ```
+
+The product shot comes before the readme gate on purpose: the template
+embeds `previews/product-hero.png`, so the gate fails on a missing image
+until that render has run.
 
 Look at the bottom-iso quadrant of `build/<name>.png` for overhang and
 bed-contact problems, send the PNG to the user (SendUserFile), and commit
