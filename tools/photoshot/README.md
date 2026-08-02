@@ -1,11 +1,11 @@
 # photoshot — STL → studio product shot
 
-Point it at an STL exported by OpenSCAD and it raytraces a product-page hero
-image with POV-Ray: seamless studio backdrop, soft key/fill/rim lighting, a
-glossy floor carrying the contact shadow, and a plastic material with faint
-FDM layer lines. It is the render half of `./scripts/product-shot.sh` (which
-does the geometry-true STL export first and drives this from each design's
-`shots.conf`), but it runs standalone on any STL.
+Point it at an STL exported by OpenSCAD and it path-traces a product-page hero
+image with Blender's Cycles: seamless studio backdrop, soft key/fill/rim
+lighting, a glossy floor carrying the contact shadow, and a plastic material
+with faint FDM layer lines. It is the render half of
+`./scripts/product-shot.sh` (which does the geometry-true STL export first and
+drives this from each design's `shots.conf`), but it runs standalone on any STL.
 
 ```bash
 python3 tools/photoshot/photoshot.py build/calibration-cube.stl \
@@ -15,11 +15,18 @@ python3 tools/photoshot/photoshot.py build/calibration-cube.stl \
 
 ## Requirements
 
-- **povray** (+ `povray-includes`) on `PATH`. A missing povray is a hard exit
-  pointing at the installer; the SessionStart hook apt-installs both packages,
-  so run `.claude/hooks/session-start.sh --force` rather than work around it.
-- **Python 3 + trimesh**, for STL loading only. trimesh is a printcheck
-  dependency, so `pip install -e tools/printcheck` covers it.
+- **`bpy`** — Blender as an importable Python module, `pip install 'bpy~=4.5.0'`.
+  No apt package, no X display, no `xvfb-run`. A missing `bpy` is a hard exit
+  pointing at the installer; the SessionStart hook installs it, so run
+  `.claude/hooks/session-start.sh --force` rather than work around it.
+- Nothing else. Blender's own STL importer does the mesh loading, so this tool
+  has no `trimesh` dependency.
+
+The wheel is large (≈356 MB download, ≈801 MB installed) and its wheels are
+built per Python minor version, so it needs the interpreter Blender 4.5
+targets (3.11). The pin is to the 4.5 LTS series deliberately: output is
+byte-reproducible across point releases within a series, but not promised
+across them, and these PNGs are committed and diffed.
 
 ## Usage
 
@@ -32,73 +39,116 @@ python3 tools/photoshot/photoshot.py build/calibration-cube.stl \
 | `--rotz` | `35` | orbit angle around the grounded model, degrees |
 | `--elev` | `18` | camera elevation, degrees |
 | `--zoom` | `1.0` | scales an automatic bounding-box fit; must be > 0 |
-| `--size` | `1280x960` | output `WxH` in pixels |
+| `--size` | `1280x960` | output `WxH` in pixels; each dimension must be 4..65536 (Blender's own range — it clamps silently below 4, so a smaller value would render at 4px while the tool reported the size you asked for) |
 | `--layers` | `0.2` | FDM layer-line pitch in mm for the surface texture; `0` or negative = smooth, `nan`/`inf` rejected |
-| `--no-radiosity` | off | faster, flatter light (see below) |
-| `--threads` | `0` | POV-Ray render threads; `0` picks the reproducible default — 1 with radiosity, 4 without |
-| `--keep-pov` | off | keep the generated `.pov` next to the PNG instead of deleting it |
+| `--samples` | `48` | Cycles path-tracing samples; with denoising, more than ~48 buys very little |
+| `--verbose` | off | let Blender's render log through instead of capturing it |
+| `--threads` | `0` | Cycles render threads; `0` uses every core. Raising or lowering it does **not** change the pixels |
 
-`--rotz`/`--elev`/`--zoom` reject `nan`/`inf`, and `--zoom` rejects values ≤ 0.
-Coordinates are OpenSCAD's — z-up, millimeters.
+`--rotz`/`--elev`/`--zoom`/`--layers` reject `nan`/`inf`, `--zoom` rejects
+values ≤ 0, and `--samples` rejects values < 1. Coordinates are OpenSCAD's —
+z-up, millimeters.
+
+`--help` returns instantly: the `bpy` import is deferred until after argument
+parsing, so a usage error never pays Blender's multi-second load.
 
 ## How the scene is built
 
-Everything is generated in `scene()`; there is no `.pov` template on disk.
+Everything is generated in `build_scene()`; there is no `.blend` template on
+disk.
 
 - **Framing.** All meshes are translated by one shared offset that centres the
   combined bounding box in xy and grounds it on `z = 0` (so multi-part
   assemblies keep their relative positions). The camera is a 30° *horizontal*
-  FOV mild telephoto with `sky z`, looking at 42% of the model height; the
-  push-back distance is solved so every bbox corner clears **both** the
-  horizontal and the vertical FOV, times a 1.06 margin, divided by `--zoom`.
-  That is why a tall part cannot silently lose its top edge.
-- **Backdrop.** A `sky_sphere` with a z-gradient from light grey to white —
-  both the visible seamless-studio background and the radiosity light bath.
-- **Light rig**, scaled to the model's bbox diagonal: a key `area_light`
-  (circular, `orient`, 5×5 samples) high and camera-left; a shadowless fill at
-  `rgb 0.30` camera-right; a shadowless rim at `rgb 0.35` behind and above.
-- **Floor.** An infinite near-white plane at `z = 0` with a fresnel
-  `reflection { 0.03, 0.09 }` and `conserve_energy`. The soft floor reflection
-  and contact shadow, the area-light penumbra and the bounced light are what
-  make the output read as photographed rather than as a viewport render.
-- **Radiosity** (on by default): `count 80 error_bound 0.6 recursion_limit 2
-  nearest_count 8 brightness 0.75`, with `ambient 0` everywhere so all fill
-  light is actually bounced. `--no-radiosity` swaps it for a flat `ambient 0.28`.
-- **Material.** Each STL becomes a `mesh2` with an sRGB→linear pigment
-  (`assumed_gamma 1.0`), a finish from the table below, and `interior { ior
-  1.46 }`. When `--layers > 0` a `normal { gradient z, 0.35 triangle_wave }`
-  scaled to the layer pitch adds FDM layer lines — a shading perturbation only,
-  it never changes geometry.
+  FOV mild telephoto (`sensor_fit = HORIZONTAL`), looking at 42% of the model
+  height; `solve_camera()` pushes it back until every bbox corner clears
+  **both** the horizontal and the vertical FOV, times a 1.06 margin, divided by
+  `--zoom`. That is why a tall part cannot silently lose its top edge.
+- **Clip range.** Sized from the solved distance (`dist * 0.001` to
+  `dist * 10`). This is not cosmetic: Blender's default `clip_end` is 1000 and
+  these scenes are in millimetres, so a 250 mm part framed from ~1.4 m away
+  falls entirely beyond the far plane and **renders blank with no error at
+  all**.
+- **Backdrop.** A world shader with a vertical gradient from light grey to
+  white, driven by the z component of the generated texture coordinate through
+  a map-range and a colour ramp. It is both the visible seamless-studio
+  background and the ambient light bath.
+- **Light rig**, scaled to the model's bbox diagonal: a key area light high and
+  camera-left; a fill camera-right and a rim behind and above, both with
+  `use_shadow = False` so only the key casts the one clean shadow. Area-light
+  power is in watts and falls off with distance squared, so energy is scaled by
+  the diagonal squared to hold exposure constant across designs of any size.
+- **Floor.** A large near-white plane at `z = 0`, roughness 0.22. The soft
+  floor reflection and contact shadow, the area-light penumbra and Cycles'
+  bounced light are what make the output read as photographed rather than as a
+  viewport render.
+- **Colour management.** `view_transform = "Standard"`. Blender 4.x defaults to
+  AgX, a film emulation that visibly mutes saturated plastics; a product shot
+  must show the filament colour that was asked for.
+- **Material.** Each STL gets a Principled BSDF with an sRGB→linear base
+  colour, `IOR 1.46`, and the parameters below. When `--layers > 0` a wave
+  texture (bands along z at the layer pitch) drives a bump node — a shading
+  perturbation only, it never changes geometry. Meshes are auto-smoothed at a
+  15° angle (see below), so genuinely curved surfaces smooth while real facets stay
+  faceted; the shot cannot imply a smoothness the printed part will not have.
 
-  | finish | diffuse | specular | roughness | reflection |
+  | finish | roughness | specular level | coat weight | coat roughness |
   |---|---|---|---|---|
-  | `satin` | 0.72 | 0.30 | 0.012 | 0.015–0.05 |
-  | `gloss` | 0.62 | 0.55 | 0.004 | 0.03–0.12 |
-  | `matte` | 0.85 | 0.08 | 0.060 | none |
+  | `satin` | 0.38 | 0.45 | 0.12 | 0.35 |
+  | `gloss` | 0.18 | 0.60 | 0.35 | 0.10 |
+  | `matte` | 0.62 | 0.25 | 0.00 | 0.50 |
 
-POV-Ray is invoked with `+A0.3 +AM2 +R3 +Q9 -D +WT<threads>`.
+Cycles runs on CPU with OpenImageDenoise. Blender's per-sample progress goes
+straight to fd 1, below Python's `sys.stdout`, so it is diverted with a
+file-descriptor redirect for the duration of the render — into a temp file
+rather than `/dev/null`, so a failed render can still show what Blender said.
+`--verbose` leaves the fd alone.
+
+A render is only reported as successful if `bpy.ops.render.render()` returns
+`FINISHED` **and** the output file's mtime changed. The output path is usually
+a committed PNG that already exists, so "the file is there afterwards" would
+prove nothing — without the mtime check, a failed render would leave the
+previous image in place and report success.
+
+Note on smoothing: `bpy.ops.object.shade_auto_smooth()` cannot be used. It
+appends a "Smooth by Angle" geometry-nodes asset, and asset loading never
+completes in the headless `bpy` module — it returns `{'CANCELLED'}` and
+silently smooths nothing. `shade_smooth()` plus the mesh-level
+`set_sharp_from_angle()` gets the same result through the data API.
+
+The threshold (`SMOOTH_ANGLE`) is **15°**, not the 30° that would be the
+obvious default, and the difference matters for honesty. At 30° a `$fn=16`
+cylinder — 22.5° facets — renders perfectly smooth, implying a roundness the
+printed part will not have. At 15°, everything from `$fn=32` up smooths, which
+covers the `$fn >= 64` this repo requires for production curves, while coarse
+iteration values stay visibly faceted.
 
 ## Determinism
 
-At the default thread setting, same STL, same args, same machine ⇒
-byte-identical PNG (`--threads N` with radiosity gives that up — see below).
-Shots are committed
-and diffed across review rounds, so a shot that moves without a geometry change
-means something else drifted (manifest, scene code, POV-Ray version). Three
-sources of run-to-run noise are handled deliberately:
+Same STL, same args, same machine ⇒ byte-identical PNG. Shots are committed and
+diffed across review rounds, so a shot that moves without a geometry change
+means something else drifted (manifest, scene code, Blender version). What is
+pinned to make that hold:
 
-- Area-light `jitter` randomizes shadow rays per run, so it is never used;
-  penumbra quality comes from the denser 5×5 sample grid instead (and
-  `adaptive` is left off, since it prunes samples by contrast).
-- Radiosity's sample cache is gathered in thread-completion order, so radiosity
-  renders single-threaded by default. `--threads N` buys speed by giving that
-  up; without radiosity, threads are safe (hence the default of 4).
-- POV-Ray stamps the PNG with wall-clock `tIME`/`tEXt`/`zTXt`/`iTXt` chunks.
-  Those are dropped after the render by a chunk-level rewrite that never
-  re-encodes, so pixels are untouched.
+- The sampling **seed** is fixed, so the stochastic path tracer replays the
+  same random sequence every run.
+- **Thread count** is set explicitly. Cycles is genuinely thread-count
+  invariant here — 1, 2 and 4 threads produce identical pixels, verified — so
+  unlike the POV-Ray renderer this replaced, reproducibility costs no render
+  time and every core stays usable.
+- Blender stamps the PNG with wall-clock `tEXt` chunks (`Date`, `RenderTime`,
+  `cycles.*` timings). Those are dropped after the render by a chunk-level
+  rewrite that never re-encodes, so pixels are untouched.
+- PNG **compression** is raised from Blender's default 15 to 100. Lossless, and
+  it takes about a quarter off what lands in git.
 
-The guarantee is scoped to one machine; a different POV-Ray build is not
-promised to match.
+**The one caveat that matters across machines:** Cycles dispatches one of two
+CPU kernels (SSE4.2 or AVX2) by what the host supports, and their
+floating-point rounding differs — on the order of 0.3–0.6% of pixels. Output is
+stable on a given machine and across thread counts, but two different machines
+produce a near-identical, not byte-identical, image. Compare renders from
+different hardware perceptually (RMSE/SSIM), not byte-wise. This matters if a
+CI regeneration gate is ever added.
 
 ## Colors in `shots.conf`
 
@@ -112,7 +162,8 @@ either way, so on the command line both forms work.
 Multiple positional STLs render into one scene and `--color` maps to them in
 order — a two-tone assembly is `photoshot.py body.stl lid.stl --color 333
 --color e8734a -o shot.png`. Any mesh past the last `--color` falls back to the
-default orange, and surplus colors are ignored without complaint. Note that
+default orange; more colors than STLs is an error rather than a silent
+truncation, since the extra ones name nothing. Note that
 `shots.conf` drives exactly one STL export per entry, so multi-STL scenes are
 run by hand (see the `/product-shots` skill).
 
@@ -120,10 +171,10 @@ run by hand (see the `/product-shots` skill).
 
 Unlike `tools/printcheck/`, this tool ships no pytest suite and no
 `pyproject.toml` — it is one script invoked by `scripts/product-shot.sh`. Its
-pure functions (`parse_size`, `parse_color`, `finite_float`,
-`srgb_to_linear`, `strip_png_metadata`, the camera solve in `scene()`) are
-unit-testable as they stand, but any end-to-end check needs povray installed,
-which CI does not have — CI only verifies, via `scripts/readme-gate.sh`, that
-every `shots.conf` entry has a committed README-embedded PNG within the size
-budget. Re-rendering an unchanged design and confirming `git status` stays
+pure functions (`parse_size`, `parse_color`, `finite_float`, `srgb_to_linear`,
+`strip_png_metadata`, `solve_camera`) are unit-testable as they stand and do
+not need `bpy` imported, but any end-to-end check needs the Blender module,
+which CI does not install — CI only verifies, via `scripts/readme-gate.sh`,
+that every `shots.conf` entry has a committed README-embedded PNG within the
+size budget. Re-rendering an unchanged design and confirming `git status` stays
 clean is the practical regression test.

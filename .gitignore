@@ -11,7 +11,3 @@ __pycache__/
 
 # setuptools metadata from `pip install -e tools/<tool>`
 *.egg-info/
-
-# POV-Ray's continue-trace file: an interrupted product-shot render drops a
-# multi-MB .pov-state next to the output, inside a tracked previews/ dir
-*.pov-state
