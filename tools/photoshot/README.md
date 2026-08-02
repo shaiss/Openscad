@@ -39,7 +39,7 @@ across them, and these PNGs are committed and diffed.
 | `--rotz` | `35` | orbit angle around the grounded model, degrees |
 | `--elev` | `18` | camera elevation, degrees |
 | `--zoom` | `1.0` | scales an automatic bounding-box fit; must be > 0 |
-| `--size` | `1280x960` | output `WxH` in pixels |
+| `--size` | `1280x960` | output `WxH` in pixels; each dimension must be 4..65536 (Blender's own range — it clamps silently below 4, so a smaller value would render at 4px while the tool reported the size you asked for) |
 | `--layers` | `0.2` | FDM layer-line pitch in mm for the surface texture; `0` or negative = smooth, `nan`/`inf` rejected |
 | `--samples` | `48` | Cycles path-tracing samples; with denoising, more than ~48 buys very little |
 | `--verbose` | off | let Blender's render log through instead of capturing it |
@@ -115,6 +115,13 @@ appends a "Smooth by Angle" geometry-nodes asset, and asset loading never
 completes in the headless `bpy` module — it returns `{'CANCELLED'}` and
 silently smooths nothing. `shade_smooth()` plus the mesh-level
 `set_sharp_from_angle()` gets the same result through the data API.
+
+The threshold (`SMOOTH_ANGLE`) is **15°**, not the 30° that would be the
+obvious default, and the difference matters for honesty. At 30° a `$fn=16`
+cylinder — 22.5° facets — renders perfectly smooth, implying a roundness the
+printed part will not have. At 15°, everything from `$fn=32` up smooths, which
+covers the `$fn >= 64` this repo requires for production curves, while coarse
+iteration values stay visibly faceted.
 
 ## Determinism
 

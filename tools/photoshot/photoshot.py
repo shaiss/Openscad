@@ -54,6 +54,18 @@ CAMERA_ANGLE = 30
 # Breathing room around the fitted bounding box at zoom 1.0.
 FRAME_MARGIN = 1.06
 
+# Blender's own limits on render resolution; see parse_size().
+RESOLUTION_MIN = 4
+RESOLUTION_MAX = 65536
+
+# Faces meeting at less than this smooth together; sharper edges stay crisp.
+# Deliberately below OpenSCAD's coarse tessellations: at 30 degrees a $fn=16
+# cylinder (22.5 degree facets) would render smooth, implying a roundness the
+# printed part will not have. At 15, everything from $fn=32 up smooths — which
+# covers the $fn >= 64 this repo requires for production curves — while coarse
+# iteration values stay visibly faceted, as they should.
+SMOOTH_ANGLE = 15
+
 # Principled BSDF parameters per finish: roughness, specular level, clearcoat
 # weight, clearcoat roughness. Extruded plastic is never mirror-smooth, so even
 # "gloss" keeps some roughness; the coat layer is what reads as a resin sheen.
@@ -103,8 +115,16 @@ def parse_size(s):
         raise argparse.ArgumentTypeError(
             f"bad size {s!r} (want WxH, e.g. 1280x960)"
         ) from e
-    if w < 1 or h < 1:
-        raise argparse.ArgumentTypeError(f"bad size {s!r} (both dimensions must be > 0)")
+    # Blender's resolution_x/y RNA range is 4..65536 and it CLAMPS silently on
+    # assignment, so a smaller value would render at 4px while the tool happily
+    # reported the size that was asked for. Reject it here instead.
+    if not (RESOLUTION_MIN <= w <= RESOLUTION_MAX) or not (
+        RESOLUTION_MIN <= h <= RESOLUTION_MAX
+    ):
+        raise argparse.ArgumentTypeError(
+            f"bad size {s!r} (each dimension must be "
+            f"{RESOLUTION_MIN}..{RESOLUTION_MAX} pixels)"
+        )
     return w, h
 
 
@@ -272,6 +292,10 @@ def build_scene(bpy, stl_paths, colors, args):
     # untouched, and it takes about a quarter off what lands in git.
     scene.render.image_settings.compression = 100
     scene.render.use_stamp = False
+    # Blender otherwise appends ".png" to whatever filepath it is given, so an
+    # output without that suffix would land somewhere the caller never named
+    # and the existence check below would fire on the wrong path.
+    scene.render.use_file_extension = False
     scene.render.threads_mode = "FIXED"
     scene.render.threads = args.threads
     # AgX (Blender 4.x default) is a film emulation that visibly mutes saturated
@@ -316,8 +340,9 @@ def build_scene(bpy, stl_paths, colors, args):
         obj.data.materials.append(filament_material(bpy, color, args))
         bpy.context.view_layer.objects.active = obj
         obj.select_set(True)
-        # Smooth only genuinely curved surfaces; real facets stay faceted, so
-        # the shot cannot imply a smoothness the printed part will not have.
+        # Smooth only finely-tessellated curves (see SMOOTH_ANGLE); coarse
+        # facets stay faceted, so the shot cannot imply a smoothness the
+        # printed part will not have.
         #
         # NOT bpy.ops.object.shade_auto_smooth(): that operator appends a
         # "Smooth by Angle" geometry-nodes asset, and asset loading never
@@ -326,7 +351,7 @@ def build_scene(bpy, stl_paths, colors, args):
         # set_sharp_from_angle() is the same result through the data API.
         bpy.ops.object.shade_smooth()
         if hasattr(obj.data, "set_sharp_from_angle"):
-            obj.data.set_sharp_from_angle(angle=math.radians(30))
+            obj.data.set_sharp_from_angle(angle=math.radians(SMOOTH_ANGLE))
         obj.select_set(False)
 
     studio_floor(bpy, diag)
