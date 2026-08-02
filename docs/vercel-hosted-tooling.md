@@ -93,9 +93,12 @@ column as an upper bound):
 
 ## What is actually worth hosting (ranked)
 
-The Vercel project `openscad` already exists under `shaiss-projects` — it
-has three domains attached, `live: false`, and `openscad-tau.vercel.app`
-currently returns 404. There is a slot waiting for exactly this.
+The Vercel project `openscad` already exists under `shaiss-projects`, and
+it is **already git-connected to this repo** — opening the PR that added
+this document produced a preview deployment automatically. What's missing
+is not wiring but content: `live: false`, and `openscad-tau.vercel.app`
+returns 404 because the repo root has no site to build. There is a slot
+waiting for exactly this, already plumbed.
 
 **Tier 1 — the design site (static, zero compute).** Everything a product
 page needs is already committed: `designs/*/README.md`, `previews/*.png`,
