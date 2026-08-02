@@ -73,8 +73,8 @@ top). Before committing to the full board:
   front-left exclusion zone that clips even the 250 mm lid; the honest
   220 mm-bed answer is a 3×3 board at 192 mm). Reducing `roll_d` alone
   is not enough (`roll_d = 34` still yields a 226 mm lid on 4×4, and
-  the shutter tab spacing stops working below `roll_d ≈ 36` — an
-  assert catches this). Any grid size works; suggested "fleet" for
+  the shutter tab spacing stops working below `roll_d ≈ 35` — the
+  assert hard-stops anything below ~34.9). Any grid size works; suggested "fleet" for
   4×4: one 3-piece roll, two 2-piece rolls, two single nigiri.
 
 ## Key decisions

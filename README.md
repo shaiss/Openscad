@@ -11,10 +11,11 @@ Parametric, 3D-printable designs written in [OpenSCAD](https://openscad.org/).
 - `scripts/check.sh` — fast syntax/geometry validation of every `.scad` file
 - `scripts/lint-scad.sh` — report-only [sca2d](https://gitlab.com/bath_open_instrumentation_group/sca2d) static analysis of first-party `.scad` files
 - `scripts/gate.sh` — render each design's printable parts and gate the STLs with printcheck; `--slice` adds a PrusaSlicer test-slice (this is what CI runs)
-- `templates/design.scad` — starting point for new designs
+- `scripts/readme-gate.sh` — check every design ships a product-page `README.md` (CI runs this too)
+- `templates/design.scad`, `templates/README.md` — starting points for a new design and its product page
 - `tools/printcheck/` — STL printability analyzer (`printcheck build/<name>.stl`); scores rendered models for watertightness, overhangs, thin walls, and bed adhesion before slicing — see its [README](tools/printcheck/README.md)
 
-Each design directory contains the parametric source plus a `NOTES.md` recording its requirements, measurements, and print orientation.
+Each design directory contains the parametric source, a `README.md` product page (what it is, previews, print settings, tunable parameters — start there to print one), and a `NOTES.md` engineering log recording its requirements, measurements, and design decisions.
 
 ## Rendering
 

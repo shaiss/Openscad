@@ -34,6 +34,9 @@ $fa = 4;
 part = "assembled";   // [assembled, bottom, top, door]
 // in "assembled" view, show one shutter slid open and lifted
 demo_open = true;
+// animation for GIF previews, driven by $t (scripts/animate.sh):
+// "shutter" plays a hit on D1 - slide to the end stop, lift out, reveal
+anim = "none";   // [none, shutter]
 
 /* [Board] */
 // columns (letters)
@@ -319,13 +322,14 @@ module lid_body() {
     }
 }
 
-// lid with all shutters captive (this is the print-in-place top)
-module lid_assembly(open_i = -1, open_j = -1, open_lift = 0) {
+// lid with all shutters captive (this is the print-in-place top);
+// open_slide is the opened door's travel as a fraction of full slide
+module lid_assembly(open_i = -1, open_j = -1, open_slide = 1, open_lift = 0) {
     lid_body();
     for (i = [0 : grid_x - 1], j = [0 : grid_y - 1]) {
         opened = (i == open_i && j == open_j);
         translate([cell_cx(i),
-                   cell_cy(j) + (opened ? slide : 0),
+                   cell_cy(j) + (opened ? open_slide * slide : 0),
                    plate_t + (opened ? open_lift : 0)])
             door(cell_label(i, j));
     }
@@ -382,6 +386,16 @@ module tray() {
 // ============================================================
 //  PART SELECTION
 // ============================================================
+// Keyframes for anim="shutter" (assembled view only): hold closed, slide
+// to the end stop, pause, lift straight out, hold revealed.  seg() is the
+// 0..1 progress of $t through [a,b].  With anim="none" the static
+// demo_open pose is unchanged (full slide, lifted 14 mm).  The $t-dependent
+// values are computed inside the assembled block below, not here: top-level
+// assignments evaluate before a command-line -D '$t=...' takes effect.
+function seg(a, b) = min(1, max(0, ($t - a) / (b - a)));
+animating = (anim == "shutter");
+show_open = demo_open || animating;
+
 if (part == "bottom") {
     tray();
 } else if (part == "top") {
@@ -408,15 +422,19 @@ if (part == "bottom") {
             cube([4, lid_y + 2, 40]);
     }
 } else { // assembled
+    a_slide = animating ? seg(0.10, 0.45) : 1;
+    a_lift  = animating ? 14 * seg(0.55, 0.80) : 14;
+
     color("LightSteelBlue") tray();
     translate([0, 0, ledge_z]) {
-        if (demo_open)
-            lid_assembly(open_i = grid_x - 1, open_j = 0, open_lift = 14);
+        if (show_open)
+            lid_assembly(open_i = grid_x - 1, open_j = 0,
+                         open_slide = a_slide, open_lift = a_lift);
         else
             lid_assembly();
     }
     // a sushi piece in the revealed cell, just for the preview
-    if (demo_open && $preview)
+    if (show_open && $preview)
         color("Salmon")
             translate([cell_cx(grid_x - 1), cell_cy(0), floor_t])
                 cylinder(d = roll_d, h = roll_h);
