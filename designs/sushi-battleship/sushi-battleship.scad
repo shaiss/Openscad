@@ -155,6 +155,15 @@ echo(str("Door slide travel: ", slide, " mm"));
 
 eps = 0.01;
 
+// Lips stop this far below the rail top. A lip top exactly coplanar with
+// the rail top leaves a shared-plane strip that the Manifold backend
+// exports as a non-manifold seam (288 bad edges at z = rail top in CI);
+// CGAL papered over the same seam as zero-area triangles. Purely a mesh-
+// hygiene step on the non-functional filler web above the lip slope —
+// engagement geometry (lip_z .. lip_z + lip_d) is untouched.
+lip_top_drop = 0.4;
+assert(rail_ext > lip_top_drop, "lip_top_drop must stay below rail_ext");
+
 // column letter + row number, e.g. "B3"
 function cell_label(i, j) = str(chr(65 + i), j + 1);
 function cell_cx(i) = (i - (grid_x - 1)/2) * pitch;
@@ -249,8 +258,8 @@ module lid_body() {
                         linear_extrude(tab_len)
                             polygon([[s*eps, lip_z],
                                      [-s*lip_d, lip_z + lip_d],
-                                     [-s*lip_d, rail_h],
-                                     [s*eps, rail_h]]);
+                                     [-s*lip_d, rail_h - lip_top_drop],
+                                     [s*eps, rail_h - lip_top_drop]]);
 
             // door end-stop ridges on every row boundary (kept narrower than
             // the door body so they never reach the tab/lip zone, and a full

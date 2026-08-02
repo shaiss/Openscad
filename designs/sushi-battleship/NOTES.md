@@ -269,3 +269,13 @@ door grip bar already used. No external dimension changed; the top still
 exports as lid + 16 free doors (17 shells, 18 CGAL volumes) and must stay
 watertight under BOTH engines — CI checks Manifold, `gate.sh` locally
 typically checks CGAL.
+
+Round 2: burial alone left 288 non-manifold edges at the lip tops
+(printcheck's cluster report pinpointed x = rail faces, z = rail top) —
+lip tops exactly coplanar with the rail top are a shared-plane strip that
+Manifold exports as a seam and CGAL as 192 zero-area triangles. Lips now
+stop `lip_top_drop` (0.4 mm) below the rail top; the filler web above the
+lip slope is non-functional, engagement geometry unchanged. CGAL export
+now has ZERO degenerate triangles (was 192) and the top scores 84/100.
+Rule of thumb going forward: no feature may share an exact plane or face
+with a sibling it isn't eps-buried into.
