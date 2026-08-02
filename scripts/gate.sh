@@ -87,7 +87,9 @@ gate_one() {
   local stls=()
   if [[ -f "designs/${name}/ci.parts" ]]; then
     local part
-    while read -r part; do
+    # `|| [[ -n "$part" ]]`: without it a ci.parts whose last line has no
+    # trailing newline loses that part from the gate entirely.
+    while read -r part || [[ -n "$part" ]]; do
       [[ -z "$part" || "$part" == \#* ]] && continue
       local stl="build/${name}-${part}.stl"
       echo "== ${name} (part=${part}): render =="

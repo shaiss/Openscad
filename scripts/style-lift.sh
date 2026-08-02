@@ -25,6 +25,10 @@
 # ./scripts/style-check.sh <name>. See .claude/skills/style-spec/SKILL.md.
 set -euo pipefail
 
+# Reference paths on the command line are the caller's, so remember where the
+# caller was before moving to the repo root: resolving "thing.stl" against the
+# root would measure a different file, or none.
+ORIG_PWD="$PWD"
 cd "$(dirname "$0")/.."
 mkdir -p build
 # lib/ resolves `use <printability.scad>`; the repo root resolves
@@ -92,8 +96,10 @@ command -v stylelift >/dev/null || {
   echo "       (or run .claude/hooks/session-start.sh --force)" >&2
   exit 2; }
 
-for ref in "${refs[@]}"; do
-  [[ -f "$ref" ]] || { echo "error: reference '$ref' not found" >&2; exit 2; }
+for i in "${!refs[@]}"; do
+  [[ "${refs[i]}" = /* ]] || refs[i]="${ORIG_PWD}/${refs[i]}"
+  [[ -f "${refs[i]}" ]] \
+    || { echo "error: reference '${refs[i]}' not found" >&2; exit 2; }
 done
 
 echo "== lifting style '${NAME}' from ${#refs[@]} reference(s) =="

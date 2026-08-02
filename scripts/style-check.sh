@@ -35,12 +35,20 @@ command -v stylelift >/dev/null || {
 fail=0
 checked=0
 
-render() {  # src out [-D...] -> 0/1, quiet on success
+render() {  # src out [-D...] -> 0/1, quiet on a clean render
   local src="$1" out="$2"; shift 2
   local err
   if ! err="$(xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
       -o "$out" "$@" "$src" 2>&1)"; then
     tail -20 <<<"$err" >&2
+    return 1
+  fi
+  # A swatch that references a token no longer in style.json still renders and
+  # still exits 0 — OpenSCAD only warns, substitutes undef, and quietly drops
+  # the geometry. Certifying that "IN STYLE" would be the worst kind of green.
+  # check.sh treats WARNING the same way for every other .scad in the repo.
+  if grep -qE "WARNING|ERROR" <<<"$err"; then
+    grep -E "WARNING|ERROR" <<<"$err" | head -10 | sed 's/^/      /' >&2
     return 1
   fi
   return 0
@@ -133,7 +141,9 @@ check_design() {
   # render of the entry file.
   local src="${dir}/${name}.scad" stls=() part stl
   if [[ -f "${dir}/ci.parts" ]]; then
-    while read -r part; do
+    # `|| [[ -n "$part" ]]`: read returns non-zero on a final line with no
+    # trailing newline, which would silently drop that part from the check.
+    while read -r part || [[ -n "$part" ]]; do
       [[ -z "$part" || "$part" == \#* ]] && continue
       stl="build/${name}-${part}.stl"
       if render "$src" "$stl" -D "part=\"${part}\""; then
@@ -192,7 +202,7 @@ else
   done
 fi
 
-if [[ "$checked" == 0 ]]; then
+if [[ ${#names[@]} -eq 0 && "$checked" == 0 ]]; then
   echo "no styles to check (styles/ is empty) — ./scripts/style-lift.sh <name> <ref.stl>"
 fi
 exit "$fail"

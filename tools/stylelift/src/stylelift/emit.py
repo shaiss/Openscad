@@ -90,12 +90,19 @@ def _rules_table(spec: StyleSpec) -> list[str]:
 
 def _tokens_table(spec: StyleSpec) -> list[str]:
     rows = ["| Token | Value | What it is |", "|---|---|---|"]
+    # Same numeric/string branch as render_tokens: a hand-edited style.json may
+    # carry a string token, and a table that crashes on it would take the whole
+    # style gate down over a documentation detail.
+    def show(value) -> str:
+        return f"{value:g}" if isinstance(value, (int, float)) else str(value)
+
     for key, unit, blurb in SCAD_TOKENS:
         if key in spec.tokens:
-            rows.append(f"| `style_{key}` | {spec.tokens[key]:g} {unit} | {blurb} |")
+            rows.append(
+                f"| `style_{key}` | {show(spec.tokens[key])} {unit} | {blurb} |")
     for key, value in spec.tokens.items():
         if key not in {t[0] for t in SCAD_TOKENS}:
-            rows.append(f"| `{key}` | {value:g} | target the checker compares "
+            rows.append(f"| `{key}` | {show(value)} | target the checker compares "
                         "against, not a number you build with |")
     return rows
 
@@ -206,7 +213,7 @@ def render_style_md(spec: StyleSpec) -> str:
         "Then check the result before calling it done:",
         "",
         "```bash",
-        f"./scripts/style-check.sh --style {spec.name} build/<part>.stl",
+        f"stylelift check build/<part>.stl --style styles/{spec.name}",
         "```",
         "",
         "## Swatch",
