@@ -18,7 +18,8 @@ Two tiers, in order:
    key/fill/rim lighting, glossy floor with contact shadows, plastic
    material with FDM layer lines. Re-rendering an unchanged design
    reproduces the committed PNG pixel for pixel, so shots diff cleanly
-   across review rounds — if a shot changes, the geometry changed. That
+   across review rounds: hold the manifest, the scene code and the
+   toolchain still, and a shot that moves means the geometry moved. That
    costs render time (radiosity is single-threaded to stay reproducible;
    expect tens of seconds for a small part, minutes for a large one).
 2. **AI-restyled lifestyle shot (optional — only when the session has an

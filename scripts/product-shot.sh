@@ -100,13 +100,15 @@ shoot_one() {
     fi
 
     echo "== ${design}: ${name}.png =="
-    local dargs=() d
-    for d in $defines; do dargs+=(-D "$d"); done
+    # Split the defines field on whitespace WITHOUT globbing: an unquoted
+    # expansion would let a define like part=*.scad match filenames.
+    local dargs=() d parts=()
+    read -r -a parts <<<"$defines"
+    for d in "${parts[@]}"; do dargs+=(-D "$d"); done
 
     # OpenSCAD's CGAL statistics are noise here, so the log is kept quiet on
-    # success — but diagnostics are never swallowed: warnings are echoed
-    # (a shot is only "geometry-true" if the export was clean) and the whole
-    # log is dumped when the export fails.
+    # success — but diagnostics are never swallowed: a shot is only
+    # "geometry-true" if the export was clean.
     local log="${tmpdir}/openscad.log"
     if ! xvfb-run -a openscad -o "${tmpdir}/part.stl" "${dargs[@]}" "$src" \
          >"$log" 2>&1; then
@@ -114,7 +116,16 @@ shoot_one() {
       cat "$log" >&2
       return 1
     fi
-    grep -E '^(WARNING|ERROR):' "$log" >&2 || true
+    # Warnings are advisory, but an ERROR must not become a product shot:
+    # OpenSCAD reports CGAL failures on stderr and still exits 0, so the
+    # exit status above cannot be the only check. Rendering past one would
+    # publish a hero image of geometry the printable part doesn't have.
+    grep -E '^WARNING:' "$log" >&2 || true
+    if grep -q '^ERROR:' "$log"; then
+      echo "error: openscad reported errors exporting ${design} (${name}):" >&2
+      grep -E '^ERROR:' "$log" >&2
+      return 1
+    fi
 
     local png="${outdir}/${name}.png"
     python3 tools/photoshot/photoshot.py "${tmpdir}/part.stl" -o "$png" \

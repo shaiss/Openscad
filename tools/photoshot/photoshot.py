@@ -88,19 +88,34 @@ def parse_size(s):
         raise argparse.ArgumentTypeError(f"bad size {s!r} (want WxH, e.g. 1280x960)")
     try:
         w, h = (int(p) for p in parts)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"bad size {s!r} (want WxH, e.g. 1280x960)")
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(
+            f"bad size {s!r} (want WxH, e.g. 1280x960)"
+        ) from e
     if w < 1 or h < 1:
         raise argparse.ArgumentTypeError(f"bad size {s!r} (both dimensions must be > 0)")
     return w, h
 
 
-def positive_float(s):
-    """Parse a float that must be greater than zero (camera zoom, scales)."""
+def finite_float(s):
+    """Parse a float, rejecting nan/inf.
+
+    float() happily accepts "nan" and "inf"; both reach the camera solve and
+    turn into unusable coordinates (nan silently, inf as a ValueError deep in
+    scene generation) rather than a readable argument error.
+    """
     try:
         v = float(s)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"{s!r} is not a number")
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"{s!r} is not a number") from e
+    if not math.isfinite(v):
+        raise argparse.ArgumentTypeError(f"must be a finite number, got {s!r}")
+    return v
+
+
+def positive_float(s):
+    """Parse a finite float that must be greater than zero (camera zoom)."""
+    v = finite_float(s)
     if v <= 0:
         raise argparse.ArgumentTypeError(f"must be greater than 0, got {v}")
     return v
@@ -295,8 +310,12 @@ def main():
         help="#rrggbb per STL, in order (default: one warm orange)",
     )
     ap.add_argument("--finish", choices=FINISHES, default="satin")
-    ap.add_argument("--rotz", type=float, default=35, help="orbit angle, degrees")
-    ap.add_argument("--elev", type=float, default=18, help="camera elevation, degrees")
+    ap.add_argument(
+        "--rotz", type=finite_float, default=35, help="orbit angle, degrees"
+    )
+    ap.add_argument(
+        "--elev", type=finite_float, default=18, help="camera elevation, degrees"
+    )
     ap.add_argument("--zoom", type=positive_float, default=1.0)
     ap.add_argument("--size", default="1280x960", type=parse_size, help="WxH pixels")
     ap.add_argument(
