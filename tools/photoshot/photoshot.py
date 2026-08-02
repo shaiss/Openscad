@@ -320,9 +320,15 @@ def main():
     ap.add_argument("--size", default="1280x960", type=parse_size, help="WxH pixels")
     ap.add_argument(
         "--layers",
-        type=float,
+        # finite_float, not plain float, for the same reason --rotz and --elev
+        # use it: float() accepts "inf", and a positive infinity passes the
+        # `layer_h > 0` guard in mesh2_block() and lands in the generated POV
+        # source as `scale <1,1,inf>`. (nan and negatives fail that guard and
+        # merely render smooth — silently, which the help text now states.)
+        type=finite_float,
         default=0.2,
-        help="FDM layer-line height in mm for the surface texture (0 = smooth)",
+        help="FDM layer-line height in mm for the surface texture "
+        "(0 or negative = smooth)",
     )
     ap.add_argument("--no-radiosity", action="store_true", help="faster, flatter light")
     ap.add_argument(
