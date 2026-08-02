@@ -86,6 +86,22 @@ for f in scripts/*; do
   grep -qE "$pat" README.md || err "scripts/${b} not mentioned in README.md"
 done
 
+# 6. Same canary for lib/: every first-party library is named in CLAUDE.md and
+#    README.md, and ships the demo CLAUDE.md requires. Written as a check
+#    rather than trusted to review because that rule had no enforcement at all
+#    — threads-fdm.scad landed while README's lib/ bullet still said the only
+#    shared module was printability.scad. lib/*.scad is the top level only, so
+#    vendored lib/BOSL2/ is excluded by the glob; *-demo.scad files are the
+#    artifacts of the rule, not subjects of it.
+for f in lib/*.scad; do
+  b="$(basename "$f" .scad)"
+  [[ "$b" == *-demo ]] && continue
+  grep -qF "lib/${b}.scad" CLAUDE.md || err "lib/${b}.scad not named in CLAUDE.md"
+  grep -qF "${b}.scad" README.md || err "lib/${b}.scad not named in README.md"
+  [[ -f "lib/${b}-demo.scad" ]] \
+    || err "lib/${b}.scad has no lib/${b}-demo.scad (CLAUDE.md requires one per first-party library)"
+done
+
 if [[ "$fail" == 0 ]]; then
   echo "ok    docs match the tree"
 fi

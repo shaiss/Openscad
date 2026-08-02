@@ -66,6 +66,13 @@ All commands run from the repo root.
 # Regenerate the README design gallery (check.sh fails when it's stale)
 ./scripts/gallery.sh
 
+# Calling openscad directly means setting OPENSCADPATH yourself — the scripts
+# above do it for you. Without it a `use <printability.scad>` / `use
+# <threads-fdm.scad>` silently resolves to nothing: OpenSCAD only WARNs about
+# the unknown modules, exits 0, and hands you a watertight sliceable STL with
+# the features missing (the capsule comes out with a threadless neck).
+export OPENSCADPATH="$PWD/lib"
+
 # Render a design to STL manually (full CGAL render, catches geometry errors)
 xvfb-run -a openscad -o build/<name>.stl designs/<name>/<name>.scad
 

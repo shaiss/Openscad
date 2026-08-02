@@ -25,10 +25,14 @@ translate([45, 0, 0]) {
     translate([0, 0, 3]) thread_neck(d_major, depth, pitch, starts, neck);
 }
 
-// 3. Matching female bore, cut out of a lid blank. Cut away one quadrant so
-//    the groove profile is visible in the render.
+// 3. Matching female bore, cut out of a lid blank — the worked example the
+//    thread_bore_cut() doc points at. Cut away one quadrant so the groove
+//    profile is visible in the render.
 translate([90, 0, 0]) difference() {
     cylinder(d = d_major + 2 * tol + 4, h = neck + 2);
+    // MANDATORY, not incidental: thread_bore_cut() cuts the groove only. Drop
+    // this line and the lid is a solid plug — it still renders, slices and
+    // passes the gate, it just cannot go on the neck.
     translate([0, 0, -0.01])
         cylinder(d = d_major - 2 * depth + 2 * tol, h = neck + 2.02);
     thread_bore_cut(d_major, depth, pitch, starts, neck, tol, over = 0.4);
