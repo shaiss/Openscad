@@ -12,9 +12,9 @@ OpenSCAD (2021.01) runs headless here — there is no display, so every invocati
 
 The scripts honor `OPENSCAD_BIN` (default `openscad`) and `OPENSCAD_ARGS`: CI's render gate runs the dev snapshot with `OPENSCAD_BIN=openscad-nightly OPENSCAD_ARGS=--backend=manifold` (order-of-magnitude faster full renders), while the stable 2021.01 check job keeps designs compatible with the release build. Locally the default is whatever `openscad` is installed; don't use nightly-only flags (like `--backend`) in scripts or designs without going through `OPENSCAD_ARGS`.
 
-The SessionStart hook (`.claude/hooks/session-start.sh`) installs the full toolchain: openscad, xvfb, imagemagick, prusa-slicer, and printcheck (with pytest). If any of those commands is missing mid-session, run `.claude/hooks/session-start.sh --force` rather than working around the gap (`--force` is needed outside Claude Code on the web, where the hook otherwise no-ops) — `gate.sh --slice` must be runnable locally.
+The SessionStart hook (`.claude/hooks/session-start.sh`) installs the full toolchain: openscad, xvfb, imagemagick, prusa-slicer, printcheck and stylelift (with pytest). If any of those commands is missing mid-session, run `.claude/hooks/session-start.sh --force` rather than working around the gap (`--force` is needed outside Claude Code on the web, where the hook otherwise no-ops) — `gate.sh --slice` must be runnable locally.
 
-Set `OPENSCADPATH="$PWD/lib"` (the scripts do this automatically) so library includes resolve. Available libraries:
+Set `OPENSCADPATH="$PWD/lib:$PWD"` (the scripts do this automatically): `lib/` resolves library includes, and the repo root resolves `include <styles/<name>/style.scad>`. Available libraries:
 
 - **BOSL2** (vendored at `lib/BOSL2/`) — `include <BOSL2/std.scad>`. Use for fillets/roundings (`cuboid`, `cyl`), attachments, threads (`include <BOSL2/screws.scad>`), gears, and anything geometrically hard. Prefer it over hand-rolled hulls for rounded/filleted parts.
 - **MCAD** (system-installed) — `include <MCAD/...>`.
@@ -64,6 +64,15 @@ All commands run from the repo root.
 # Regenerate the README design gallery (check.sh fails when it's stale)
 ./scripts/gallery.sh
 
+# Lift a design style out of a reference mesh into styles/<name>/ — the
+# measured spec later designs build from and are checked against
+./scripts/style-lift.sh <name> <reference.stl> --source <url> --license <terms>
+./scripts/style-lift.sh --list
+
+# Gate the style packs (tokens in sync, swatch renders and obeys its own
+# rules) and every design that names a style in designs/<name>/style.conf
+./scripts/style-check.sh [<style-or-design>...]
+
 # Render a design to STL manually (full CGAL render, catches geometry errors)
 xvfb-run -a openscad -o build/<name>.stl designs/<name>/<name>.scad
 
@@ -83,6 +92,7 @@ Workflow skills (`.claude/skills/`):
 - **`/new-design <name>`** — scaffolds `designs/<name>/` with everything CI and reviewers expect: entry `.scad` from the template, NOTES.md, `ci.parts` / `printcheck.args` when relevant, then first-renders it.
 - **`/product-shots [name]`** — gives the product page its real-world-looking hero image: writes `shots.conf`, raytraces the studio product shot, embeds it in the README, plus an optional AI-restyled lifestyle scene when the session has an image-generation tool.
 - **`/resume-design <name>`** — picks an existing design up cold: reads the recorded state (NOTES.md and friends), verifies it against fresh renders and the gate before trusting it, then briefs the human on where the design stands.
+- **`/style-spec [reference.stl] [name]`** — translates a model the user likes into a committed, checkable style under `styles/<name>/`, so later design work can be told which style to build in instead of leaving the look to chance. The tool measures; the skill covers the judgement (which measurements are the family, and what an STL can never carry).
 
 ## Repository layout
 
@@ -92,9 +102,11 @@ Workflow skills (`.claude/skills/`):
 - `designs/<name>/shots.conf` — optional product-shot manifest (format documented in `scripts/product-shot.sh`). Each entry raytraces the exported STL into a committed `previews/<shot>.png` studio product shot for the README — the hero image a stranger sees first. The gate checks every entry has its PNG, embedded in the README, within the size budget. Shots are geometry-true (rendered from the same STL export the printable part uses), so they can never show a feature the print doesn't have, and re-rendering an unchanged design reproduces the committed PNG pixel for pixel.
 - `lib/` — shared OpenSCAD modules. With `OPENSCADPATH` set, designs reference them as `use <printability.scad>` / `include <BOSL2/std.scad>`. Anything used by two or more designs belongs here. `lib/BOSL2/` is vendored third-party code — never edit it.
 - `build/` — generated STLs and PNGs; gitignored. STLs are regenerated from source, never hand-edited or committed.
-- `scripts/` — the full toolchain: `render.sh`, `check.sh`, `gate.sh`, `readme-gate.sh`, `animate.sh`, `gallery.sh`, `lint-scad.sh` (all described above), plus `docs-check.sh` (docs-drift assertions, run by check.sh), `gate-summary.py` (turns a gate.sh log into the markdown table CI posts as the job summary and sticky PR comment) and `preview-budget.sh` (sourced helper defining the GIF size budget).
+- `scripts/` — the full toolchain: `render.sh`, `check.sh`, `gate.sh`, `readme-gate.sh`, `animate.sh`, `gallery.sh`, `style-lift.sh`, `style-check.sh`, `lint-scad.sh` (all described above), plus `docs-check.sh` (docs-drift assertions, run by check.sh), `gate-summary.py` (turns a gate.sh log into the markdown table CI posts as the job summary and sticky PR comment) and `preview-budget.sh` (sourced helper defining the GIF size budget).
+- `styles/<name>/` — a **design language** lifted from a reference model, so a user can choose how a new design looks instead of getting whatever the session felt like. `STYLE.md` is the spec a modelling session reads; `style.json` is the hand-edited source of truth (measured evidence, tokens, conformance rules); `style.scad` and STYLE.md's tables are **generated** from it (`stylelift sync`); `swatch.scad` is a small part written in the style that the gate holds to the style's own rules. Designs opt in with `designs/<name>/style.conf` naming the style, and build from the tokens: `include <styles/<name>/style.scad>`. `styles/README.md` is the catalog — docs-check.sh requires every pack to be listed. Never hand-edit `style.scad`; `style-check.sh` fails on drift.
 - `templates/design.scad` — starting point for new designs; demonstrates the parameter conventions below.
 - `tools/printcheck/` — the STL printability analyzer gate.sh runs on every rendered part; has its own README and pytest suite (CI runs it when the tool changes).
+- `tools/stylelift/` — measures how a mesh is *shaped* (edge softness, the rounding vocabulary, chamfer grammar, feature sizes, proportion) and turns that into a style pack; `stylelift check` holds a new part to one. Has its own README and pytest suite (CI runs it when the tool changes). It deliberately does not judge printability — that stays printcheck's job.
 - `docs/` — repo-level research and reference notes (e.g. `oss-libraries-research.md`, the OSS-library evaluation behind the adoption backlog).
 - `audits/` — preserved before/after render comparisons from design review rounds (e.g. `audits/pr3/`). Review history: keep it, never treat it as disposable scratch.
 
@@ -108,6 +120,7 @@ Workflow skills (`.claude/skills/`):
   - Holes for fasteners get 0.2–0.4 mm diameter clearance; press-fit and sliding fits get explicit tolerance parameters so the user can tune for their printer.
   - Avoid features thinner than 0.8 mm (2 extrusion widths).
 - **Frozen preview cameras.** A design whose previews are reviewed across rounds keeps its shots in `designs/<name>/previews/`, driven by `previews/cameras.conf` (rendered via `./scripts/render.sh <name> --previews`; format documented in `scripts/render.sh`) with per-shot descriptions in `previews/CAMERAS.md`. Once a reviewer has seen a shot its camera is **frozen** — before/after comparisons across rounds must align — so a new region gets a new cameras.conf line; never move or reframe an existing one. The same policy applies to `animations.conf` entries.
+- **Following a style.** A design that declares one in `designs/<name>/style.conf` must build from that style's tokens (`include <styles/<name>/style.scad>`) rather than retyping its numbers — then it satisfies the style's rules by construction, and `./scripts/style-check.sh` proves it on every printable part. A style is a constraint on *look*, not on printability: when the two conflict, printability wins and the exception gets recorded in NOTES.md.
 - Designs may carry extra per-design docs beyond NOTES.md when a work phase needs its own brief — e.g. `sushi-battleship/HARDENING.md`, the review-round hardening work plan. They are preserved history, same as NOTES.md: keep them current or mark them closed, don't delete them.
 - Designs with a tuned fit (threads, sliding doors, press-fits) ship a **"print this first" coupon**: `designs/<name>/<name>-coupon.scad`, a ≤10-line include-and-override wrapper on the production modules — never copied geometry — plus a "Print this first" section in NOTES.md saying what to tune and in what steps. The wrapper relies on OpenSCAD's include-then-override semantics: keep the overrides above any geometry statements. `gate.sh` picks the wrapper up automatically and gates `build/<name>-coupon.stl` (printcheck + test-slice) like any other part.
 - A design is not done until `render.sh <name>` succeeds (STL render completes without CGAL errors, PNG visually checked) **and** `gate.sh --slice <name>` exits 0 — printcheck watertightness/printability plus a PrusaSlicer test-slice. That is the bar CI enforces; `render.sh` alone is not it.
@@ -116,7 +129,7 @@ Workflow skills (`.claude/skills/`):
 
 This repo is used in a session-per-design pattern: the user starts a fresh session, brings one design idea, iterates on it here, and the finished design is committed back. Follow this loop:
 
-1. **Brief.** Get the essentials before modeling: what the part does, the dimensions that matter (what it must fit/hold — ask for measurements), and anything printer-specific. Don't block on details you can default sensibly; state your assumptions.
+1. **Brief.** Get the essentials before modeling: what the part does, the dimensions that matter (what it must fit/hold — ask for measurements), and anything printer-specific. Don't block on details you can default sensibly; state your assumptions. If the user cares how it *looks* — or shows you a model they like — settle the style here: pick one from `styles/` (`./scripts/style-lift.sh --list`), or lift a new one from their reference with `/style-spec` before modeling starts. Retrofitting a look onto a finished design means redoing the geometry.
 2. **Scaffold.** Pick a kebab-case name, copy `templates/design.scad` to `designs/<name>/<name>.scad`, copy `templates/README.md` to `designs/<name>/README.md` (the product page — fill it in as the design takes shape; CI's readme-gate rejects designs without one), and create `designs/<name>/NOTES.md` recording: the goal, given measurements, key decisions, and intended print orientation. NOTES.md is what lets a later session resume the design cold — keep it current as decisions are made.
 3. **Iterate preview-first.** After each meaningful change, run `./scripts/render.sh <name>` and send the user `build/<name>.png` (SendUserFile) so they react to the shape, not the code. Look at the bottom-iso view yourself for overhang/bed-contact problems before sending.
 4. **Finish.** Complete the product page scaffolded in step 2 (commit the preview images it shows under `designs/<name>/previews/`). Give the page a real product shot: add a `shots.conf`, run `./scripts/product-shot.sh <name>` (see `/product-shots`), and lead the README with the result. A design is done when the user approves the preview and `/preflight` comes back green — that skill defines the check set (it mirrors CI), so don't keep a competing list here. Send the final STL to the user as well — it's the deliverable they'll slice.

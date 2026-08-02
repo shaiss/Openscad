@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Fast validation of every .scad file in the repo (no STL output).
-#   1. Syntax/eval check of all designs and lib files (echo export — seconds)
+#   1. Syntax/eval check of all designs, lib, template and style files
+#      (echo export — seconds)
 #   2. Full CGAL render of the lib demo to catch geometry regressions
 #   3. Docs-drift check (scripts/docs-check.sh): docs must match the tree
 # Run before committing. For full STL+PNG output use scripts/render.sh.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-export OPENSCADPATH="$PWD/lib"
+# lib/ resolves `use <printability.scad>`; the repo root resolves
+# `include <styles/<name>/style.scad>` (see scripts/style-lift.sh).
+export OPENSCADPATH="$PWD/lib:$PWD"
 
 # OPENSCAD_BIN selects the binary (e.g. openscad-nightly); OPENSCAD_ARGS
 # passes extra flags (e.g. --backend=manifold — nightly-only, 2021.01 has
@@ -36,7 +39,7 @@ check() {
 }
 
 shopt -s nullglob
-for f in designs/*/*.scad lib/*.scad templates/*.scad; do
+for f in designs/*/*.scad lib/*.scad templates/*.scad styles/*/*.scad; do
   check "$f"
 done
 
