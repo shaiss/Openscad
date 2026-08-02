@@ -47,7 +47,9 @@ The scripts expect: `openscad`, `xvfb-run` (headless rendering — the
 scripts wrap every OpenSCAD call in `xvfb-run -a` themselves; you only need
 the prefix for raw `openscad` commands you run by hand), ImageMagick
 (`montage`, for preview sheets), `prusa-slicer` (for `gate.sh --slice`),
-and [printcheck](tools/printcheck/) (`pip install -e tools/printcheck`).
+`povray` plus Python `trimesh` (for `product-shot.sh`; trimesh comes with
+printcheck), and [printcheck](tools/printcheck/)
+(`pip install -e tools/printcheck`).
 
 ## How designs get made
 

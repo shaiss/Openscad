@@ -39,6 +39,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export OPENSCADPATH="$PWD/lib"
 
+# OPENSCAD_BIN selects the binary (e.g. openscad-nightly); OPENSCAD_ARGS
+# passes extra flags (e.g. --backend=manifold). Same contract as render.sh
+# and gate.sh, so a shot is exported by the same toolchain that gates it.
+OPENSCAD_BIN="${OPENSCAD_BIN:-openscad}"
+read -ra OSC_ARGS <<<"${OPENSCAD_ARGS:-}"
+
 # shellcheck source=scripts/preview-budget.sh
 . scripts/preview-budget.sh          # defines MAX_SHOT_BYTES
 MIN_SHOT_BYTES=20480                 # smaller than this = blank render
@@ -70,8 +76,9 @@ shoot_one() {
   # failed export must not strand a multi-hundred-MB STL in /tmp.
   local tmpdir
   tmpdir="$(mktemp -d)"
-  # shellcheck disable=SC2064  # expand tmpdir now: it is gone at trap time
-  trap "rm -rf '$tmpdir'" RETURN
+  # Single quotes on purpose: $tmpdir is read when the trap fires, so a
+  # TMPDIR containing shell syntax can't be interpolated into the command.
+  trap 'rm -rf -- "$tmpdir"' RETURN
 
   local line
   # `|| [[ -n ... ]]`: don't silently drop a final manifest line that lacks
@@ -110,8 +117,8 @@ shoot_one() {
     # success — but diagnostics are never swallowed: a shot is only
     # "geometry-true" if the export was clean.
     local log="${tmpdir}/openscad.log"
-    if ! xvfb-run -a openscad -o "${tmpdir}/part.stl" "${dargs[@]}" "$src" \
-         >"$log" 2>&1; then
+    if ! xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
+         -o "${tmpdir}/part.stl" "${dargs[@]}" "$src" >"$log" 2>&1; then
       echo "error: openscad failed exporting ${design} (${name}):" >&2
       cat "$log" >&2
       return 1
