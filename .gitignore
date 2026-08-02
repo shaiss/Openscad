@@ -8,3 +8,7 @@ build/
 # Python bytecode (tools/photoshot, tools/printcheck)
 __pycache__/
 *.pyc
+
+# POV-Ray's continue-trace file: an interrupted product-shot render drops a
+# multi-MB .pov-state next to the output, inside a tracked previews/ dir
+*.pov-state

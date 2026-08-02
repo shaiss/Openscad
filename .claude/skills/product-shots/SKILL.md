@@ -42,6 +42,12 @@ Two tiers, in order:
    - Camera is `rotz,elev,zoom`: three-quarter views (rotz 25–45,
      elev 12–25) read as product photography; flat wide parts want more
      elevation. Start at `35,18,0.85` and iterate.
+   - `zoom` scales an automatic fit, so it means the same thing on every
+     design regardless of size: 1.0 frames the part's bounding box with a
+     small margin, below 1.0 pulls back for more room, above 1.0 crops in.
+     The fit solves both the horizontal and vertical field of view, so a
+     tall part cannot silently lose its top edge — you do not have to
+     hand-check framing per design, only judge it.
    - Like `animations.conf`, entries are FIXED across review rounds so
      before/after images align — add a new entry rather than moving one.
 

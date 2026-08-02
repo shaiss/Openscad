@@ -38,6 +38,12 @@ from pathlib import Path
 
 import trimesh
 
+# Horizontal field of view in degrees. A mild telephoto keeps product-shot
+# perspective flattering; the vertical FOV follows from the output aspect.
+CAMERA_ANGLE = 30
+# Breathing room around the fitted bounding box at zoom 1.0.
+FRAME_MARGIN = 1.06
+
 FINISHES = {
     # diffuse, specular, roughness, reflection min/max
     "satin": (0.72, 0.30, 0.012, 0.015, 0.05),
@@ -174,12 +180,53 @@ def scene(meshes, args):
 
     az = math.radians(args.rotz)
     el = math.radians(args.elev)
-    dist = diag * 2.1 / args.zoom
-    cx = dist * math.cos(el) * math.sin(az)
-    cy = -dist * math.cos(el) * math.cos(az)
-    cz = ez * 0.45 + dist * math.sin(el)
-    look = f"<0,0,{ez * 0.42:.3f}>"
     w, h = args.size
+
+    # POV-Ray's `angle` is the HORIZONTAL field of view — it is measured along
+    # the `right` vector. On a 4:3 frame the vertical FOV is only 3/4 as wide,
+    # so sizing the camera from the horizontal angle alone crops tall parts off
+    # the top of the frame with no error anywhere. Both axes are fitted below.
+    hhalf = math.radians(CAMERA_ANGLE) / 2
+    vhalf = math.atan(math.tan(hhalf) * h / w)
+
+    # Camera basis. The orbit direction depends only on rotz/elev, so the
+    # framing distance can be solved for afterwards. `sky z` fixes the roll,
+    # which makes `right` the horizontal in the xy-plane.
+    look_z = ez * 0.42
+    ux = math.cos(el) * math.sin(az)
+    uy = -math.cos(el) * math.cos(az)
+    uz = math.sin(el)
+    fwd = (-ux, -uy, -uz)
+    rlen = math.hypot(-uy, ux) or 1.0
+    right_v = (-uy / rlen, ux / rlen, 0.0)
+    up_v = (
+        right_v[1] * fwd[2] - right_v[2] * fwd[1],
+        right_v[2] * fwd[0] - right_v[0] * fwd[2],
+        right_v[0] * fwd[1] - right_v[1] * fwd[0],
+    )
+
+    # Push the camera back until every bounding-box corner is inside both FOVs.
+    # A corner nearer the camera (negative depth) needs more distance, hence the
+    # subtraction; zoom then scales the whole framing.
+    need = 0.0
+    for sx in (-ex / 2, ex / 2):
+        for sy in (-ey / 2, ey / 2):
+            for sz in (0.0, ez):
+                v = (sx, sy, sz - look_z)
+                depth = sum(v[i] * fwd[i] for i in range(3))
+                hoff = abs(sum(v[i] * right_v[i] for i in range(3)))
+                voff = abs(sum(v[i] * up_v[i] for i in range(3)))
+                need = max(
+                    need,
+                    hoff / math.tan(hhalf) - depth,
+                    voff / math.tan(vhalf) - depth,
+                )
+    dist = need * FRAME_MARGIN / args.zoom
+
+    cx = dist * ux
+    cy = dist * uy
+    cz = look_z + dist * uz
+    look = f"<0,0,{look_z:.3f}>"
     key = diag * 1.5
 
     blocks = "".join(mesh2_block(m, c, args.finish, args.layers) for m, c in meshes)
@@ -199,7 +246,7 @@ camera {{
   look_at {look}
   right -x*{w}/{h}
   up z
-  angle 30
+  angle {CAMERA_ANGLE}
 }}
 
 // seamless white-studio environment (also the radiosity light bath)
