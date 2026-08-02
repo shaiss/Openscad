@@ -20,7 +20,7 @@ Set `OPENSCADPATH="$PWD/lib"` (the scripts do this automatically) so library inc
 - **MCAD** (system-installed) — `include <MCAD/...>`.
 - **`lib/printability.scad`** — repo-local FDM helpers: `screw_hole()` (plain/socket/countersunk, M2–M6 presets), `teardrop_hole()` (support-free horizontal holes), `heatset_boss()`, `chamfered_cylinder()`, `rounded_box()`. Lightweight and fast; reach for these before BOSL2 for simple fastener work.
 - **`lib/threads-fdm.scad`** — printable trapezoidal threads for vertical bores: `thread_helix()` (the generator), `thread_neck()` (male, with lead-in chamfer), `thread_bore_cut()` (the matching female cutter), `flank_add()` (the clearance derivation). 45° flanks so both halves print supportless, one tunable radial `tol`, and both profiles from one generator so male and female cannot drift apart. Use it over BOSL2's `screws.scad` for printed threads; use BOSL2 for machine threads.
-- Each library ships a `lib/<name>-demo.scad` exercising every module; `check.sh` CGAL-renders all of them, so they are the libraries' regression tests. Add one with any new library.
+- Each **first-party** library (the `lib/*.scad` files above; not vendored BOSL2 or system-installed MCAD) ships a `lib/<name>-demo.scad` exercising every module; `check.sh` CGAL-renders all of them, so they are those libraries' regression tests. Add one with any new first-party library.
 
 ## Commands
 
