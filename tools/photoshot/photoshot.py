@@ -76,6 +76,7 @@ def strip_png_metadata(path):
 
 
 def parse_size(s):
+    """Parse a WxH pixel size, rejecting anything that is not two positive ints."""
     parts = s.lower().split("x")
     if len(parts) != 2:
         raise argparse.ArgumentTypeError(f"bad size {s!r} (want WxH, e.g. 1280x960)")
@@ -89,6 +90,7 @@ def parse_size(s):
 
 
 def positive_float(s):
+    """Parse a float that must be greater than zero (camera zoom, scales)."""
     try:
         v = float(s)
     except ValueError:
@@ -99,6 +101,7 @@ def positive_float(s):
 
 
 def parse_color(s):
+    """Parse #rrggbb or rrggbb (and the 3-digit short form) into 0..1 sRGB floats."""
     s = s.lstrip("#")
     if len(s) == 3:
         s = "".join(c * 2 for c in s)
@@ -108,12 +111,18 @@ def parse_color(s):
 
 
 def srgb_to_linear(c):
+    """Convert an sRGB triple to linear light, which is what POV-Ray shades in."""
     return tuple(
         v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in c
     )
 
 
 def mesh2_block(mesh, color, finish, layer_h):
+    """Emit one mesh as a POV-Ray mesh2 object with its plastic texture.
+
+    layer_h > 0 adds a faint z-gradient normal perturbation that reads as FDM
+    layer lines at that pitch; it is a surface shading effect, not geometry.
+    """
     v = mesh.vertices
     f = mesh.faces
     verts = ", ".join(f"<{x:.4f},{y:.4f},{z:.4f}>" for x, y, z in v)
@@ -147,6 +156,12 @@ mesh2 {{
 
 
 def scene(meshes, args):
+    """Build the complete POV-Ray scene for the given meshes.
+
+    Grounds the model on the floor plane (translating every mesh by the same
+    offset, so multi-part assemblies keep their relative positions), then
+    frames a camera orbiting at args.rotz/args.elev and lights the studio.
+    """
     bounds = [m.bounds for m, _ in meshes]
     lo = [min(b[0][i] for b in bounds) for i in range(3)]
     hi = [max(b[1][i] for b in bounds) for i in range(3)]
@@ -222,6 +237,7 @@ plane {{
 
 
 def main():
+    """Render the STL(s) named on the command line to a studio product shot."""
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("stl", nargs="+", help="input STL(s), composed into one scene")
     ap.add_argument("-o", "--output", required=True, help="output PNG")
