@@ -256,3 +256,16 @@ xvfb-run -a openscad -o build/sushi-battleship-door.stl   designs/sushi-battlesh
 (or `-D 'part="top"'` etc. on the main file). The top must export with
 **18 CGAL volumes** (outer space + lid + 16 doors) — that's the check that
 every door is a separate, free body.
+
+## Mesh hygiene: engine-proof unions (2026-08-02)
+
+Moving CI renders to the Manifold backend surfaced kiss contacts CGAL had
+been fusing silently: the lid's rail walls and end-stop ridges sat at
+exactly `z = plate_t` and the castellated lips met the rail faces exactly,
+so the Manifold export fractured the lid into 25 coincident shells
+(41 bodies total, non-manifold STL). All three features are now buried
+`eps` (0.01 mm) into their mating body — same idiom the tray dividers and
+door grip bar already used. No external dimension changed; the top still
+exports as lid + 16 free doors (17 shells, 18 CGAL volumes) and must stay
+watertight under BOTH engines — CI checks Manifold, `gate.sh` locally
+typically checks CGAL.
