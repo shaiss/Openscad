@@ -50,8 +50,12 @@ slice_one() {
   local gcode="${stl%.stl}.gcode"
   echo "== test-slice ${stl} =="
   local out
+  # --filament-density: without it PrusaSlicer emits "total filament used
+  # [g] = 0.00" — the grams line the summary parses would silently read zero
+  # for every part. 1.24 g/cm³ is PLA; the summary labels the assumption.
   if ! out=$(prusa-slicer --export-gcode -o "$gcode" \
       --layer-height 0.2 --nozzle-diameter 0.4 --filament-diameter 1.75 \
+      --filament-density 1.24 \
       "$stl" 2>&1); then
     tail -20 <<<"$out"
     echo "FAIL  ${stl}: slicing failed"
@@ -60,6 +64,7 @@ slice_one() {
   fi
   grep -i "warning" <<<"$out" | sed 's/^/      /' || true
   grep -m1 "estimated printing time" "$gcode" | sed 's/^; */      /' || true
+  grep -m1 "^; total filament used \[g\]" "$gcode" | sed 's/^; */      /' || true
 }
 
 # Failures inside gate_one set fail=1 and keep going (matching how the
