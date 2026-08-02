@@ -167,6 +167,23 @@ render_sweep() {
     echo "error: --sweep wants param=start:end:step (got '$spec')" >&2
     return 1
   fi
+  # Reject non-numeric bounds before awk sees them. awk's -v assigns a plain
+  # STRING (not a strnum) when the value doesn't look like a number, so the
+  # `s <= 0` guard below silently becomes a *string* compare — "0,05" > "0"
+  # is false, the guard is skipped, and `v += s` then coerces s to its
+  # numeric prefix 0, so the loop never advances and spools output until the
+  # shell OOMs. This also catches a step that swallowed extra fields
+  # ("0.05:0.1" from a 4-field spec) or a unit suffix ("0.05mm"), both of
+  # which awk would otherwise truncate to a plausible-looking number and
+  # sweep with, silently ignoring what the user actually typed.
+  local num_re='^[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?$'
+  local n
+  for n in "$start" "$end" "$step"; do
+    if [[ ! "$n" =~ $num_re ]]; then
+      echo "error: --sweep start/end/step must be numeric (got '$n' in '$spec')" >&2
+      return 1
+    fi
+  done
 
   # Sweep the coupon wrapper when the design ships one — sweeping N full
   # parts costs N full print times; sweeping N coupons is an evening.
@@ -180,10 +197,32 @@ render_sweep() {
   [[ -f "$src" ]] || { echo "error: $src not found" >&2; return 1; }
 
   local values
+  # Defence in depth behind the numeric validation above: force numeric
+  # context (+= 0) so the guard can never degrade into a string compare, and
+  # cap the iteration count so no future caller can reintroduce an unbounded
+  # loop feeding a command substitution.
+  # while, not a comma-operator for-loop: POSIX awk (and mawk, what runs
+  # here) has no comma operator, so `for (v = a, i = 0; ...)` is a syntax
+  # error and every sweep would die reporting "step must be > 0".
+  # exit 2 (cap hit) is distinct from exit 1 (step <= 0) so an oversized
+  # range is refused outright rather than silently rendering the first 1000
+  # coupons as if that were what was asked for.
+  local rc=0
   values="$(awk -v a="$start" -v b="$end" -v s="$step" \
-    'BEGIN { if (s <= 0) exit 1;
-             for (v = a; v <= b + s/2; v += s) printf "%g\n", v }')" || {
-    echo "error: step must be > 0" >&2; return 1; }
+    'BEGIN { a += 0; b += 0; s += 0;
+             if (s <= 0) exit 1;
+             v = a; i = 0;
+             while (v <= b + s/2) {
+               if (i >= 1000) exit 2;
+               printf "%g\n", v; v += s; i++;
+             } }')" || rc=$?
+  case "$rc" in
+    0) ;;
+    1) echo "error: step must be > 0" >&2; return 1 ;;
+    2) echo "error: --sweep '$spec' spans more than 1000 values — widen the step or narrow the range" >&2
+       return 1 ;;
+    *) echo "error: sweep value generation failed (awk exit $rc)" >&2; return 1 ;;
+  esac
 
   if [[ -z "$values" ]]; then
     echo "error: --sweep range '$spec' produced no values (start > end?)" >&2
