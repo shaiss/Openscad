@@ -35,7 +35,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export OPENSCADPATH="$PWD/lib"
 
-MAX_GIF_BYTES=$((6 * 1024 * 1024))   # keep in sync with readme-gate.sh
+# shellcheck source=scripts/preview-budget.sh
+. scripts/preview-budget.sh          # defines MAX_GIF_BYTES
 MIN_GIF_BYTES=10240                  # smaller than this = blank frames
 
 # whitespace trim that, unlike xargs, preserves quotes in -D payloads

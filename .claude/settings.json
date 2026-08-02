@@ -13,7 +13,6 @@
       "Bash(scripts/gate.sh:*)",
       "Bash(scripts/readme-gate.sh:*)",
       "Bash(scripts/animate.sh:*)",
-      "Bash(gifsicle:*)",
       "Bash(python3 scripts/gate-summary.py:*)",
       "Bash(printcheck:*)",
       "Bash(prusa-slicer:*)",

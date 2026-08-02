@@ -31,6 +31,8 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+# shellcheck source=scripts/preview-budget.sh
+. scripts/preview-budget.sh   # defines MAX_GIF_BYTES (shared with animate.sh)
 
 fail=0
 
@@ -166,7 +168,7 @@ check_one() {
   # 5. Animated previews: every animations.conf entry needs its committed
   #    GIF, embedded in the README, within the size budget (keep the budget
   #    in sync with scripts/animate.sh).
-  local conf="${dir}/animations.conf" max_gif_bytes=$((6 * 1024 * 1024))
+  local conf="${dir}/animations.conf"
   if [[ -f "$conf" ]]; then
     local anim gif bytes
     # `|| [[ -n ... ]]`: a final line without a trailing newline still makes
@@ -184,8 +186,8 @@ check_one() {
         continue
       fi
       bytes="$(stat -c %s "${dir}/${gif}")"
-      if (( bytes > max_gif_bytes )); then
-        err "$name" "${gif} is $(( (bytes + 1023) / 1024 )) KiB, over the $((max_gif_bytes / 1024 / 1024)) MiB budget — fewer frames or a smaller size"
+      if (( bytes > MAX_GIF_BYTES )); then
+        err "$name" "${gif} is $(( (bytes + 1023) / 1024 )) KiB, over the $((MAX_GIF_BYTES / 1024 / 1024)) MiB budget — fewer frames or a smaller size"
         ok=0
       fi
       if ! grep -qF "](${gif})" <<<"$cleaned"; then

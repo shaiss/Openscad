@@ -59,7 +59,7 @@ Pick a kebab-case name. Then create:
 
 ```bash
 ./scripts/render.sh <name>       # STL + contact sheet must succeed
-./scripts/gate.sh <name>         # printcheck must exit 0
+./scripts/gate.sh --slice <name> # printcheck + PrusaSlicer test-slice must exit 0
 ./scripts/readme-gate.sh <name>  # product page must pass
 ```
 

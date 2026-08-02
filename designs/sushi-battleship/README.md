@@ -119,6 +119,7 @@ Customizer sections; override on the command line with
 For printable STLs, export each part from its wrapper file:
 
 ```bash
+mkdir -p build
 xvfb-run -a openscad -o build/sushi-battleship-top.stl    designs/sushi-battleship/sushi-battleship-top.scad
 xvfb-run -a openscad -o build/sushi-battleship-bottom.stl designs/sushi-battleship/sushi-battleship-bottom.scad
 xvfb-run -a openscad -o build/sushi-battleship-door.stl   designs/sushi-battleship/sushi-battleship-door.scad
