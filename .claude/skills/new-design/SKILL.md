@@ -75,8 +75,13 @@ Pick a kebab-case name. Then create:
 ```bash
 ./scripts/render.sh <name>       # STL + contact sheet must succeed
 ./scripts/gate.sh --slice <name> # printcheck + PrusaSlicer test-slice must exit 0
+./scripts/product-shot.sh <name> # the hero shot the README embeds (needs povray)
 ./scripts/readme-gate.sh <name>  # product page must pass
 ```
+
+The product shot comes before the readme gate on purpose: the template
+embeds `previews/product-hero.png`, so the gate fails on a missing image
+until that render has run.
 
 Look at the bottom-iso quadrant of `build/<name>.png` for overhang and
 bed-contact problems, send the PNG to the user (SendUserFile), and commit

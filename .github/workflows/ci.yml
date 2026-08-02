@@ -119,12 +119,16 @@ jobs:
           set -euo pipefail
           mapfile -t pyfiles < <(git ls-files '*.py' | grep -v '^lib/BOSL2/')
           printf 'checking %s\n' "${pyfiles[@]}"
+          # feature_version pins the grammar to the oldest interpreter the repo
+          # supports (tools/printcheck/pyproject.toml: requires-python >=3.10),
+          # so syntax that only a newer runner default would accept still
+          # fails here rather than at a 3.10 user's install.
           python3 -c '
           import ast, sys
           for f in sys.argv[1:]:
               with open(f, encoding="utf-8") as fh:
-                  ast.parse(fh.read(), filename=f)
-          print(f"{len(sys.argv)-1} file(s) parsed clean")
+                  ast.parse(fh.read(), filename=f, feature_version=(3, 10))
+          print(f"{len(sys.argv)-1} file(s) parsed clean against Python 3.10 syntax")
           ' "${pyfiles[@]}"
       - name: actionlint
         run: |
@@ -338,9 +342,13 @@ jobs:
             // exported meshes these numbers describe, and an artifact nobody
             // is pointed at may as well not exist (geo-diff's comment names
             // its own renders for the same reason).
+            // "when f3d succeeded": this step runs BEFORE the f3d render and
+            // its upload, and that upload is if-no-files-found: warn, so a
+            // render that produced nothing leaves no stl-renders artifact.
+            // Hedged wording beats reordering the steps to find out.
             const body = `${marker}\n${report}\n`
-              + `_Renders of these exact STLs are in the \`stl-renders\` `
-              + `artifact; the meshes themselves are in \`stls\`. `
+              + `_The meshes behind these numbers are in the \`stls\` artifact, `
+              + `and their renders in \`stl-renders\` when f3d succeeded. `
               + `Automated report for ${sha}._`;
             const comments = await github.paginate(github.rest.issues.listComments, {
               ...context.repo, issue_number: context.issue.number, per_page: 100,

@@ -80,7 +80,9 @@ POV-Ray is invoked with `+A0.3 +AM2 +R3 +Q9 -D +WT<threads>`.
 
 ## Determinism
 
-Same STL, same args, same machine ⇒ byte-identical PNG. Shots are committed
+At the default thread setting, same STL, same args, same machine ⇒
+byte-identical PNG (`--threads N` with radiosity gives that up — see below).
+Shots are committed
 and diffed across review rounds, so a shot that moves without a geometry change
 means something else drifted (manifest, scene code, POV-Ray version). Three
 sources of run-to-run noise are handled deliberately:

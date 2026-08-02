@@ -323,8 +323,9 @@ def main():
         # finite_float, not plain float, for the same reason --rotz and --elev
         # use it: float() accepts "inf", and a positive infinity passes the
         # `layer_h > 0` guard in mesh2_block() and lands in the generated POV
-        # source as `scale <1,1,inf>`. (nan and negatives fail that guard and
-        # merely render smooth — silently, which the help text now states.)
+        # source as `scale <1,1,inf>`. Finite negatives still parse and fail
+        # that guard, rendering smooth — which the help text now states; nan
+        # no longer reaches the guard at all, being rejected here.
         type=finite_float,
         default=0.2,
         help="FDM layer-line height in mm for the surface texture "
