@@ -1,4 +1,4 @@
-# Openscad
+# print-bench
 
 Co-designed, review-hardened, printable: parametric 3D-printing designs
 written in [OpenSCAD](https://openscad.org/), iterated with an AI

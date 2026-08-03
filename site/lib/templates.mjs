@@ -36,7 +36,7 @@ ${extraHead}
     <nav class="site-nav">
       <a href="/"${canonicalPath === "/" ? ' aria-current="page"' : ""}>Designs</a>
       <a href="/styles/"${canonicalPath.startsWith("/styles") ? ' aria-current="page"' : ""}>Styles</a>
-      <a href="https://github.com/shaiss/Openscad" rel="noopener noreferrer">Source</a>
+      <a href="https://github.com/shaiss/print-bench" rel="noopener noreferrer">Source</a>
       <button class="theme-toggle" type="button" aria-label="Switch theme">☾</button>
     </nav>
   </div>
@@ -47,7 +47,7 @@ ${body}
 <footer class="site-foot">
   <div class="wrap">
     <span>Every design here is rendered, printability-gated and test-sliced in CI before it lands.</span>
-    <span><a href="https://github.com/shaiss/Openscad" rel="noopener noreferrer">shaiss/Openscad</a></span>
+    <span><a href="https://github.com/shaiss/print-bench" rel="noopener noreferrer">shaiss/print-bench</a></span>
   </div>
 </footer>
 <script src="/assets/site.js" defer></script>

@@ -37,7 +37,7 @@ import {
 
 const SITE_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SITE_DIR, "..");
-const GITHUB_BASE = "https://github.com/shaiss/Openscad/blob/main";
+const GITHUB_BASE = "https://github.com/shaiss/print-bench/blob/main";
 
 function parseArgs(argv) {
   let out = join(REPO_ROOT, "build", "site");
@@ -162,7 +162,7 @@ https://github.com/openscad/openscad, and the WebAssembly build definition at
 https://github.com/openscad/openscad-wasm. Both are GPL-2.0.
 
 You may also request the corresponding source for the exact build served here
-by opening an issue at https://github.com/shaiss/Openscad/issues — this is a
+by opening an issue at https://github.com/shaiss/print-bench/issues — this is a
 written offer, valid for as long as this site serves the binary.
 
 You may redistribute and/or modify OpenSCAD under the terms of the GNU General

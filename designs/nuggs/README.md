@@ -12,7 +12,7 @@ the animal still inside it.
 > identical ports nest, twist either way, and resist axial pull. What no
 > one has checked is how it behaves in plastic — `port_tol = 0.30` is a
 > starting guess, so **print the coupon first** and expect to tune it.
-> Track progress in [issue #34](https://github.com/shaiss/Openscad/issues/34);
+> Track progress in [issue #34](https://github.com/shaiss/print-bench/issues/34);
 > `NOTES.md` has the open items and `PM.md` the ranked backlog.
 
 ![4-view contact sheet](previews/contact-sheet.png)
