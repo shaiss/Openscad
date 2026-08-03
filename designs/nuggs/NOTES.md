@@ -7,21 +7,26 @@ Full research dossier with sources: [`docs/nuggs-research.md`](../../docs/nuggs-
 
 ![4-view contact sheet](previews/contact-sheet.png)
 
-## Status — first modelling round; gate green, NOT validated
+## Status — round 3; coupling works, bed contact fixed, still not printed
 
 `./scripts/gate.sh --slice nuggs` **exits 0**. All four parts are
 watertight single bodies with no CRITICAL findings:
 
 | part | printcheck | filament | note |
 |---|---|---|---|
-| straight | 76/100 | 160.6 g | small bed contact patch — see open items |
-| bulkhead_in | 84/100 | 57.3 g | |
-| bulkhead_out | 84/100 | 38.0 g | |
-| coupon | 76/100 | 111.2 g | was 222.9 g until the override-order bug below was fixed |
+| straight | 84/100 | 149.6 g | bed-contact warning cleared in round 3 |
+| bulkhead_in | 84/100 | 56.7 g | |
+| bulkhead_out | 84/100 | 36.2 g | |
+| coupon | 84/100 | 90.5 g | |
 
-A green gate is **not** validation. Nothing has been printed, and the lock
-kinematics have not been verified by mating two rendered copies. Treat every
-number here as provisional. Open items are at the bottom.
+Round 3 widened them again for bed adhesion, putting ~4 g back on the
+straight and ~8 g on the coupon. Every part now scores 84 locally; the
+remaining warnings are the CGAL degenerate-faces artifact and 3% overhang.
+
+A green gate is **not** validation, but the joint is no longer taken on
+faith: `nuggs-matetest.scad` now confirms two identical ports nest, twist
+either way, and **retain** (below). Nothing has been physically printed, so
+`port_tol` remains a guess. Open items are at the bottom.
 
 ## Goal
 
@@ -81,12 +86,20 @@ bulkhead → bin wall.
   is a claw and pouch trap.
 - **Corrected from the dossier: `lug_engage = 2.4 mm` is not usable.** At
   r = 44.4 that is 3.1° of arc, which cannot deliver the "60° twist to full
-  overlap" the same document claims. The engagement is an *angle*
-  (`twist_deg`, default 40°), not a chord length. Recorded here so the
-  2.4 mm figure is not reintroduced from the dossier.
+  overlap" the same document claims. Engagement is an *angle*, not a chord.
+  Recorded here so the 2.4 mm figure is not reintroduced from the dossier.
+- **The rib must be much narrower than the sector** (`rib_deg = 12` against
+  `lug_deg = 40`). The entry slot has to admit the rib axially, so a
+  full-width rib means a full-width slot and nothing left to twist under.
+  This is the non-obvious constraint that made round 1's joint hold nothing.
+- **The circumferential run is full sector width**, so the joint retains in
+  either twist direction. Handedness is a thing to get wrong for no benefit.
 - **`chamfer_ang = 50`, not 45.** printcheck's overhang test is a strict `>`
   against cos 45°, and OpenSCAD's inscribed polygons put a nominal 45° cone
   at 45.0086°. 50° costs nothing and removes the ambiguity.
+- **`lug_deg` is a bed-adhesion parameter as much as a coupling one.** The
+  part stands on the sector tips, so sector width sets first-layer area. Keep
+  it as wide as the asserts allow, minus headroom for `twist_deg`.
 - **`bite = 0.8` everywhere two solids meet.** A zero-volume "kiss" contact
   leaves CGAL counting the parts as separate bodies — this cost two debug
   rounds (see below).
@@ -145,63 +158,141 @@ budget. Expect the first coupon to be wrong.
    exactly 1.5 mm tall at the tip radii, which named the culprit instantly.
    Worth doing on any multi-sector part before trusting the gate.
 
-## Verified: the coupling fails (round 1 measurements)
+## Verified: the coupling works (round 2)
 
-`nuggs-matetest.scad` renders the **intersection** of two identical straights
-joined face to face — the mate is the same part mirrored and clocked by
-`pitch/2`. Any non-zero volume is geometry that cannot be assembled. This is
-the check that should have existed before anything was called done: every
-part gates green individually, and the gate can never see an assembled joint.
+`nuggs-matetest.scad` renders the **intersection** of two identical
+straights joined face to face — the mate is the same part mirrored and
+clocked by `pitch/2`. Zero volume means they can occupy that position;
+non-zero means they cannot. Seated, then again after a 2 mm axial pull:
 
-**1. The ports do not nest — 1645 mm³ of interference at the insertion
-clocking.** The `bite` that fuses each inner sector into *our* tube also
-drives it 0.8 mm into the **mate's** tube OD, where the projecting half runs
-alongside it. Predicted π(42.4² − 41.6²) × (165/360) × 10 ≈ 967 mm³ per side,
-~1.9 cm³ total; measured 1645. The fix is to split the inner sector so only
-the anchoring half (our side) bites, and it does drop the interference to
-**exactly 0** — but the split introduces coincident cylindrical surfaces that
-make CGAL return a non-watertight mesh, and rebuilding it as a full shell
-plus an offset root web did not clear that either. Reverted; unresolved.
+| clocking | seated | pulled 2 mm | reading |
+|---|---|---|---|
+| 60° (insertion) | 0 | **free** | pushes together and comes apart — the entry path |
+| 46° (twist −14°) | 0 | **47.8 mm³** | locked |
+| 74° (twist +14°) | 0 | **47.8 mm³** | locked |
 
-**2. The bayonet assert encodes the wrong constraint.** It reads
-`twist_deg + lug_deg <= pitch`. The real limit is **`pitch/2`**: the mate's
-*like-radius* sectors sit half a pitch away, so free travel is
-`pitch/2 - lug_deg`, not `pitch - lug_deg`. The committed defaults
-(55 + 40 = 95) satisfy the written assert and violate the true one by 35°,
-so the outer sectors collide the moment you try to twist — measured 6902 mm³
-of interference at the locked clocking. `lug_deg = 30, twist_deg = 25`
-(55 ≤ 60) takes both the insertion and locked interference to **0.0 mm³**.
-The parameters cannot be changed without fix (1), because they were what
-exposed it.
+Retains in **both** twist directions, so there is no handedness to get
+right at 11 pm with a hamster in the tube.
 
-**3. Nothing retains axially, in either twist direction.** With the parts
-seated and clocked to lock, pulling them apart is free at 0.5, 2.0 and
-5.0 mm — zero interference, so there is no bayonet at all. Two causes:
-the groove floor is cut to r = 44.1 while the rib's inner face is at
-r = 44.4, so the rib passes clean over the material that should catch it;
-and the lead-in taper is a **solid subtracted cone**, which removes
-everything *inside* it — at the ribs' z it deletes all material below
-r ≈ 46.9, i.e. the ribs themselves. Removing the taper restores the ribs
-and also breaks watertightness, so the tip treatment and the rib have to be
-redesigned together.
+**Retention capacity.** The rib reaches `rib_h` into the mate's inner-shell
+band, giving a radial engagement of 44.25 → 45.25 mm = 1.00 mm over a
+12° arc, ×3 ribs = **28.1 mm² of bearing area**. At a conservative 10 MPa
+that is ~281 N (29 kg); at PETG's ~30 MPa, ~844 N. The animal weighs under
+2 N. Retention is not the limiting factor — `port_tol` and the rib's root
+in a printed part are, which is what the coupon exists to find out.
+
+Twist travel is ±(`lug_deg` − `rib_deg`) = ±18°, and `twist_deg = 14`
+leaves 4° of margin before the rib runs off the end of the sector.
+
+### The three round-1 defects, and what fixed each
+
+1. **Ports did not nest (1645 mm³).** The `bite` fusing each inner sector
+   to *our* tube also drove 0.8 mm into the **mate's** tube OD. Fixed by
+   sweeping the inner sector as one L-shaped profile: bore-side face clears
+   `ro + port_tol/2` over the projecting half, and only the anchoring half
+   reaches inward to fuse. Splitting it into two arcs instead — the round-1
+   attempt — left a coincident cylindrical surface and a non-watertight
+   mesh, which is why every sector is now **one swept polygon, never a
+   union of two arcs**.
+2. **The bayonet assert encoded the wrong constraint.** `twist_deg +
+   lug_deg <= pitch` allowed defaults that collide on any twist. The mate's
+   *like-radius* sectors sit half a pitch away, so the real limit is
+   **`pitch/2`**. Now asserted. Round 2 set `lug_deg = 30`, `twist_deg = 14`;
+   round 3 widened `lug_deg` to 40 for bed adhesion, which the mate test
+   confirmed leaves the joint unchanged.
+3. **Nothing retained.** The rib was as wide as the sector, so the entry
+   slot that admits it consumed the whole sector and left nothing to twist
+   under; and the lead-in taper was a *solid subtracted cone*, which
+   removed everything inside it — the ribs included. Fixed by making the
+   rib a narrow tab (`rib_deg = 12`, asserted `rib_deg + twist_deg <=
+   lug_deg`) entering through a matching narrow slot, with a **full-width**
+   circumferential run at the seat so it retains either way round. The
+   taper is gone; square tips are also the better bed-contact face.
+
+## Bed contact — measured, and why widening the sectors fixed it (round 3)
+
+The straight prints tube-axis-vertical (horizontal is 23% overhang), is
+180 mm tall, and takes ~10.5 h. For all of that the only thing holding it
+down is the first layer — and it does not stand on its tube wall at all.
+Measured **0 mm2 at the tube radius**: the port sectors project `port_proj`
+past the tube face, so the part stands on the sector tips.
+
+| | round 2 | round 3 |
+|---|---|---|
+| first-layer contact | 396.0 mm2 | **527.7 mm2** |
+| ratio to bbox footprint | 4.4% (printcheck warns) | **5.9% (clear)** |
+| circumference anchored | 52% | **69%** |
+| contact shape | 6 islands, ~2.8 mm wide | 6 wider islands |
+
+**A brim does not solve this.** At `r_out = 48.4`, a 30 deg gap is 25.3 mm
+of arc; a 5 mm brim reaches 5 mm from each island edge, so it never bridges.
+A brim roughly triples the anchored area (396 -> ~1110 mm2 estimated) but
+leaves six separate brimmed islands. It is a real mitigation and still
+required — it is not the fix.
+
+**What actually fixed it: `lug_deg` 30 -> 40.** The sectors were narrower
+than the asserts allow. The ceiling is `pitch/2 - twist_deg` = 46, so there
+were 16 free degrees sitting unused. Widening costs ~4 g and buys 33% more
+first-layer area and 17 points of coverage.
+
+**It does not touch the joint.** Verified, not assumed — the mate test reads
+identically at `lug_deg` 30, 40 and 44: free at the insertion clocking,
+47.8 mm3 of retention at both locked clockings. Retention is set by
+`rib_deg`, which did not move.
+
+40 rather than 44 (which would give 580.5 mm2 / 75%) because 44 leaves only
+2 deg of headroom on `lug_deg + twist_deg <= pitch/2`. 40 leaves 6, so
+`twist_deg` can still grow to 20 if the printed coupon says the twist is
+too short. Bed adhesion is a probability; twist travel is a fit the coupon
+has not yet measured, and the unmeasured one gets the margin.
+
+**Still not solved:** the six islands are still islands. If a printed
+straight lifts a corner, the next lever is a sacrificial first-layer tie
+ring outboard of `r_out` (free space in the assembly, since the mate never
+exceeds `r_out`) — deliberately not done yet, because a sacrificial part
+that must be removed is an N6 chew-edge risk if a user forgets, and that
+trade is not worth making before a real print says it is needed.
 
 ## Open items — next round
 
-- **THE JOINT DOES NOT WORK YET.** Verified this round with
-  `nuggs-matetest.scad`, not guessed. Three separate defects, all still
-  present in the committed geometry — see "Verified: the coupling fails" —
-  and fixing them is the whole of the next round.
-- **Bed contact is the live problem.** Printed upright the part now stands
-  on its sector tips, not a full annulus: printcheck reports "Small bed
-  contact patch" and the score is 76. The plain-tube 100/100 in the dossier
-  was measured *without* ports. Options: a sacrificial first-layer disc, a
-  wider tip land, or printing the straight port-up on a raft. Unresolved.
-- **Degenerate faces** warning on the straight — trace and fix.
-- **Lock kinematics unverified.** Mate two rendered copies at the insertion
-  clocking and at +`twist_deg`, and measure the boolean intersection volume:
-  it must be zero at both, and the ribs must overlap the groove run axially.
-  This is the single most important check before any print.
-- **`gate.sh --slice nuggs` has not been run green** across all four STLs.
+- **Bed contact is improved but not proven.** The warning is cleared and
+  coverage is up to 69%, but it is still six islands and no one has printed
+  it. A brim remains mandatory in the README. See the round-3 section above
+  for the next lever if a real print lifts.
+- **Nothing has been printed.** `port_tol = 0.30` is still a guess, and the
+  coupon is what settles it. Geometry says the joint retains; only a printed
+  pair says it does so at a torque a human wants to apply.
+- **Degenerate faces — traced, not fixed, and the earlier note here was
+  wrong.** They are NOT absent under manifold; they manifest differently.
+  Under CGAL 2021.01 the straight is one watertight component with 4-6
+  zero-area triangles. Under the manifold backend CI uses, argus-diff sees
+  **13 bodies — twelve of them 0.0 mm3**, i.e. the same slivers resolved as
+  detached zero-volume shells. Zero material either way, so a slicer ignores
+  them, but it is sloppy geometry and argus flags it on every diff.
+
+  Both live at exactly two radii: `r = ro` (42.40) and `r = o_in` (45.55) —
+  places where one solid's boundary surface passes exactly through another
+  solid's face. The inner sector's anchoring half crosses the tube's outer
+  cylinder at `ro`; something crosses the outer sector's inner face at
+  `o_in`.
+
+  **They predate the round-3 widening**: `lug_deg = 30` produces 6 and
+  `lug_deg = 40` produces 4, at identical radii. Widening slightly reduced
+  them. Do not attribute them to that change.
+
+  Tried and rejected: extending the rib from `o_in + bite` out to `r_out`,
+  on the theory that the rib crossing the sector's inner face caused it.
+  No change — still 4 at the same radii. Reverted, since it altered geometry
+  without fixing anything and would have invalidated the mate-test result.
+
+  Not chased further because it is pre-existing, zero-volume, and does not
+  advance a ranked backlog item. `openscad-nightly` is not installed in this
+  environment, so CI's manifold mesh cannot be reproduced locally — that is
+  the first thing to fix if anyone picks this up.
 - Bulkhead spigot/counterbore fit is drawn but not dimensioned against a
-  real wall thickness range.
-- No previews/cameras.conf, no shots.conf, no product shot yet.
+  real wall-thickness range.
+- No `previews/cameras.conf`, no `shots.conf`, no product shot yet.
+- The mate test is not gated. `ci.parts` gates parts; nothing in this repo
+  gates a *fit*, so a future change could silently un-fix the coupling and
+  CI would stay green. Running `nuggs-matetest.scad` in the gate needs a
+  convention that does not exist yet.

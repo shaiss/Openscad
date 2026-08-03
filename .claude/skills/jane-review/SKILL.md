@@ -34,7 +34,7 @@ Repo conventions to look for, with fallbacks — never hard-fail on layout:
 - `designs/<name>/<name>.scad` (or the directory's obvious entry point).
 - `scripts/check.sh` / `scripts/render.sh` / `scripts/gate.sh` — run what
   exists; if absent, fall back to direct renders (in this repo:
-  `OPENSCADPATH="$PWD/lib" xvfb-run -a openscad -o out.stl <src>` — the
+  `OPENSCADPATH="$PWD/lib:$PWD" xvfb-run -a openscad -o out.stl <src>` — the
   scripts set `OPENSCADPATH` themselves, so a manual render must too or
   library includes won't resolve; elsewhere, whatever the project README
   documents).

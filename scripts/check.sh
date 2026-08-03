@@ -30,10 +30,21 @@ fail=0
 # for. This pattern covers the top-level cases the echo pass does reach.
 FATAL_WARN="Ignoring unknown module|Ignoring unknown function|Can't open include file"
 
+# Under `--export-format echo` OpenSCAD writes its diagnostics into the export
+# file, not to stderr — so the old `-o /dev/null` threw every WARNING away and
+# the FATAL_WARN test below could never fire. Export to a real file and read
+# the warnings back out of it (plus whatever stderr does carry).
+mkdir -p build
+ECHO_OUT="build/.check-echo.txt"
+trap 'rm -f "$ECHO_OUT"' EXIT
+
 check() {
-  local f="$1"
-  if out=$(xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
-      -o /dev/null --export-format echo "$f" 2>&1); then
+  local f="$1" rc=0 err
+  : >"$ECHO_OUT"
+  err=$(xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
+    -o "$ECHO_OUT" --export-format echo "$f" 2>&1) || rc=$?
+  out=$(printf '%s\n%s' "$err" "$(cat "$ECHO_OUT")")
+  if (( rc == 0 )); then
     # Surface WARNINGs even on success
     if grep -q "WARNING" <<<"$out"; then
       if grep -qE "$FATAL_WARN" <<<"$out"; then
