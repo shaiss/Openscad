@@ -285,16 +285,23 @@ platforms lack.
 Stated plainly, because each of these is a place where the machinery is
 weaker than it looks:
 
-- **Whether `openscad-nightly` is equally silent is UNVERIFIED.** All four
-  measurements above are from OpenSCAD 2021.01; the nightly (Manifold backend)
-  build could not be installed in the container that made them — the egress
-  proxy returns 403 for the OBS nightly repo. CI's render gate runs on
-  nightly, which is exactly where the assumption is least tested, and is why
-  `./scripts/lineage.sh selftest` runs there before the gate and re-proves both
-  behaviours on whatever binary is present. If nightly turns out to warn about
-  a redefinition that binds nothing, part of this could be simplified: the
-  hash comparison would become a backstop for a diagnostic rather than the
-  only evidence there is. Design for the silence until then.
+- **Whether `openscad-nightly` emits a *diagnostic* is still unasserted.** All
+  four measurements above are from OpenSCAD 2021.01; the nightly (Manifold
+  backend) build could not be installed in the container that made them — the
+  egress proxy returns 403 for the OBS nightly repo.
+
+  What CI does establish, every run: `./scripts/lineage.sh selftest` executes
+  in the `render-gate` job under `OPENSCAD_BIN=openscad-nightly
+  OPENSCAD_ARGS=--backend=manifold`, before the gate and blocking, and it
+  passes. So on nightly+Manifold a real override still changes the mesh, a
+  typo'd override still reproduces the base's mesh exactly, and a geometry-free
+  entry point is still distinguishable from one that emits geometry. The
+  behaviours the gate is built on hold there.
+
+  What it does *not* check is whether nightly prints a warning nobody is
+  reading. If it turns out it does, this could be simplified — the mesh
+  comparison would become a backstop for a diagnostic rather than the only
+  evidence there is. Until someone checks, design for the silence.
 - **An override that legitimately reproduces the parent's mesh fails the
   gate.** The signature is "identical to the parent", and a redefinition that
   happens to render the same geometry is indistinguishable from one that never

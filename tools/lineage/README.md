@@ -42,8 +42,13 @@ All four were measured in this repo's container on OpenSCAD 2021.01.
 | **Last include wins, silently** | Two parents both defining `lid()`: swapping the two `include` lines changed the exported mesh (12 facets vs 72, different hashes) with zero diagnostics. Include *order* is load-bearing and invisible. |
 | **`include` is not guarded** | A diamond evaluates the shared ancestor twice — echo-counted: one parent fired the base's echo 1×, a diamond fired it 2×. The duplicate geometry unions cleanly (1 body, watertight, 100/100), so nothing downstream can see it. |
 
-The nightly/manifold build could not be installed in that container, so its
-behaviour is unverified. Assume the silence.
+The nightly/manifold build could not be installed in that container. CI closes
+most of that gap: `./scripts/lineage.sh selftest` runs in the `render-gate` job
+under `openscad-nightly --backend=manifold`, blocking, and confirms every run
+that a real override still changes the mesh, a typo'd one still reproduces the
+base's, and a geometry-free entry point is still distinguishable. Whether
+nightly prints a *diagnostic* nobody reads is still unasserted — assume the
+silence.
 
 The last one is why a design is only **base-safe** — safe to sit at the
 confluence of a diamond — if its top level defines modules and emits no
