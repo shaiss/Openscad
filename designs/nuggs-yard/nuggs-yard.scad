@@ -158,6 +158,26 @@ assert(refuge_len == straight_len,
        str("refuge_len ", refuge_len, " must equal straight_len ", straight_len,
            ": a circuit substitutes the refuge for one straight."));
 
+assert(wye_len == straight_len,
+       str("wye_len ", wye_len, " must equal straight_len ", straight_len,
+           ": a wye is a drop-in replacement for one straight."));
+
+// cav_over is what keeps port faces off each other's planes. At 0 the cavity
+// goes back to running flush with the shell and the non-manifold wye returns
+// -- silently, because CGAL still calls it watertight. It is not a tuning
+// knob and must not be zeroed.
+assert(cav_over > 0,
+       str("cav_over must be > 0: at 0 every port face is a coplanar face ",
+           "pair again, which renders watertight under CGAL and non-manifold ",
+           "under Manifold. See sweep_straight."));
+
+// sweep_curve revolves the profile about x = 0, and rotate_extrude requires
+// the whole profile to stay on one side of that axis. The profile spans
+// +/- ow/2 about the centreline radius, so the inner edge is at r - ow/2.
+assert(curve_r > ow / 2,
+       str("curve_r ", curve_r, " must exceed ow/2 = ", ow / 2,
+           ": the swept profile would cross the rotation axis."));
+
 assert(joint_h <= side_h,
        "Joint skirt must not stand proud of the sidewall (chew edge, Y5).");
 
@@ -416,7 +436,11 @@ module chain_curve(ang = 90, r = curve_r) {
 // Lay straight -> left curve, four times, and the run closes on itself: a
 // circuit has no terminus at all, which is the topology Y6 wants. Each
 // module's skirted (-X) end meets the previous module's bare end.
-module circuit(i = 0, run = straight_len) {
+// No length parameter: every module in the loop is straight_len face-to-face
+// (asserted above for both the refuge and the wye), so an overridable run
+// could only ever disagree with them and leave the circuit open.
+module circuit(i = 0) {
+    run = straight_len;
     if (i < 4) {
         // One side of the loop is the covered refuge: the hide is ON the
         // route, so he passes through it rather than detouring to it.
@@ -427,7 +451,7 @@ module circuit(i = 0, run = straight_len) {
         translate([run, 0, 0]) {
             chain_curve(90, curve_r);
             translate([curve_r, curve_r, 0]) rotate([0, 0, 90])
-                circuit(i + 1, run);
+                circuit(i + 1);
         }
     }
 }

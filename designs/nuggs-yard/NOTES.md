@@ -216,7 +216,7 @@ channel has no enclosed void and the script correctly reports none.
 
 ## Guards, and that they fire
 
-All six refuse what they exist to refuse (verified 2026-08-03 by rendering
+All eleven refuse what they exist to refuse (verified 2026-08-03 by rendering
 each deliberately-broken value):
 
 | Guard | Broken with | Fires |
@@ -227,6 +227,17 @@ each deliberately-broken value):
 | wall ≥ 3 perimeters | `wall=1.0` | ✓ |
 | wye crotch sliver | `wye_junction=100` | ✓ (reports 3.43 mm, matching the analytic prediction) |
 | skirt proud of sidewall | `joint_h=60` | ✓ |
+| `wye_ang` out of trig range | `wye_ang=0` / `90` | ✓ |
+| refuge/straight length invariant | `refuge_len=140` | ✓ |
+| wye/straight length invariant | `wye_len=200` | ✓ |
+| `cav_over` zeroed (reinstates the non-manifold wye) | `cav_over=0` | ✓ |
+| curve profile crosses the rotation axis | `curve_r=40` | ✓ |
+
+**Test the guards by the error they raise, not by the exit code.** A syntax
+error also exits non-zero, so a broken file makes every guard look like it
+fires — which happened while adding these (OpenSCAD does not concatenate
+adjacent string literals; `str(...)` is required). Assert that the render
+of *good* values succeeds first, then match on `ERROR: Assertion`.
 
 ## Print this first — the coupon
 
