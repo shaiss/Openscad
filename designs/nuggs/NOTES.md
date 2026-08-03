@@ -9,6 +9,13 @@ Full research dossier with sources: [`docs/nuggs-research.md`](../../docs/nuggs-
 
 ## Status — round 4; the one fit knob is now actually one knob, still not printed
 
+> **Round 5 (2026-08-03) is a re-charter, not a geometry round** — see
+> "Round 5 — the re-charter" below. It fixes two citation defects, re-scopes
+> the welfare length rule from a system total to a per-run limit, and makes
+> the design a *system* whose standard is the port. The gate table below is
+> round 4's and still stands for the four parts as they were; any geometry
+> or assert-message change landing alongside the re-charter re-measures it.
+
 `./scripts/gate.sh --slice` **exits 0** — run over *all* designs, not just
 nuggs, because round 4 touched `scripts/check.sh`. All four nuggs parts are
 watertight single bodies with no CRITICAL findings:
@@ -31,20 +38,29 @@ either way, and **retain** (below). Nothing has been physically printed, so
 
 ## Goal
 
-A short, straight, wide-bore tunnel joining **two** hamster enclosures
-through their walls, for an adult Syrian. Not a tube *system* and nothing
-inside the cage — see the dossier for why that framing is deliberate
-(PLOS One / EXOPET-II rates tube systems unsuitable as a category; this
-design answers each cited defect individually or omits the part).
+An 80 mm-bore tunnel **system** for an adult Syrian hamster, built around
+one genderless quarter-turn port that every module carries at every end.
+The kit that exists today is the Bin Bridge: two bulkheads and one straight
+joining two enclosures through their walls, with nothing inside the cage.
 
 Hero build — the **Bin Bridge**: bin wall → bulkhead → straight →
 bulkhead → bin wall.
 
+⚠️ **Framing changed 2026-08-03 (round 5, below).** Rounds 1–4 recorded the
+goal as *"a short, straight, wide-bore tunnel… **not** a tube system"*, on
+the grounds that the welfare length rule made a sprawling run
+non-compliant. That premise was wrong twice over — the rule is not TVT's
+and it is not a system-wide sum — so the "not a system" framing is struck
+rather than defended. The original wording is preserved here because it is
+what rounds 1–4 were designed against, and because PLOS One's verdict on
+tube systems as a *category* has not gone anywhere: it is still the first
+thing the product page says.
+
 ## Given / assumed measurements
 
 - **Assumed, needs the owner's ruler:** `body_len_mm = 180` (Merck's upper
-  head-and-body figure). This sets the entire TVT length budget. Measure the
-  animal.
+  head-and-body figure). This sets the entire enclosed-**run** budget (2 ×;
+  see round 5). Measure the animal.
 - **Assumed:** enclosure wall 1.5–20 mm (thin PP tote through plywood).
 - **Unknown, and nobody publishes it:** Syrian shoulder width, hip width,
   and head width with both pouches loaded. The pelvis is the rigid
@@ -57,7 +73,12 @@ bulkhead → bin wall.
   entrance minimum on the pouch-full criterion; 80 is the German
   tube-specific figure for a full-grown Syrian. `min_bore_mm` is asserted,
   never a tunable minimum.
-- **Total enclosed length ≤ 2 × body length** (TVT Merkblatt 62) — asserted
+- **Total enclosed length ≤ 2 × body length** (TVT Merkblatt 62) —
+  ⚠️ **superseded in round 5, below, on both counts: the source is the
+  Deutscher Tierschutzbund position paper, not TVT, and the limit is
+  per-RUN, not a system total.** The v1 arithmetic is unchanged and passes
+  under either rule; kept here as written because rounds 1–4's geometry was
+  designed against it. Asserted
   across straight + both bulkhead throats. At defaults: 160 + 2×(25+10) =
   230 ≤ 360 ✓. The bed limit (240 mm incl. port projections) binds before
   the welfare limit does, so a single-straight run cannot breach it by
@@ -434,6 +455,191 @@ same reason — the argument that keeps winning here is "make the check read the
 value back out of the geometry", and it should be applied to the next claim
 too, not just the last one.
 
+## Round 5 — the re-charter: two citation defects, and a rule that was mis-scoped
+
+This round changed no geometry of its own. It changed what the geometry is
+*allowed to be*, which is why it is written down at this length.
+
+The owner's ruling that opened it: **N.U.G.G.S. is a tube system with one
+genderless interlock standard shared by every module; the welfare sources
+were over-applied; enclosed tubes are permitted; the total-system length
+ban becomes a per-run limit with a defined thing that resets it; the 70 mm
+bore floor stays a hard assert and is not reopened.**
+
+### 5.1 The two citation defects
+
+**Defect A — the 2× body-length rule is almost certainly not TVT's.**
+Rounds 1–4 attributed it to *TVT Merkblatt 62* in this file, in PM.md's N2,
+in the README, in the dossier and in the OpenSCAD assert message. A
+re-verification sweep ran five searches aimed squarely at a length rule in
+MB 62 and **never once got a length limit attributed to TVT**. What MB 62
+consistently returns is the qualitative objection set we already had:
+cannot be cleaned, cannot be sufficiently ventilated, transparent tube
+leaves no retreat. The 2× sentence came back repeatedly — including from a
+domain-restricted search — attributed to the **Deutscher Tierschutzbund**
+position paper *Tierschutzwidriges Zubehör*, and there as one limb of a
+**conjunctive** product-acceptability test: tubes are acceptable only if
+they are at most twice body length **and** ensure adequate ventilation
+(a third limb: **and** ship with instructions against misuse).
+
+Two consequences beyond the name. It is a *retail* position paper about
+what shops may sell, not a husbandry guideline — respecting it is
+reasonable, calling it "the single hardest quantitative limit available"
+was not. And quoting the length limb on its own quotes the sentence out of
+context; the ventilation limb is the one this design answers by
+construction.
+
+**Defect B — the Hauzenberger author list is wrong.** The dossier cited
+*Hauzenberger, Mueller & Wechsler 2006*. It is **Hauzenberger,
+Gebhardt-Henrich & Steiger (2006)**, *Appl. Anim. Behav. Sci.* 100:280–294.
+Journal, volume and pages check out; the substance survives (45 singly
+housed males at 80/40/10 cm; recommendation "at least 40 cm"; the 80 cm
+group carried more body fat). Corrected in the dossier.
+
+This is the **sixth** stale-claim defect in this design and the first that
+was a *citation* rather than a dimension — which is worth noting against
+B1c, because the argument that keeps winning here ("make the check read the
+value back out of the geometry") has no analogue for a source. A citation
+cannot be derived from the mesh. It can only be read, and nobody has read
+this one.
+
+### 5.2 The rule, stated precisely enough for an assert message to agree with it
+
+- A **RUN** is the maximal chain of **continuously enclosed bore** between
+  two breaks.
+- A **BREAK** is exactly one of:
+  1. an **open module** — a bore carrying a longitudinal window of **≥ 180°**
+     (wall tops at or below the springline, so the opening is the widest
+     part of the void and the animal lifts straight out);
+  2. a **port discharging into a ventilated enclosure** (an open end);
+  3. a **turnaround node** — clear internal width **≥ `body_len_mm`**.
+- **Limit: `2 × body_len_mm` per run** (360 mm at the default). If a run is
+  **not** hand-releasable in one action, the limit drops to **300 mm**.
+- **NOT breaks, and this is the part that must be prominent in every
+  message that mentions the rule:** a **bend** is not a break; a
+  **junction at bore diameter** is not a break; a **coupling** is not a
+  break; a **top hatch** resets **retrieval**, not **reversing**.
+
+**The derivation is the point.** Because the animal cannot turn around in
+an 80 mm bore — a hairpin needs roughly two body widths plus bend
+allowance, ~110 mm at a ~45 mm body width — he exits by whichever end is
+nearer, so worst-case unassisted reverse travel is **half the run**. A run
+≤ 360 mm bounds it at 180 mm = one body length. That turns an inherited
+magic number into a derived one, and **it is engineering judgement**: no
+literature measures how far a hamster will reverse. Any assert message,
+README line or charter row that states the reversing argument must say so
+in the same breath.
+
+**Assert messages must therefore name DTSchB, never TVT**, must say the
+limit is one limb of a conjunctive test, must state that a bend is not a
+break, and must label the reversing derivation as judgement. Anything that
+says "TVT Merkblatt 62" next to this number is the defect this round
+exists to remove.
+
+### 5.3 Why this is a re-scoping and not a loosening
+
+The German is plural — *the tubes are acceptable if **they** are at most
+twice body length* — which reads per tube. The 238 mm "total enclosed"
+figure rounds 1–4 asserted was **our own aggregation** of straight plus two
+bulkhead throats; nothing in the sentence demanded that sum.
+
+And the v1 Bin Bridge **passes under both rules** (238 ≤ 360). This was not
+a change made to rescue a failing design. What it changes is the future:
+under a per-run rule a branched or looping layout is compliant iff every
+leg between breaks is short and every branch point claiming to reset the
+count is a real node — which is also the wild-burrow topology (short
+galleries punctuated by 10–20 cm chambers, Gattermann 2001).
+
+### 5.4 Honesty, kept verbatim
+
+> The per-tube reading rests on plural German in a search summary of a PDF
+> nobody in this session could open (the gateway 403s tierschutz-tvt.de,
+> tierschutzbund.de, PLOS, PMC, ScienceDirect, doi.org — WebFetch goes
+> through the same proxy and fails identically). It is the hinge of the
+> whole relaxation and it must be confirmed before this reaches a product
+> page. The 180 deg open threshold, the 110 mm hairpin figure, the 150 mm
+> hand-reach behind the 300 mm non-releasable carve-out, and the +/-40 deg
+> walk band are all my judgement with no source at all — and the 300 mm
+> figure's coincidence with the 25-30 cm circulating on German care sites
+> is a cross-check, not authority. The 70 mm bore floor stays a hard
+> assert.
+
+Confidence ladder, in full, in `docs/nuggs-research.md` §11.6. The short
+version: **HIGH** — the TVT attribution is probably wrong, the Hauzenberger
+author list is definitely wrong, an 80 mm bore is a one-way bore.
+**MODERATE** — the rule is DTSchB's and is conjunctive with ventilation.
+**LOW** — that it is per-tube rather than per-system, *and this is the hinge
+of the whole relaxation*. **NONE** — how far a hamster will reverse, the
+110 mm folded-turn floor, the 150 mm hand-reach figure, the 300 mm
+non-releasable carve-out, the 180° open threshold.
+
+### 5.5 The two facts that cut both ways
+
+Recorded because the product page will be quoted against both, and being
+first to name them is cheaper than being corrected:
+
+- **Stricter:** German pet-care content sites circulate "tubes should not
+  be longer than 25–30 cm", usually paired with "≥ 6 cm diameter for a
+  dwarf, ≥ 8 cm for a golden hamster". Neither TVT nor DTSchB, weak
+  provenance, **not adopted** — but shorter than our 360 mm, not longer.
+- **More permissive:** wild Syrian burrows have **40–50 mm** tunnels and
+  galleries averaging **200 cm**, reaching **900 cm** (Gattermann 2001).
+  A wild animal routinely works two metres of tunnel at half our bore. That
+  is the strongest evidence the 2× figure is **not a biological tolerance**
+  — it is a product-safety criterion about enclosed plastic that cannot be
+  ventilated, cleaned or reached into. It is **not** a length licence: soil
+  is grippable on all sides, self-ventilating, dug to fit that individual,
+  and escapable by digging. An animal that jams in soil can excavate; one
+  that jams in PETG cannot.
+
+### 5.6 What did NOT change
+
+- **`min_bore_mm = 70` stays a hard assert.** Reviewed against the 40–50 mm
+  wild-tunnel figure and left alone. The failure mode is silent (grit in a
+  full pouch → mucosal laceration → impaction → abscess, no visible symptom
+  until surgery), so it cannot be a user judgement. Two qualifications are
+  now recorded rather than suppressed: the DTSchB 7 cm figure is an
+  *entrance-opening* minimum for furnishing objects generally, applied here
+  to a bore; and it too is a search summary, so the quotation marks the
+  dossier put around it were never earned.
+- **N3's substance.** No dead ends, no dead air. What changed is how it is
+  satisfied — by topology (every terminus is a node or an enclosure) rather
+  than by banning branches.
+- **N4, N6, N7, N8.** Untouched.
+- **The nuggs-yard rebuild.** Deliberately not in this round. Its gendered
+  lap-skirt joint is superseded by the single standard, and its open
+  modules need rebuilding onto the port with a round arc floor — real
+  geometry with its own gate run, and folding it in would make the charter
+  change unreviewable. Banners added to that design's README and NOTES so
+  nobody assumes the two kits interoperate today.
+
+### 5.7 Why an open module's floor is the bore arc, not a flat trough
+
+Recorded here because it is the one *geometric* consequence of the ruling,
+and because it is the mistake a trough-shaped design makes naturally.
+Against a round mate at `bore_d = 80` (ri = 40), a flat floor tangent to
+the bore invert leaves the round module's material standing proud by:
+
+| lateral offset from centreline | step |
+|---|---|
+| 10 mm | 1.27 mm |
+| 20 mm | 5.36 mm |
+| 22.5 mm (paw-span edge) | **6.93 mm** |
+| 30 mm | 13.52 mm |
+
+That is a full-height vertical rim across the transition plane — a
+toe-stub, which is exactly N6. A chord floor at half-width 25 mm goes the
+other way and gives an 8.78 mm centreline pit, which also collects bedding
+and urine. Only the **arc** floor gives a 0.000 mm step at every lateral
+position, because both modules' bores are the same cylinder. There is no
+third option, and no blend fixes it in less than a ~21 mm ramp at 1:3.
+
+The price, accepted: the port forces bore-axis-**vertical** printing, which
+caps a module at **45° of axis change** (a bore's inner normals lie
+perpendicular to the local axis, so max |n_z| = sin(tilt), and sin 45° is
+exactly printcheck's threshold). A 90° turn is two modules. That is a real
+cost and it is paid deliberately.
+
 ## Open items — next round
 
 - **Bed contact is improved but not proven.** The warning is cleared and
@@ -497,3 +703,16 @@ too, not just the last one.
   gates a *fit*, so a future change could silently un-fix the coupling and
   CI would stay green. Running `nuggs-matetest.scad` in the gate needs a
   convention that does not exist yet.
+- **Nobody has read the DTSchB position paper, and it is now load-bearing.**
+  Round 5 rests N2's per-run scope on plural German in a search summary
+  (research §11.6, LOW confidence). This is the single highest-value thing
+  anyone with an unrestricted network can do for this design, and it takes
+  minutes: open *Tierschutzwidriges Zubehör* and read the tube sentence. If
+  it is per-system, N2 reverts to a total and the branch/loop scope closes
+  again. While reading, also settle TVT MB 62 (does it publish any length
+  number at all?), the DTSchB 7 cm entrance minimum, the PLOS One tube
+  verdict's **basis**, and the 20 mm loaded-pouch width.
+- **The confidence ladder is now a maintained artifact.** `docs/nuggs-research.md`
+  §11.6 grades every welfare figure HIGH/MODERATE/LOW/NONE. Anything added
+  to this design that quotes a welfare number gets a row there, or it is a
+  number with no provenance in a design whose whole argument is provenance.
