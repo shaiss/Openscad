@@ -100,7 +100,11 @@ Check the design against its **real contents and real stakes**:
   print (used as the hero/only image). The studio render and the STL are the
   truth about the shape; the lifestyle shot is set dressing, and the page has
   to *say so* where the customer can see it — not bury the disclosure in alt
-  text nobody reads.
+  text nobody reads. The gate only knows a shot is AI by its `lifestyle-*.png`
+  filename, so an AI image slipped in under an innocent name (`hero.png`) is
+  invisible to it — you are the backstop: treat any real-world/photo-like
+  image the customer would read as "this is what ships" as needing the same
+  disclosure, whatever the file is called.
 
 ## 5. Zero-headroom flags
 

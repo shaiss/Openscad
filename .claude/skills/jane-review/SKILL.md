@@ -124,7 +124,10 @@ reader would take it for the real print (used as the hero/only image, or
 captioned so it reads as a photo). `scripts/readme-gate.sh` now enforces the
 label and note mechanically; your job is the judgment it can't make — that
 the note actually *reads* as a warning and the shot isn't dressed up as a
-photograph of the printed part.
+photograph of the printed part. And note the gate triggers on the
+`lifestyle-*.png` **filename**: an AI render committed under any other name
+(`hero.png`, `scene.png`) escapes it entirely, so check every photo-like
+image on the page, not just the files named `lifestyle-*`.
 
 ## 5. Output contract
 
