@@ -89,6 +89,18 @@ Check the design against its **real contents and real stakes**:
 - Frame failure cost in user terms, not millimeters: "sixteen welded doors
   over $60 of omakase while everyone's chopsticks hover" — that's what a
   0.2 mm decision actually buys or costs.
+- **AI-styled lifestyle shots** (`previews/lifestyle-*.png`) are a product-page
+  honesty question, and it's the customer you speak for who gets misled. They
+  are cosmetic and *assumed geometrically off* — so don't ding a lifestyle
+  shot for geometry that drifts from the studio render; that drift is expected
+  and out of scope. What **is** a blocking finding is the customer being
+  fooled about what actually ships: a `lifestyle-*.png` missing its
+  `AI-styled scene` alt label, missing the visible "AI-generated, geometry
+  approximate" note directly below it, or dressed up as a real photo of the
+  print (used as the hero/only image). The studio render and the STL are the
+  truth about the shape; the lifestyle shot is set dressing, and the page has
+  to *say so* where the customer can see it — not bury the disclosure in alt
+  text nobody reads.
 
 ## 5. Zero-headroom flags
 
