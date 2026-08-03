@@ -357,30 +357,41 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "regenerating: ${designs:-(nothing — no design moved)}"
 
-      - name: Install xvfb and ImageMagick (cached)
+      - name: Install the render toolchain (OpenSCAD nightly, xvfb, ImageMagick)
         if: steps.plan.outputs.render == 'true'
-        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
-        with:
-          # gifsicle is optional to animate.sh (palette shrink) but keeps GIFs
-          # inside the size budget readme-gate enforces.
-          packages: xvfb imagemagick gifsicle
-          # cache key; bump to pull fresh package versions (see scad-check)
-          version: "2026-08"
-
-      - name: Install OpenSCAD nightly (OBS repo)
-        if: steps.plan.outputs.render == 'true'
-        # Same engine as render-gate, so a preview is rendered by the build
-        # that gates the STL sitting next to it.
+        # openscad-nightly is the same engine render-gate uses, so a preview is
+        # rendered by the build that gates the STL sitting next to it.
+        #
+        # Deliberately plain apt-get rather than awalsh128/cache-apt-pkgs-action,
+        # which the other jobs use: ImageMagick's `convert` and `montage` are
+        # update-alternatives symlinks (/usr/bin/montage -> /etc/alternatives/
+        # montage -> /usr/bin/montage-im6.q16), and that symlink farm is built
+        # by the package's postinst, not shipped in its file list. A cache
+        # restore replays the files without the postinst, so `montage` comes
+        # back dangling and render.sh dies on "montage: command not found".
+        # It fails exactly one run late — the cold run saves the cache and
+        # passes, the next one restores it and breaks — which is worth the ~20s
+        # this costs. The jobs that do cache apt only need xvfb and openscad,
+        # neither of which uses alternatives. (lifestyle-shot.yml already
+        # installs ImageMagick this way, for what is presumably this reason.)
+        #
+        # gifsicle is optional to animate.sh (palette shrink) but keeps GIFs
+        # inside the size budget readme-gate enforces.
         run: |
           echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
             | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
           curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
             | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
           sudo apt-get update
-          sudo apt-get install -y openscad-nightly
+          sudo apt-get install -y openscad-nightly xvfb imagemagick gifsicle
           openscad-nightly --version
+          # Prove the alternatives-backed binaries actually resolve, so a
+          # packaging regression fails here with a clear message instead of
+          # halfway through a design's previews.
+          montage --version | head -1
+          convert --version | head -1
 
-      - name: Install bpy (Blender as a Python module)
+      - name: Set up Python 3.11 (the interpreter bpy ships wheels for)
         if: steps.plan.outputs.shots == 'true'
         uses: actions/setup-python@v6
         with:
