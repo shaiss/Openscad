@@ -360,14 +360,14 @@ enclosed run**, and the Bin Bridge is one run:
 
 | Contribution to the Bin Bridge's single enclosed run | mm |
 |---|---|
-| bulkhead throat (spigot 25 + port_proj 10) × 2 | 70 |
+| bulkhead throat (spigot 25 + port_proj 10 + **2 flange plates 2×4**) × 2 | 86 |
 | straight (default) | 160 |
-| **enclosed run** | **230** |
+| **enclosed run** | **246** |
 | **limit (2 × 180 mm), per run** | **360** ✓ |
 
-Maximum straight that still complies: 360 − 70 = **290 mm**. Maximum straight that fits the bed: **240 mm**. **The bed is stricter than the welfare limit, so a single-straight run cannot violate it by accident.** Two straights chained (320 + 70 = 390 mm) *would* — so `straight_len` defaults to 160, the README states "one straight per run," and the limit is engraved on the part. OpenSCAD cannot assert what a user assembles; this is a documented limitation, not a solved one.
+Maximum straight that still complies: 360 − 86 = **274 mm**. Maximum straight that fits the bed: **240 mm**. **The bed is stricter than the welfare limit, so a single-straight run cannot violate it by accident.** Two straights chained (320 + 86 = 406 mm) *would* — so `straight_len` defaults to 160, the README states "one straight per run," and the limit is engraved on the part. OpenSCAD cannot assert what a user assembles; this is a documented limitation, not a solved one.
 
-**The v1 arithmetic is unchanged by the re-scoping** — 230 mm passes under
+**The v1 arithmetic is unchanged by the re-scoping** — 246 mm passes under
 both the old rule and the new one. The re-scoping was not made to rescue a
 failing design; it was made because the old rule was mis-attributed and
 mis-scoped. What it changes is the *future*: under a per-run rule a
@@ -460,7 +460,7 @@ Customizer sections in repo house style; units and purpose on every line; `/* [H
 | `NUGGS_PORT_REV` | `1` | — | Engraved (never embossed) on every module that has a face the animal cannot reach; `bulkhead_in` has none. Bump only on a breaking port change |
 | `bore_d` | `80.0` | mm | Internal bore. The headline number. Asserted `>= min_bore_mm` |
 | `wall` | `2.4` | mm | Tube shell. Asserted `>= 3*nozzle` |
-| `port_len` | `14.0` | mm | Axial length of the lug/flange zone at each end |
+| `port_proj` | `10.0` | mm | Axial projection of the coupling sectors past the tube face. ⚠️ An earlier draft of this table called it `port_len = 14.0`; no such parameter exists, and 14 was never the value — `nuggs_cfg()` takes `port_proj` and it is 10.0 (PR #78 review) |
 | `n_lug` | `3` | — | Lugs per face. 3 = kinematically determinate, 60° twist to lock |
 | `lug_deg` | `55` | ° | Lug angular width. Asserted `<= 360/n_lug/2` (self-complementarity) |
 | `lug_h` | `3.2` | mm | Lug stem height (axial stand-off from the face) |
@@ -506,7 +506,7 @@ Customizer sections in repo house style; units and purpose on every line; `/* [H
 | `max_incline_deg` | `15` | ° | `assert(max_incline_deg <= 15)`. On a 160 mm straight, max end-to-end height difference = 160·sin 15° = 41.4 mm |
 | `max_drop_mm` | `150` | mm | No unbroken free-fall above this. 0 by construction in v1 |
 
-Enclosed-**run** assert (⚠️ labelled "TVT assert" in the first pass; the source is DTSchB and the scope is per run, not per system — §11): `assert(straight_len + 2*(bh_spigot_len + port_proj) <= 2*body_len_mm)` → 160 + 70 = 230 ≤ 360 ✓
+Enclosed-**run** assert (⚠️ labelled "TVT assert" in the first pass; the source is DTSchB and the scope is per run, not per system — §11): `assert(run_len <= 2*body_len_mm)` where `run_len = straight_len + 2*(2*bh_flange_t + bh_spigot_len + port_proj)` → 160 + 86 = 246 ≤ 360 ✓
 Hole assert: `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)` → 89 ≥ 85 ✓
 
 **`/* [Print settings] */`**
@@ -640,11 +640,15 @@ Hole assert: `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)` → 89 ≥
 >
 > What this does and does not move:
 >
-> - **DTSchB attribution: MODERATE → good.** Two independent searches, run by
+> - **DTSchB attribution: stays MODERATE, better supported within it.** The
+>   scale here is HIGH / MODERATE / LOW / NONE and nothing else — an earlier
+>   draft of this note wrote "good", which is not a tier (PR #78 review).
+>   Corroboration inside a tier is not promotion out of it: the bar for HIGH is
+>   the primary text, and that has still not been read. Two independent searches, run by
 >   different agents on different days, both return this criterion attributed to
 >   the DTSchB position paper and neither returns any length limit attributed to
 >   TVT. The re-attribution in §11 is on firmer ground than when it was made.
-> - **Conjunctive framing: MODERATE → good.** The returned wording is explicitly
+> - **Conjunctive framing: stays MODERATE, same reasoning.** The returned wording is explicitly
 >   three-limbed (length AND ventilation AND instructions). NUGGS answers the
 >   ventilation limb by construction.
 > - **Per-tube scope: still LOW, and unchanged.** The German is plural ("Sie
@@ -672,7 +676,7 @@ Hole assert: `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)` → 89 ≥
 
 **Safety asserts present and firing**
 - [ ] `assert(bore_d >= min_bore_mm)` with a message naming the DTSchB 7 cm entrance minimum.
-- [ ] A per-**run** enclosed-length assert (the Bin Bridge's one run is `straight_len + 2*(bh_spigot_len + port_len) <= 2*body_len_mm`), with a message naming the **Deutscher Tierschutzbund** position paper *Tierschutzwidriges Zubehör* — **not TVT Merkblatt 62** (§11), stating that the limit is one limb of a conjunctive test, and stating that a bend, a junction at bore diameter, a coupling and a top hatch do not reset it.
+- [ ] A per-**run** enclosed-length assert (the Bin Bridge's one run is `straight_len + 2*(2*bh_flange_t + bh_spigot_len + port_proj) <= 2*body_len_mm`), with a message naming the **Deutscher Tierschutzbund** position paper *Tierschutzwidriges Zubehör* — **not TVT Merkblatt 62** (§11), stating that the limit is one limb of a conjunctive test, and stating that a bend, a junction at bore diameter, a coupling and a top hatch do not reset it.
 - [ ] `assert(lug_deg <= 360/n_lug/2)` — genderless self-complementarity.
 - [ ] `assert(lug_ramp >= 47)`, `assert(wall >= 3*nozzle)`, `assert(straight_len <= 240)`, `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)`, `assert(max_incline_deg <= 15)`.
 - [ ] Each assert fails the render when violated — verified by deliberately breaking one and seeing a non-zero exit.
@@ -855,7 +859,20 @@ two breaks.
   part of the void, and the animal lifts straight out;
 - a **port discharging into a ventilated enclosure** (an open end);
 - a **turnaround node** — a chamber of clear internal width **≥
-  `body_len_mm`** (180 mm at the default).
+  `body_len_mm`** (180 mm at the default) **that is itself open to
+  ventilated space**: an open top, a ≥ 180° window, or a port discharging
+  into an enclosure.
+
+⚠️ **That last clause is a correction (PR #78 review), and it is not
+cosmetic.** As first written, a node broke a run on WIDTH alone, while C1
+below required every run to be open at both ends into ventilated space. A
+node that merely widens the bore satisfies the first and fails the second,
+so the two rules disagreed about the same geometry — and the reading that
+lets a sealed chamber break a run is exactly the one that would permit an
+unventilated dead volume in the middle of a system. Width answers *can he
+turn around*; it does not answer *can the air move*. A node has to do both
+to be a break, because those are two of the three defects the whole product
+exists to answer.
 
 **The limit is `2 × body_len_mm` per run** — 360 mm at the default — and
 the derivation is what gives the number meaning rather than inheriting it:
@@ -902,10 +919,10 @@ the reversing count.
 
 ### 11.5 What is a loosening and what is not
 
-The old rule summed the whole system into one 230 mm "total enclosed"
+The old rule summed the whole system into one 246 mm "total enclosed"
 figure. The new rule is per run.
 
-- **The v1 Bin Bridge passes under both** (230 ≤ 360). This re-scoping was
+- **The v1 Bin Bridge passes under both** (246 ≤ 360). This re-scoping was
   not made to rescue a failing design.
 - Re-scoping is arguably the **more faithful** reading, not a loosening:
   the German is plural and reads per tube, and the summation was this
@@ -1027,3 +1044,22 @@ undersized opening lets grit in a full pouch lacerate the mucosa →
 impaction → abscess, with **no wedging event and no visible symptom until
 surgery** (S6). The animal cannot report it, so it cannot be a user
 judgement.
+
+⚠️ **Status of that mechanism, stated plainly (PR #78 review).** It is
+**reported, not verified.** S6 rests on secondary rescue and veterinary
+pages reached through search summaries; like everything else in this
+dossier, no primary text was read, and the product page states the
+laceration → impaction → abscess → silent-until-surgery sequence as fact.
+That is the strongest claim in the design and it carries the weakest
+provenance of the load-bearing set — it should be read in the primary
+literature before the page ships, and until then it belongs in the same
+confidence bracket as the length rule.
+
+**It does not change the assert, and here is why that is not special
+pleading.** The assert is a floor on bore, and the argument for keeping a
+floor survives the mechanism being wrong: an animal cannot report a
+too-narrow bore, the cost of being generous is a few grams of filament, and
+the cost of being wrong is surgical. An unverified mechanism is a reason to
+weaken the *rhetoric*, not the *number*. If the mechanism turns out to be
+overstated, the honest response is to soften how the README describes the
+injury — not to lower `min_bore_mm`.

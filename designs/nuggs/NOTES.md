@@ -512,7 +512,14 @@ this one.
      (wall tops at or below the springline, so the opening is the widest
      part of the void and the animal lifts straight out);
   2. a **port discharging into a ventilated enclosure** (an open end);
-  3. a **turnaround node** — clear internal width **≥ `body_len_mm`**.
+  3. a **turnaround node** — clear internal width **≥ `body_len_mm`**
+     **and itself open to ventilated space**. The ventilation clause was
+     missing until PR #78 review: as first written a node broke a run on
+     width alone, while the same section required every run to be open at
+     both ends into ventilated space. Width answers *can he turn around*;
+     it says nothing about *can the air move*, and the reading that lets a
+     sealed chamber break a run is the one that permits an unventilated
+     dead volume mid-system.
 - **Limit: `2 × body_len_mm` per run** (360 mm at the default). If a run is
   **not** hand-releasable in one action, the limit is
   **`min(2 × body_len_mm, 300 mm)`** — not "drops to 300", which is only a drop
@@ -721,7 +728,14 @@ file has now recorded six times: prose asserting something the model does not do
 - The Bin Bridge run appeared as 238 mm in the docs and 230 mm in the model. 230
   is what both the pre- and post-migration source compute; 238 traced back to a
   single arithmetic slip in `docs/nuggs-research.md` §9, which wrote `port_len`
-  (a name that does not exist) where `port_proj` belongs. Docs now match the model.
+  (a name that does not exist) where `port_proj` belongs. Docs were aligned to
+  the model at 230.
+  **Superseded within the same round: the true figure is 246 mm.** Aligning the
+  docs to the model was the right move and the wrong direction — the *model* was
+  also wrong, omitting all four bulkhead flange plates (§6.5). So this entry
+  records a fix that had to be redone two commits later, which is the useful
+  lesson in it: "make the docs match the model" is only safe once the model has
+  been checked against the geometry, and here it had not been.
 - `NUGGS_REV` was renamed `NUGGS_PORT_REV`; the research dossier's spec tables
   still used the old name and described the mark as *embossed*, which is the
   chew-initiation edge N6 forbids. It is engraved. Dated NOTES and decision-log

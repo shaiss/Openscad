@@ -44,13 +44,25 @@ honest reason the page leads with the objection instead of burying it.
 | Cannot be ventilated / condenses | No closed volumes. Every run is open at both ends into a ventilated enclosure — no caps, no blind branches |
 | Cannot be cleaned | One twist releases any module for a hand wash, without disturbing the nest |
 | Transparent tube gives no refuge | Opaque, uncoloured filament; you inspect it by it being short and straight |
-| Endless tube mazes | **No single *run* of enclosed bore exceeds 2 × your animal's body length** — 360 mm at the default. A run ends at an open end, an open module, or a chamber he can turn around in. **A bend, a junction, a coupling and a top hatch are not ends** (see [The length rule](#the-length-rule-and-how-far-to-trust-it)). The Bin Bridge is one 230 mm run, and the limit is engraved on the part (`MAX RUN 360MM` / `COUPLINGS DONT RESET`) |
+| Endless tube mazes | **No single *run* of enclosed bore exceeds 2 × your animal's body length** — 360 mm at the default. A run ends at an open end, an open module, or a chamber he can turn around in. **A bend, a junction, a coupling and a top hatch are not ends** (see [The length rule](#the-length-rule-and-how-far-to-trust-it)). The Bin Bridge is one 246 mm run, and the limit is engraved on the part (`MAX RUN 360MM` / `COUPLINGS DONT RESET`) |
 | Eats cage floor and substrate | Runs between enclosures at bedding height — zero floor area, zero substrate |
 
 **Measure your hamster.** `body_len_mm` defaults to 180 mm and sets the
-whole length budget. And `min_bore_mm = 70` is not a suggestion: an
-undersized opening lets grit in a full pouch lacerate the mucosa, which
-leads to impaction and abscess with no visible symptom until surgery.
+budget for each enclosed **run** (not for the system as a whole — see
+[The length rule](#the-length-rule-and-how-far-to-trust-it)).
+
+And `min_bore_mm = 70` is not a suggestion. The reason usually given is
+that an undersized opening lets grit in a full pouch lacerate the mucosa,
+leading to impaction and abscess with no visible symptom until surgery —
+and that mechanism is **reported rather than verified**: it comes from
+secondary rescue and veterinary pages, and nobody on this project has read
+the primary literature. Treat it as the reason the floor is conservative,
+not as a diagnosis.
+
+The floor stays regardless, and the argument for it does not depend on that
+mechanism being exactly right: the animal cannot report a bore that is too
+narrow, being generous costs a few grams of filament, and being wrong costs
+surgery. That asymmetry is why it is an `assert` and not a preference.
 
 ## The length rule, and how far to trust it
 
@@ -66,7 +78,12 @@ exactly three breaks:
 - an **open module** — a bore with a longitudinal window of at least 180°,
   so the opening is the widest part of the void and the animal lifts
   straight out;
-- a **turnaround node** — a chamber at least one body length clear inside.
+- a **turnaround node** — a chamber at least one body length clear inside
+  **and itself open to ventilated space** (an open top, a ≥ 180° window, or
+  a port into an enclosure). Width alone is not enough: width answers *can
+  he turn around*, and it says nothing about *can the air move*. A sealed
+  wide chamber is a dead volume in the middle of a run, which is one of the
+  defects this whole design exists to answer.
 
 **What is not a break, and this matters more than the number:**
 
@@ -74,7 +91,7 @@ exactly three breaks:
 |---|---|
 | A bend | He cannot rotate in an 80 mm bore. A 45° elbow turns the *tube*, not the *animal* — he still has to reverse the whole way back |
 | A junction at bore diameter | A wye at 80 mm is a *branching* one-way bore. It multiplies the ways to be trapped, it does not reduce them |
-| A coupling | It is a joint. Two straights coupled are **one 390 mm run**, which is over the limit |
+| A coupling | It is a joint. Two straights coupled are **one 406 mm run**, which is over the limit |
 | A top hatch | It resets **retrieval** — you can reach him. It does not reset **reversing** — he still cannot turn around. Two different problems, two different fixes |
 
 **Why 360 and not some other number.** Because he cannot turn around, he
