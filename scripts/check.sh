@@ -3,7 +3,8 @@
 #   1. Syntax/eval check of all designs, lib, template and style files
 #      (echo export — seconds)
 #   2. Full CGAL render of the lib demo to catch geometry regressions
-#   3. Docs-drift check (scripts/docs-check.sh): docs must match the tree
+#   3. Guard check (scripts/guard-check.sh): every lib guard still fires
+#   4. Docs-drift check (scripts/docs-check.sh): docs must match the tree
 # Run before committing. For full STL+PNG output use scripts/render.sh.
 set -euo pipefail
 
@@ -110,6 +111,14 @@ for demo in lib/*-demo.scad; do
     echo "ok    ${demo} renders clean"
   fi
 done
+
+# The demos above prove the libraries still BUILD. This proves their guards
+# still REFUSE — the one thing a demo cannot cover, since a firing assert
+# would abort the render it lives in.
+echo "-- guard check: scripts/guard-check.sh"
+if ! ./scripts/guard-check.sh; then
+  fail=1
+fi
 
 echo "-- docs-drift check: scripts/docs-check.sh"
 if ! ./scripts/docs-check.sh; then

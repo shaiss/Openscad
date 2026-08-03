@@ -93,7 +93,10 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `render.sh` — STL + 4-view preview sheet; `--previews` re-renders a
     design's frozen review shots, `--sweep` renders tolerance-test strips
   - `check.sh` — fast syntax/geometry validation of every `.scad` file,
-    plus the `docs-check.sh` docs-drift check (docs must match the tree)
+    plus the `guard-check.sh` and `docs-check.sh` checks below
+  - `guard-check.sh` — negative tests for library guards: every case in a
+    `lib/*-guards.conf` must still be refused, which a demo cannot test
+    because a firing assert would abort the demo's own render
   - `gate.sh` — render printable parts and gate the STLs with printcheck;
     `--slice` adds a PrusaSlicer test-slice (this is what CI enforces)
   - `gate-summary.py` — turns a gate log into the CI results table
