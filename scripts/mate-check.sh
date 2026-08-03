@@ -77,6 +77,7 @@ for conf in lib/*-mates.conf; do
   }
 
   saw_negative=0
+  saw_positive=0
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="$(trim "$line")"
     [[ -z "$line" || "$line" == \#* ]] && continue
@@ -113,6 +114,7 @@ for conf in lib/*-mates.conf; do
       continue
     fi
     [[ "$expect" == "interfering" ]] && saw_negative=1
+    [[ "$expect" == "empty" ]] && saw_positive=1
     cases=$((cases + 1))
 
     printf 'use <%s.scad>\n$fn = 96;\n%s\n' "$lib" "$stmt" > "$work.scad"
@@ -156,8 +158,16 @@ for conf in lib/*-mates.conf; do
     esac
   done < "$conf"
 
+  # Both directions are required, and for the same reason. A manifest with no
+  # `interfering` case never proves the harness can fail; a manifest with no
+  # `empty` case never proves a declared fit assembles. Either one alone is a
+  # suite that cannot say anything about the thing it is named after.
   if (( saw_negative == 0 )); then
     echo "FAIL  ${conf}: no 'interfering' case — nothing proves these fits can fail"
+    fail=1
+  fi
+  if (( saw_positive == 0 )); then
+    echo "FAIL  ${conf}: no 'empty' case — nothing proves this library's fit assembles"
     fail=1
   fi
 done
