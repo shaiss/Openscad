@@ -624,6 +624,40 @@ Hole assert: `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)` → 89 ≥
 > Until the DTSchB PDF is read, the per-run interpretation is the repo owner's
 > ruling applied to the best available reading of the source — not something the
 > source has been confirmed to say.
+>
+> **Independent corroboration, same day, still not primary text.** A reviewing
+> agent on PR #78 ran its own German-language search and returned the criterion
+> in a form that matches ours, naming a specific document:
+>
+> - **URL**, which this session never had and the next reader should start from:
+>   `https://www.tierschutzbund.de/fileadmin/Seiten/tierschutzbund.de/Downloads/Berichte/Positionspapier_DTSchB_Tierschutzwidriges_Zubehoer.pdf`
+> - **The wording it returned**, paraphrasing the criterion: plastic tubes are
+>   acceptable only if they do not exceed twice the animal's body length, *and*
+>   ensure adequate ventilation, *and* carry clear instructions against misuse.
+> - It also attributes the same criterion to the **ZZF** (Zentralverband
+>   Zoologischer Fachbetriebe) list of dangerous accessories — a second body
+>   publishing it, which is new.
+>
+> What this does and does not move:
+>
+> - **DTSchB attribution: MODERATE → good.** Two independent searches, run by
+>   different agents on different days, both return this criterion attributed to
+>   the DTSchB position paper and neither returns any length limit attributed to
+>   TVT. The re-attribution in §11 is on firmer ground than when it was made.
+> - **Conjunctive framing: MODERATE → good.** The returned wording is explicitly
+>   three-limbed (length AND ventilation AND instructions). NUGGS answers the
+>   ventilation limb by construction.
+> - **Per-tube scope: still LOW, and unchanged.** The German is plural ("Sie
+>   dürfen…"), which is the same grammatical hint §11 already rests on — not new
+>   evidence, the same inference reached twice. The reviewing agent said so
+>   directly: the paper supports the 2× criterion but does not establish a
+>   per-tube scope.
+>
+> And the caveat still stands in full: **that agent could not read the PDF
+> either.** Its own attempts to fetch and extract the document returned nothing
+> usable, so this is two search summaries agreeing, not a document read. Two
+> summaries can agree and both be wrong in the same way — that is precisely how
+> the TVT misattribution survived four rounds here.
 
 ---
 
