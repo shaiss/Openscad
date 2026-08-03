@@ -197,11 +197,21 @@ print(vetted)
 PY
 )" || exit 1
       vetted_ip="${vet##*$'\n'}"
+      # Download WITHOUT following redirects (-L dropped): a redirect would send
+      # curl to a fresh, unvetted host, defeating the resolve-and-pin guard. A
+      # 3xx is a refusal; -f still catches 4xx/5xx.
       if [[ "${vet%%$'\n'*}" == "name" ]]; then
         resolve_host="${host#[}"; resolve_host="${resolve_host%]}"
-        curl -fsSL --resolve "${resolve_host}:${port}:${vetted_ip}" "$value" -o "$tmp/gen.img"
+        dl_code="$(curl -fsS -o "$tmp/gen.img" -w '%{http_code}' \
+          --resolve "${resolve_host}:${port}:${vetted_ip}" "$value")" \
+          || { echo "image download failed" >&2; exit 1; }
       else
-        curl -fsSL "$value" -o "$tmp/gen.img"
+        dl_code="$(curl -fsS -o "$tmp/gen.img" -w '%{http_code}' "$value")" \
+          || { echo "image download failed" >&2; exit 1; }
+      fi
+      if [[ "$dl_code" == 3?? ]]; then
+        echo "refusing image URL: it returned a redirect (HTTP ${dl_code}); not following it (SSRF guard)" >&2
+        exit 1
       fi
     else
       printf '%s' "$value" | base64 -d >"$tmp/gen.img"
