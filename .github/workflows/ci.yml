@@ -65,6 +65,7 @@ jobs:
             echo "changed files:"; printf '  %s\n' "${files[@]}"
             infra=false
             declare -A names=()
+            declare -A touched_styles=()
             for f in "${files[@]}"; do
               case "$f" in
                 # A lib/script/printcheck/workflow change can break any
@@ -78,6 +79,14 @@ jobs:
                 styles/*|tools/stylelift/*|lib/*|scripts/style-*.sh|\
                 designs/*/style.conf|.github/workflows/ci.yml)
                   styles=true ;;
+              esac
+              case "$f" in
+                # A style's tokens are compiled into every design that
+                # declares it, so editing style.json/style.scad moves that
+                # design's geometry — the printcheck+slice gate has to see
+                # it, not just the style gate. Remember which styles moved
+                # and map them back to designs after the loop.
+                styles/*) s=${f#styles/}; touched_styles[${s%%/*}]=1 ;;
               esac
               case "$f" in
                 designs/*/*)
@@ -97,6 +106,16 @@ jobs:
                 .github/workflows/ci.yml)
                   scad=true ;;
               esac
+            done
+            # The other direction: a design that declares a style the PR
+            # touched gets gated as if the design itself had changed.
+            for conf in designs/*/style.conf; do
+              [ -f "$conf" ] || continue
+              n=${conf#designs/}; n=${n%%/*}
+              [ -f "designs/$n/$n.scad" ] || continue
+              s="$(grep -vE '^[[:space:]]*(#|$)' "$conf" | head -1 \
+                   | tr -d '[:space:]' || true)"
+              [ -n "${touched_styles[${s:-_none_}]:-}" ] && names[$n]=1
             done
             # A changed design that claims a style has to be re-checked
             # against it: the claim is about its geometry, and its geometry

@@ -39,7 +39,7 @@ Probe sources are committed alongside this doc:
 headline figure with:
 
 ```bash
-OPENSCADPATH="$PWD/lib" xvfb-run -a openscad -o /tmp/repro.stl \
+OPENSCADPATH="$PWD/lib:$PWD" xvfb-run -a openscad -o /tmp/repro.stl \
   -D 'part="vertical"' -D 'bore=80' -D 'wall=2.4' -D 'len=160' -D '$fn=128' \
   docs/nuggs-probes/tube-probe.scad
 printcheck /tmp/repro.stl --build-volume 256x256x256   # 100/100, no findings
