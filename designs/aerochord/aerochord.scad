@@ -122,7 +122,7 @@ mouth_z = floor_t + mouth_d/2 + 0.6;
 // render, so the gate can't go green on a design that quietly dropped below
 // the FDM floor.
 assert(flue_h >= 0.8,
-       "flue_h must be >= 0.8 mm (2+ layers at 0.4 nozzle) or the jet slot prints shut");
+       "flue_h must be >= 0.8 mm (>= 2x a 0.4 mm nozzle width) or the jet slot prints shut");
 assert(wall >= 1.2,
        "wall must be >= 1.2 mm (3 perimeters at 0.4 nozzle)");
 assert(labium_land >= 0.3,
@@ -186,8 +186,8 @@ module bore_void(i) {
 // Windway (flue): a thin vertical slot in the front of the block carrying air
 // up from the plenum to the flue exit at window_bot_z. Vertical walls -> self
 // supporting; the slot is thin in X (flue_h), wide in Y (flue_w). It starts
-// low enough (floor_t + 0.6) to always overlap the gable plenum below it, so
-// the air path from plenum to flue exit is continuous.
+// low enough (floor_t + 0.6) to always overlap the (flat-roofed) plenum below
+// it, so the air path from plenum to flue exit is continuous.
 module windway_void(i) {
     z0 = floor_t + 0.6;
     translate([r_bore - flue_h, tube_y(i) - flue_w/2, z0])

@@ -59,10 +59,9 @@ A single print-in-place object — no assembly, no supports, no fasteners.
 ## Print settings
 
 - **Material:** PLA (or PETG). Any color; the sound doesn't care.
-- **Layer height:** 0.2 mm. A 0.4 mm nozzle is assumed throughout; 0.2 mm also
-  works and only sharpens the labium.
-- **Nozzle:** 0.2 mm or 0.4 mm. The thin 1 mm flue is the make-or-break feature
-  — a larger nozzle can't form it.
+- **Layer height:** 0.2 mm. Finer layers only sharpen the labium.
+- **Nozzle:** 0.2 mm or 0.4 mm (a 0.4 mm nozzle is assumed throughout). The thin
+  1 mm flue is the make-or-break feature — a larger nozzle can't form it.
 - **Infill:** 15–20 % is plenty; the acoustic volumes are the hollow bores, not
   infill.
 - **Supports:** **none needed.** Everything is self-supporting by construction.
@@ -90,10 +89,13 @@ sections. The ones most worth touching:
 Override on the command line, e.g. a warmer minor chord an octave down:
 
 ```bash
+export OPENSCADPATH="$PWD/lib:$PWD"   # so `use <printability.scad>` resolves
 xvfb-run -a openscad -o build/aerochord.stl \
   -D 'chord_ratios=[1, 6/5, 3/2]' -D 'root_freq=523.25' \
   designs/aerochord/aerochord.scad
 ```
+
+(Or just `./scripts/render.sh aerochord`, which sets `OPENSCADPATH` for you.)
 
 ## Assembly & use
 
