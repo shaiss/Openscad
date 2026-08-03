@@ -26,8 +26,11 @@ Two tiers, in order:
    so compare renders from different hardware perceptually, not byte-wise.
 2. **AI-restyled lifestyle shot (optional — only when the session has an
    image-generation tool).** Restyle the committed raytrace into a
-   real-world scene. Never a substitute for tier 1, and never the only
-   image on the page.
+   real-world scene. This tier is **purely supplemental and cosmetic** — a
+   general real-world impression for the reader, not a geometry-true render:
+   assume it may be geometrically off. Never a substitute for tier 1, never
+   the only image on the page, and it always ships with a visible warning
+   note directly below it (see below).
 
 ## Tier 1 workflow
 
@@ -88,18 +91,36 @@ available tools; do not shell out to external image APIs that aren't
 configured). If none is available, skip this tier silently — tier 1 is the
 deliverable — and leave the idea in NOTES.md for a session that has one.
 
-- **Input is the committed tier-1 raytrace**, so the geometry in the
-  generated image stays anchored to the real part. Prompt for: same object,
-  same viewpoint, photographed in a real setting relevant to the design's
-  use (the battleship board on a dinner table set with sushi; the desiccant
-  capsule beside a filament dry-box), natural lighting, shallow depth of
-  field.
-- **Honesty rules**: the shot must not invent or hide geometry — reject
-  generations that change the part's shape, proportions, or feature count
-  (count them: shutters, vents, ribs). Commit as
-  `previews/lifestyle-<shot>.png` and embed with alt text that says
-  `AI-styled scene` so nobody mistakes it for a photo of a physical print.
-- The tier-1 shot stays on the page; the lifestyle shot augments it.
+- **Start from the committed tier-1 raytrace** so the generated image at
+  least begins from the real part. Prompt for: same object, same viewpoint,
+  photographed in a real setting relevant to the design's use (the
+  battleship board on a dinner table set with sushi; the desiccant capsule
+  beside a filament dry-box), natural lighting, shallow depth of field.
+- **It is cosmetic, so assume it is geometrically off.** Image generators
+  add, drop, and reshape features, and we do **not** reject a lifestyle shot
+  for that — chasing pixel-faithful geometry out of a restyle is a losing
+  game, and the studio render (tier 1) and the STL are already the
+  geometry-true artifacts on the page. What keeps the lifestyle shot honest
+  is the *disclosure*, not a fidelity check. Every lifestyle shot ships all
+  three:
+  - Committed as `previews/lifestyle-<shot>.png`, where `<shot>` is the
+    exact tier-1 manifest name it restyles (so `product-hero` becomes
+    `lifestyle-product-hero.png`).
+  - Embedded with alt text that carries the label `AI-styled scene`.
+  - **A short visible note directly below the image**, so a reader skimming
+    the *rendered* page — not the markdown — sees the warning that alt text
+    alone can't give them:
+
+    ```markdown
+    ![AI-styled scene: the board on a set dinner table](previews/lifestyle-product-hero.png)
+
+    *AI-generated impression for general illustration only — geometry is
+    approximate and may not exactly match the printed part; see the studio
+    render above and the STL for the true shape.*
+    ```
+- The tier-1 shot stays on the page as the geometry-true reference; the
+  lifestyle shot only augments it, giving the reader a general real-world
+  feel for the piece.
 
 ## Freezing and review
 
