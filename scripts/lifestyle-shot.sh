@@ -33,6 +33,13 @@ if [[ -z "$design" ]]; then
   echo "usage: ZAI_KEY=... $0 <design> [--mock]" >&2
   exit 2
 fi
+# The design name is interpolated into paths (designs/<design>/...); pin it to
+# the repo's kebab-case convention so a stray "../" or a space can't write or
+# edit outside the design directory.
+if [[ ! "$design" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+  echo "invalid design name '${design}' — must be kebab-case ([a-z0-9-])" >&2
+  exit 2
+fi
 
 conf="designs/${design}/lifestyle.conf"
 if [[ ! -f "$conf" ]]; then
@@ -48,14 +55,20 @@ trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]
 
 # Shrink an image (any format) to a stripped PNG that fits MAX_SHOT_BYTES,
 # stepping the width down until it does. Photoreal 1280-wide PNGs can blow the
-# 3 MiB budget, so this is not optional.
+# 3 MiB budget, so this is not optional. The ">" on -resize means "only shrink,
+# never enlarge", so a small source is never upscaled. Fails (rather than
+# silently shipping an over-budget file) if it can't be met.
 fit_budget() {
   local src="$1" out="$2" w=1280
-  convert "$src" -strip "$out"
+  convert "$src" -resize "${w}x>" -strip "$out"
   while (( $(stat -c %s "$out") > MAX_SHOT_BYTES )) && (( w > 480 )); do
     w=$(( w * 85 / 100 ))
-    convert "$src" -resize "${w}x" -strip "$out"
+    convert "$src" -resize "${w}x>" -strip "$out"
   done
+  if (( $(stat -c %s "$out") > MAX_SHOT_BYTES )); then
+    echo "could not fit ${out} under $((MAX_SHOT_BYTES / 1024 / 1024)) MiB (down to ${w}px wide)" >&2
+    return 1
+  fi
 }
 
 generated=()
@@ -66,6 +79,13 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   prompt="$(trim "${line#*|}")"
   if [[ -z "$shot" || -z "$prompt" || "$line" != *"|"* ]]; then
     echo "malformed lifestyle.conf line (want '<shot> | <prompt>'): $line" >&2
+    exit 1
+  fi
+  # <shot> becomes the filename stem (lifestyle-<shot>.png) and part of the
+  # README embed URL — pin it to kebab-case so it can't escape previews/ or
+  # produce a broken markdown link.
+  if [[ ! "$shot" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+    echo "invalid shot name '${shot}' in ${conf} — must be kebab-case ([a-z0-9-])" >&2
     exit 1
   fi
 
@@ -85,19 +105,37 @@ while IFS= read -r line || [[ -n "$line" ]]; do
       echo "ZAI_KEY is not set — export it (CI: repo secret) or pass --mock" >&2
       exit 1
     fi
-    local_req="$(python3 -c 'import json,sys; print(json.dumps({"model":sys.argv[1],"prompt":sys.argv[2],"size":sys.argv[3]}))' \
+    req_body="$(python3 -c 'import json,sys; print(json.dumps({"model":sys.argv[1],"prompt":sys.argv[2],"size":sys.argv[3]}))' \
       "$ZAI_MODEL" "$prompt" "$ZAI_SIZE")"
     resp="$(curl -fsS -X POST "$ZAI_ENDPOINT" \
       -H "Authorization: Bearer ${ZAI_KEY}" \
       -H "Content-Type: application/json" \
-      -d "$local_req")" || { echo "GLM-Image request failed" >&2; exit 1; }
-    url="$(python3 -c 'import json,sys
+      -d "$req_body")" || { echo "GLM-Image request failed (HTTP error)" >&2; exit 1; }
+    # Parse ONCE from a captured string (not twice off stdin), and accept either
+    # a hosted url or inline base64, tagged so the shell knows how to fetch it.
+    # On anything unexpected, echo the raw body so the first live run is
+    # debuggable (a rejected size, a content-filter block, an async task, ...).
+    parsed="$(printf '%s' "$resp" | python3 -c '
+import json, sys
+raw = sys.stdin.read()
 try:
-    d=json.load(sys.stdin)
-    print(d["data"][0]["url"])
-except Exception as e:
-    sys.stderr.write("unexpected API response: %s\n" % sys.stdin.read()[:500]); raise' <<<"$resp")"
-    curl -fsSL "$url" -o "$tmp/gen.img"
+    item = json.loads(raw)["data"][0]
+    if item.get("url"):
+        print("url\t" + item["url"])
+    elif item.get("b64_json"):
+        print("b64\t" + item["b64_json"])
+    else:
+        raise KeyError("no url or b64_json in data[0]")
+except Exception:
+    sys.stderr.write("unexpected GLM-Image response: %s\n" % raw[:800])
+    raise')"
+    kind="${parsed%%$'\t'*}"
+    value="${parsed#*$'\t'}"
+    if [[ "$kind" == "url" ]]; then
+      curl -fsSL "$value" -o "$tmp/gen.img"
+    else
+      printf '%s' "$value" | base64 -d >"$tmp/gen.img"
+    fi
     convert "$tmp/gen.img" "$tmp/gen.png"
   fi
 
@@ -110,6 +148,7 @@ done <"$conf"
 # it isn't already embedded), directly after the tier-1 hero image so the
 # lifestyle shot sits beside the geometry-true one it augments.
 readme="designs/${design}/README.md"
+(( ${#generated[@]} )) || { echo "no shots generated (empty lifestyle.conf?)" >&2; exit 1; }
 for shot in "${generated[@]}"; do
   DESIGN="$design" SHOT="$shot" README="$readme" python3 - <<'PY'
 import os

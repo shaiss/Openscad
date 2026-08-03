@@ -13,6 +13,10 @@ on:
         description: Design directory under designs/ (must ship a lifestyle.conf)
         required: true
         default: sushi-battleship
+      size:
+        description: Image size WxH passed to GLM-Image (override if the API rejects the default)
+        required: false
+        default: 1280x960
 
 permissions:
   contents: write
@@ -36,6 +40,7 @@ jobs:
         env:
           ZAI_KEY: ${{ secrets.ZAI_KEY }}
           DESIGN: ${{ github.event.inputs.design }}
+          ZAI_SIZE: ${{ github.event.inputs.size }}
         run: |
           set -euo pipefail
           if [ -z "${ZAI_KEY:-}" ]; then
@@ -64,7 +69,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git add "designs/${DESIGN}/previews/lifestyle-"*.png "designs/${DESIGN}/README.md"
+          # Stage the previews directory and the README rather than a raw glob:
+          # the glob would stay literal (and error under set -e) if no file
+          # matched, and would word-split on odd names. Only the generator ran,
+          # so the sole change under previews/ is the new lifestyle PNG.
+          git add "designs/${DESIGN}/previews" "designs/${DESIGN}/README.md"
           if git diff --cached --quiet; then
             echo "::error::generator produced no changes"
             exit 1
