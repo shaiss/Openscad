@@ -39,6 +39,18 @@ image is resolved against the filesystem; anything missing is collected and
 reported, and the build exits non-zero. A link that would 404 in production
 stops the deploy instead.
 
+**Lineage is ported, not re-derived — and the port is cross-checked.** Index
+order and nesting come from the lineage record, so a derivative appears under
+the design whose geometry it reuses and credits it, exactly as
+`scripts/gallery.sh` does for the README gallery. The site cannot ask the real
+resolver: `vercel.json` pins the deploy to `npm --prefix site ci` +
+`node site/build.mjs`, and `./scripts/lineage.sh` needs Python. So `lib/`
+carries a port — and `test/lineage.test.mjs` runs the port and `tools/lineage`
+over the same fixture trees and fails on any disagreement about order or
+parentage. Two surfaces of this repo silently disagreeing about what a design
+*is* was [issue #55](https://github.com/shaiss/print-bench/issues/55); the
+cross-check is what stops it recurring.
+
 The one-line pitch on each gallery card is the same one `scripts/gallery.sh`
 puts in the README gallery — NOTES.md's `## Goal` paragraph, falling back to
 the product page's intro. `site/lib/content.mjs` ports that rule deliberately;
@@ -106,9 +118,11 @@ built in, so it could not be verified or pinned here.
 
 - `build.mjs` — the generator; discovery, render, asset copy, link check
 - `lib/content.mjs` — what exists: designs, styles, pitches, parts, previews
+- `lib/lineage.mjs` — `derives.conf` → gallery order and parentage, ported from `tools/lineage`
 - `lib/markdown.mjs` — markdown → HTML, link resolution and rewriting
 - `lib/scadparams.mjs` — Customizer parameters and include closure from a `.scad`
 - `lib/templates.mjs` — the page shells
+- `test/` — `npm --prefix site test`; run by `./scripts/site.sh` and CI
 - `assets/` — `site.css` (the design system), `site.js` (theme toggle),
   `configurator.js` (the panel) and `openscad-worker.js` (the renderer),
   copied to `/assets/` verbatim

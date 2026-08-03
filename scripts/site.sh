@@ -3,10 +3,16 @@
 #   ./scripts/site.sh           # build into build/site
 #   ./scripts/site.sh --serve   # build, then serve it at http://localhost:8000
 #
-# This is the same command Vercel runs (see vercel.json), so a green run here
-# means the deploy builds too. The build fails on any local reference that
-# does not resolve — a broken link stops it rather than becoming a 404 in
+# This runs the same build command Vercel runs (see vercel.json), so a green
+# run here means the deploy builds too. The build fails on any local reference
+# that does not resolve — a broken link stops it rather than becoming a 404 in
 # production.
+#
+# It also runs the site's own unit tests first, which the deploy does not.
+# They are what holds site/lib/lineage.mjs to tools/lineage: the site cannot
+# call the Python resolver (Vercel installs npm deps only), so it ports it,
+# and a port that nothing cross-checks is how the site and the README gallery
+# came to disagree about what a design is in the first place (issue #55).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -30,6 +36,9 @@ if [ ! -d site/node_modules ] || [ site/package-lock.json -nt site/node_modules 
   echo "== installing site dependencies =="
   npm --prefix site ci
 fi
+
+echo "== site unit tests =="
+npm --prefix site test
 
 node site/build.mjs --out build/site
 
