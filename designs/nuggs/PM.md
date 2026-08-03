@@ -70,8 +70,9 @@ Gate-green is necessary and **not** sufficient. v1 is done when:
 | # | Item | Why this rank | Cost |
 |---|---|---|---|
 | ~~B0~~ | ~~Make the coupling work~~ | **Done, round 2.** Nests, twists both ways, retains at 28.1 mm² bearing area | — |
-| **B1** | **Bed contact on the straight** | Now top. Every user prints this part first and it stands on its sector tips; a failed 145 g / 10 h print is the worst first impression available | ~145 g per failure |
-| **B1a** | **Print the coupon and tune `port_tol`** | The joint is proven in geometry, not in plastic. Until a printed pair twists at a sane torque, every fit number here is a guess | ~82 g, 6 h |
+| ~~B1~~ | ~~Bed contact on the straight~~ | **Done, round 3.** lug_deg 30->40: contact 396->528 mm2, coverage 52->69%, printcheck warning cleared, joint unchanged | +4 g |
+| **B1a** | **Print the coupon and tune `port_tol`** | Now top. The joint is proven in geometry, not in plastic. Until a printed pair twists at a sane torque, every fit number here is a guess — and it is also the only way to know whether bed contact is really solved | ~90 g, 7 h |
+| B1b | Degenerate zero-volume shells | argus-diff reports 12 bodies of 0.0 mm3 on the straight under CI's manifold backend; CGAL shows 4-6 zero-area triangles at r=ro and r=o_in. Pre-existing, zero material, harmless to slicing — but it makes every geometric diff noisy, which costs a reviewer attention on the diffs that matter | Needs openscad-nightly locally first |
 | B2 | Elbow-45 | First thing everyone asks for, and two of them make any turn 0–90° | Must assert the inscribed circle ≥ 70 mm (N1) |
 | B3 | Rim saddle | The only route for glass enclosures (N9), and no-drill lowers the entry cost more than any other item | Needs an internal ramp ≤ 15° (N4) |
 | B4 | Turnaround chamber | Prerequisite for any branch — N3 means every branch terminus must be turn-around-able | First part enclosing volume, so first needing vents |
@@ -105,4 +106,7 @@ Gate-green is necessary and **not** sufficient. v1 is done when:
 | 2026-08-02 | Ship the first round with the coupling documented as broken | A green gate plus an honest NOTES.md beats a design that looks finished; the three defects were measured, not suspected |
 | 2026-08-02 | Rib is a narrow tab (`rib_deg = 12`), not the full sector width | The entry slot must admit the rib axially, so a full-width rib leaves nothing to twist under. This is what made round 1 retain nothing |
 | 2026-08-02 | Circumferential run spans the full sector, so the joint locks in either twist direction | Handedness is a thing to get wrong for no benefit, especially one-handed during an emergency (N5) |
+| 2026-08-03 | lug_deg 30 -> 40 to fix bed contact, not the coupling | The part stands on its sector tips, so sector width IS first-layer area. 16 degrees were sitting unused under the asserted ceiling. Mate test identical at 30/40/44, so the joint is unaffected |
+| 2026-08-03 | 40 not 44, though 44 anchors more | 44 leaves 2 deg of headroom on lug_deg + twist_deg <= pitch/2; 40 leaves 6, so twist_deg can grow to 20 if the printed coupon says the twist is too short. The unmeasured fit gets the margin |
+| 2026-08-03 | No sacrificial first-layer tie ring yet | It would make one continuous ring, but a part that must be removed is an N6 chew-edge risk if forgotten. Not worth that trade before a real print says the six islands are insufficient |
 | 2026-08-02 | Every sector is one swept polygon, never a union of two arcs | Two arcs sharing an exact radius leave a coincident cylindrical surface and CGAL returns a non-watertight mesh |

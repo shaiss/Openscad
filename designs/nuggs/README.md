@@ -7,12 +7,13 @@ port: both ends of every module are identical, so any module mates with any
 other either way round — and the whole run comes apart in one twist with
 the animal still inside it.
 
-> **Work in progress — do not print yet.** The model renders and the port
-> closes geometrically, but nothing here has been printed, the lock has not
-> been verified on assembled copies, and the design has not yet passed
-> `gate.sh --slice`. Bed adhesion in particular is an open problem. Track it
-> in [issue #34](https://github.com/shaiss/print-bench/issues/34) and see
-> `NOTES.md` for the open items.
+> **Work in progress — nothing here has been printed yet.** The design
+> passes `gate.sh --slice`, and the coupling is verified in geometry: two
+> identical ports nest, twist either way, and resist axial pull. What no
+> one has checked is how it behaves in plastic — `port_tol = 0.30` is a
+> starting guess, so **print the coupon first** and expect to tune it.
+> Track progress in [issue #34](https://github.com/shaiss/print-bench/issues/34);
+> `NOTES.md` has the open items and `PM.md` the ranked backlog.
 
 ![4-view contact sheet](previews/contact-sheet.png)
 
@@ -61,8 +62,13 @@ A complete Bin Bridge is two bulkhead pairs and one straight.
 - **Infill:** 20 %
 - **Supports:** none needed — every downward-facing surface is ≥ 50°
 - **Orientation:** tube axis vertical
-- **Brim:** required, `outer_and_inner`, 5 mm. Not optional: the part stands
-  on a narrow ring and no automated check in this repo can see that risk.
+- **Brim:** required, `outer_and_inner`, 5 mm. Not optional, and worth
+  understanding: the straight has no flat base — it stands on the six port
+  sector tips, 528 mm² across 69% of the circumference, holding up a 180 mm
+  tall part for ten hours. A brim roughly triples the anchored area, but it
+  does **not** bridge the gaps between the tips (each is ~17 mm of arc, and
+  a 5 mm brim reaches 5 mm). Use it anyway; also print on a clean, degreased
+  plate, and do not run a draughty room.
 - **You will also need:** an 89 mm bi-metal hole saw. It is a stocked size
   but *not* in a typical 13-piece set, and there is no way around a hole
   larger than the bore.
@@ -83,8 +89,9 @@ dry fully. Never a dishwasher — the heated dry cycle exceeds even PETG.
 | `straight_len` | 160 mm | Face-to-face run length |
 | `port_tol` | 0.30 mm | **The one fit knob.** Tune on the coupon in ±0.05 steps |
 | `wall` | 2.4 mm | Tube shell; 6 perimeters at a 0.4 mm nozzle |
+| `lug_deg` | 40° | Coupling sector width. Also sets first-layer area, since the part stands on these tips — raise it toward 46 for more bed grip, never past `pitch/2 − twist_deg` |
 | `wall_hole_d` | 89 mm | Enclosure-wall hole — a stocked hole-saw size |
-| `twist_deg` | 40° | The locking twist |
+| `twist_deg` | 14° | The locking twist. Bounded by `rib_deg + twist_deg ≤ lug_deg` |
 
 All parameters are at the top of `nuggs.scad`, grouped in Customizer
 sections; override on the command line with `-D 'straight_len=120'`.
@@ -93,7 +100,8 @@ sections; override on the command line with `-D 'straight_len=120'`.
 
 Drill one 89 mm hole in each facing wall, at bedding height, level with
 each other. Bolt a bulkhead pair into each hole with 6 × M4. Push the
-straight onto one port, twist 40° to lock, then the same at the other end.
+straight onto one port, twist 14° to lock — either direction works, the
+coupling is symmetric — then the same at the other end.
 
 To open a run — for cleaning, or because an animal is in trouble — twist
-one joint back 40° and lift the straight away. Do not pull the animal.
+one joint back 14° and lift the straight away. Do not pull the animal.
