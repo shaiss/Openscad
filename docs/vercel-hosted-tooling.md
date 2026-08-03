@@ -67,7 +67,7 @@ rather than trusting the figures quoted here.
 
 ## Measured baseline
 
-CI, full-gate run on `main` ([run 30772851268](https://github.com/shaiss/Openscad/actions/runs/30772851268),
+CI, full-gate run on `main` ([run 30772851268](https://github.com/shaiss/print-bench/actions/runs/30772851268),
 all four designs, `--slice`). **Whole run: 115 s wall.**
 
 | Job | Total | Toolchain install | Actual work |
