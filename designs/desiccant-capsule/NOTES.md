@@ -86,7 +86,29 @@ here; `thread_helix()` now asserts it.
 ## Thread clearance derivation
 
 The thread profile has 45 deg flanks (slope dz/dr = +/-1 in the radial
-plane). The female groove is the male profile transformed two ways:
+plane) **where the two parts mate** — from the core surface out to the
+crest. Below the core surface the profile continues for another
+`sink = 0.4` as a vertical weld skirt, which carries no thread: the neck's
+core cylinder swallows it, and the lid's minor bore removes it.
+
+That distinction was the substance of issue #37. Everything derived below
+assumes a 45 deg flank, and until that issue was fixed the built profile
+did not have one: a single straight flank ran across the whole span
+including the skirt, giving slope `depth/(depth + sink)` = 0.75, i.e.
+36.87 deg. So this section was arithmetically correct and describing a
+shape the library was not producing. Measured on the export before and
+after, by unwrapping the helix back to its generating polygon:
+
+```text
+before:  flank slope 0.750 (36.87 deg)  ->  delivered gap 0.279400  (6.87% short)
+after:   flank slope 1.000 (45.00 deg)  ->  delivered gap 0.299990  (exact)
+```
+
+The fix was to the profile, not to the derivation below — `flank_add` is
+unchanged. The invariant is now tested against built geometry rather than
+restated, in `lib/threads-fdm-mates.conf`.
+
+The female groove is the male profile transformed two ways:
 
 1. translated **radially outward** by `thread_tol` (major and minor
    diameters both grow by `2*thread_tol`), and
@@ -119,6 +141,14 @@ the radial translation's `thread_tol/sqrt(2)` ~= 0.21 mm contribution to
 the same normal. Even the previous `w_add = thread_tol` gave
 `1.06*thread_tol` on the flanks, i.e. within 6% of uniform; the current
 form makes it exact.)
+
+(That last comparison holds only at a 45 deg flank, which is why issue #37
+read it as backwards: at the 36.87 deg the profile actually had, it was
+`w_add = thread_tol` that came out exact and the current form that ran 6.9%
+tight. Fixing the flank angle rather than the constant is what makes the
+paragraph true as written — the alternative would have been to keep the
+wrong angle and tune `flank_add` to compensate for it, leaving the rib
+overhanging past the 45 deg rule in CLAUDE.md.)
 
 ## Bead containment guard
 

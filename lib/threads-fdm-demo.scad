@@ -45,8 +45,18 @@ translate([90, 0, 0]) difference() {
 //    and self-intersect; the assert in thread_helix now says so out loud.)
 translate([135, 0, 0]) thread_neck(16, 0.6, 3, 1, 10);
 
-// 5. The clearance derivation is a function, not a magic number: at tol = 0.3
-//    this is ~0.2485, and the flank-normal gap it produces is exactly tol.
+// 5. The clearance derivation is a function, not a magic number.
+//
+//    This echoes the value only. It deliberately does NOT echo the flank gap
+//    that value is supposed to produce, because the arithmetic for that gap is
+//    the identity that defines flank_add — printing it proves the formula
+//    equals itself and nothing about the geometry above.
+//
+//    That is not hypothetical: this line used to print
+//    "0.3 (should equal 0.3)" for the whole time the built profile was
+//    delivering 0.2794 (issue #37). It could not have said otherwise.
+//
+//    The invariant is tested where it can actually fail, against the exported
+//    mesh: lib/threads-fdm-mates.conf, run by scripts/mate-check.sh.
 echo(str("flank_add(", tol, ") = ", flank_add(tol),
-         "  -> flank-normal gap = ",
-         (tol + flank_add(tol) / 2) / sqrt(2), " (should equal ", tol, ")"));
+         "  -- fit is verified in threads-fdm-mates.conf, not here"));
