@@ -9,11 +9,11 @@ piece, standing up, with no supports** — the intricate internal air path only
 works because it was solved to be printable. For anyone who wants an
 instrument that is impossible to buy and faintly impossible to explain.
 
-![aerochord printed in amber-orange PLA (satin finish) — three graduated fipple pipes rising from a base bar, with the mouthpiece tube at the front](previews/product-hero.png)
+![aerochord printed in amber-orange PLA (satin finish) — three graduated fipple pipes rising from a base bar, with the bed-resting mouthpiece snout at the front](previews/product-hero.png)
 
 The three graduated pipes are the three voices of the default major triad — the
 tallest is the lowest note. The windows (mouths) sit at the front base of each
-pipe; the tube you blow into is at the bottom.
+pipe; the mouthpiece snout you blow into is at the front, resting on the bed.
 
 ![4-view contact sheet](previews/contact-sheet.png)
 
@@ -85,6 +85,7 @@ sections. The ones most worth touching:
 | `flue_h` | `1.0` mm | Windway air-gap — the critical FDM feature. Raise in 0.1 mm steps if a voice won't speak. Guarded ≥ 0.8 |
 | `cutup` | `4.5` mm | Flue-to-labium distance; the fipple's tone control. Breathy → lower it; shrill → raise it |
 | `bore_d` | `10` mm | Pipe bore diameter — louder/lower-impedance when wider |
+| `window_corr` | `2` mm | The open-window end correction folded into every tube's length so the chord *intervals* stay true (see NOTES). ~0.3–0.6 × bore radius; calibrate physically if the intervals sound off |
 
 Override on the command line, e.g. a warmer minor chord an octave down:
 

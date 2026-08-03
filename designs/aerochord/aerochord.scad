@@ -33,6 +33,13 @@ tune = 1.0;
 // Speed of sound in air (mm/s) at ~20 C. Rises ~0.6 m/s per C, so a warm
 // breath sharpens the pitch slightly — fold that into `tune` when you tune.
 c_sound = 343000;
+// Open-window end correction (mm): the extra effective air length the mouth
+// adds beyond the physical labium. It joins the conical cap (r_bore) to form
+// the lumped `end_corr` subtracted from every tube. Same for every voice, so
+// leaving it out shifts the chord's intervals (default ratios drift to
+// ~1.244/1.487 instead of 1.25/1.5). ~0.3–0.6 x bore radius is the usual range;
+// calibrate against a physical print. Default 2 mm ≈ 0.4 x the 5 mm bore radius.
+window_corr = 2;
 
 /* [Resonator] */
 // Bore diameter of each pipe (mm). Wider bores are louder and lower-impedance
@@ -106,10 +113,11 @@ labium_z     = window_bot_z + cutup;   // resonator open end (window top edge)
 // would add a constant to each column — and a constant offset distorts the
 // chord RATIOS (a global `tune` multiplier can't undo an additive error). So
 // we subtract a lumped end correction, `end_corr`, from the cap base, keeping
-// each effective column proportional to 1/f. `end_corr ~ r_bore` (open-end
-// correction + conical cap) is a good first estimate; a physical print refines
-// it if the intervals sound off.
-end_corr = r_bore;
+// each effective column proportional to 1/f. It has two constant parts: the
+// conical cap (r_bore, geometric) and the open-window correction
+// (`window_corr`, acoustic) — both identical across voices. A physical print
+// refines it if the intervals sound off.
+end_corr = r_bore + window_corr;
 function freq(i)      = root_freq * chord_ratios[i];
 function reson_len(i) = tune * c_sound / (4 * freq(i));
 function tube_top(i)  = labium_z + reson_len(i) - end_corr;  // cap base; apex ~= target length
@@ -170,22 +178,17 @@ module base_bar() {
                     r = 3, bottom_chamfer = bottom_chamfer);
 }
 
-// External beak: a clean horizontal mouthpiece nub at the -Y end you put your
-// lips to. Anchored in the base end wall; the short cantilever bridges in air.
-// The bore through it is a teardrop whose POINT rises 0.8*mouth_d above the bore
-// centre — well past the plain circular radius — so a nub sized only as
-// `mouth_d + 2*wall` centred on the bore would let the point pierce its roof and
-// open a ~0.2 mm slit along the top (an air leak). Size and centre the nub from
-// the teardrop's true top/bottom extent so a full `wall` surrounds the point.
+// External beak: a bed-resting mouthpiece snout at the -Y end you put your lips
+// to. A flat-bottomed foot (not a floating cantilever) makes it fully self-
+// supporting and adds a stable footprint. It encloses the teardrop bore with a
+// full `wall` all round — including above the point, which rises 0.8*mouth_d
+// above the bore centre (`td_top`); undersizing here would open a ~0.2 mm slit
+// along the top, an air leak. Overlaps the base bar in +Y for a seamless union.
 module beak_solid() {
     td_top = mouth_z + 0.8 * mouth_d + wall;   // wall above the teardrop point
-    td_bot = mouth_z - mouth_d / 2   - wall;   // wall below the circular bore
-    d      = td_top - td_bot;
-    cz     = (td_top + td_bot) / 2;            // nub axis, offset up from the bore
-    hull() {
-        translate([0, y_lo,              cz]) rotate([-90, 0, 0]) cylinder(d = d, h = eps);
-        translate([0, y_lo - mouth_proj, cz]) rotate([-90, 0, 0]) cylinder(d = d, h = eps);
-    }
+    w      = mouth_d + 2 * wall;               // foot width in X
+    translate([-w/2, y_lo - mouth_proj, 0])
+        rounded_box([w, mouth_proj + 2, td_top], r = 2, bottom_chamfer = bottom_chamfer);
 }
 
 module solid_body() {

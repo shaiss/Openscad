@@ -50,13 +50,22 @@ is the acoustic open end, the printed cap is the closed end. For a stopped pipe
 
 with `c = 343 m/s` at ~20 °C. The design solves `L_eff` per voice from its
 target frequency, then places the cap base a lumped **end correction**
-(`end_corr`, ≈ bore radius) *below* that so the physical air column — labium to
-cone apex, plus the window's open-end correction — matches `L_eff`
-(`tube_top(i) = labium_z + reson_len(i) − end_corr`). This matters for the
-chord: the cone and fipple add the *same* length to every voice, and a constant
-offset distorts the interval **ratios**; subtracting it keeps each column
-proportional to `1/f`. A global `tune` (a multiplier) cannot fix an additive
-error, which is why the offset is removed geometrically rather than tuned out.
+(`end_corr`) *below* that so the physical air column matches `L_eff`
+(`tube_top(i) = labium_z + reson_len(i) − end_corr`). `end_corr` has two
+constant parts:
+
+- **`r_bore`** — the conical cap, which extends the column from the cap base to
+  the cone apex (geometric, exact); and
+- **`window_corr`** — the open-window end correction, the extra effective length
+  the mouth adds beyond the labium (acoustic, ~0.3–0.6 × bore radius; default
+  2 mm ≈ 0.4 × the 5 mm bore radius, refined by a physical print).
+
+This matters for the chord: both parts add the *same* length to every voice, and
+a constant offset distorts the interval **ratios** (leaving `window_corr` out
+drifts the default triad to ~1.244 / 1.487 instead of 1.25 / 1.5). Subtracting
+the whole `end_corr` keeps each column proportional to `1/f`. A global `tune`
+(a multiplier) cannot fix an additive error, which is why the offset is removed
+geometrically rather than tuned out.
 
 Default chord: **just-intonation major triad**, ratios `[1, 5/4, 3/2]`, root
 `root_freq = 1046.5 Hz` (C6). That gives nominal resonator lengths of ~82 / 66 /
@@ -103,7 +112,9 @@ the product page too.
     CGAL mesh non-manifold;
   - labium = an extruded wedge steeper than 45°, leaving a `labium_land` (~0.5
     mm) printable tip instead of a zero-thickness knife;
-  - mouthpiece bore = a teardrop (support-free horizontal hole).
+  - mouthpiece = a **bed-resting snout** (flat on the plate), so nothing
+    cantilevers in free air; its bore is a teardrop (support-free horizontal
+    hole) whose point is fully enclosed by a `wall` of material.
 - **Tall and thin** (default ~106 mm tall on a 22 mm-deep base). PrusaSlicer
   flags generic "stability"; print with a **brim** and it's fine. Bed contact
   is a solid base bar, so adhesion is good.
