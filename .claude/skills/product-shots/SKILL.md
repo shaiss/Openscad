@@ -12,7 +12,18 @@ should lead with one.
 
 Two tiers, in order:
 
-1. **Studio render (always — this is the CI-gated deliverable).**
+**CI renders and commits both tiers.** What you own is the *manifest* and
+the *embed*: `shots.conf` says which shot exists and how it is framed,
+README.md places it. The `regen` job in `.github/workflows/ci.yml` runs
+`product-shot.sh` for every design a PR touches and pushes the PNGs to the
+branch; the lifestyle workflow fires on a `lifestyle.conf` landing on main.
+So you can write a manifest and push without `bpy` installed at all. Render
+locally when you want to *judge* framing before pushing — that is a real
+reason, and §"Judge the framing" below is about exactly that.
+
+Two tiers, in order:
+
+1. **Studio render (always — this is the geometry-true deliverable).**
    `./scripts/product-shot.sh <name>` exports the geometry-true STL with
    OpenSCAD and path-traces it with Blender's Cycles: seamless backdrop,
    soft key/fill/rim lighting, glossy floor with contact shadows, plastic
@@ -57,23 +68,39 @@ Two tiers, in order:
    - Like `animations.conf`, entries are FIXED across review rounds so
      before/after images align — add a new entry rather than moving one.
 
-2. **Render and look at it**: `./scripts/product-shot.sh <name>`, then
-   actually view `designs/<name>/previews/<shot>.png` (Read it) before
-   shipping — check framing, that the part isn't crushed against the
-   frame edge, and that the visible face is the one that sells the design.
-   Send it to the user with SendUserFile like any other preview.
-
-3. **Embed it** near the top of the README (above the contact sheet), with
+2. **Embed it** near the top of the README (above the contact sheet), with
    descriptive alt text naming the material/color:
 
    ```markdown
    ![Product shot: the assembled board in charcoal PLA](previews/product-hero.png)
    ```
 
-4. **Gate**: `./scripts/readme-gate.sh <name>` must pass — every
-   `shots.conf` entry needs its committed PNG, embedded in the README,
-   within the size budget (`scripts/preview-budget.sh`). CI enforces this;
-   commit the PNGs like every other preview.
+   Write the embed even when the PNG does not exist yet — CI renders it and
+   commits it to the branch, and `readme-gate.sh` is what proves manifest,
+   file and embed all line up (within the size budget in
+   `scripts/preview-budget.sh`). A local readme-gate failure on a
+   not-yet-rendered shot is expected, not a problem to solve.
+
+3. **Judge the framing** — the one part CI cannot do for you. A machine can
+   confirm a PNG exists and is under budget; it cannot tell you the part is
+   crushed against the frame edge or that you're selling its dull face. So
+   render locally when framing is in question:
+
+   ```bash
+   # once; bpy is not installed by default. --force too: without it the hook
+   # no-ops outside Claude Code on the web, so --with-bpy alone does nothing.
+   .claude/hooks/session-start.sh --force --with-bpy
+   ./scripts/product-shot.sh <name>
+   ```
+
+   Then actually view `designs/<name>/previews/<shot>.png` (Read it) and
+   send it to the user with SendUserFile like any other preview. Iterate on
+   the manifest's camera line, not on the committed file.
+
+   If you skip this, the shot still lands — CI renders whatever the
+   manifest says. Skipping it means nobody looked. On a new `shots.conf`
+   entry, look; on a re-render of a frozen camera after a geometry change,
+   the camera is by definition unchanged and CI's output is the answer.
 
 Multi-part scenes: `tools/photoshot/photoshot.py` accepts multiple STLs
 with per-mesh `--color` for two-tone assemblies; the manifest drives one
@@ -81,22 +108,22 @@ geometry per shot, so compose multi-STL shots manually and name the output
 to match a manifest entry only if it is reproducible from source noted in
 NOTES.md.
 
-If the `bpy` module is missing, run `.claude/hooks/session-start.sh --force`
-— don't work around the gap.
-
 ## Tier 2: AI-restyled lifestyle shot
 
 Two ways to generate one, both landing the same disclosed
 `previews/lifestyle-<shot>.png`:
 
 - **In CI (the wired path).** Write `designs/<name>/lifestyle.conf` (one
-  `<shot> | <prompt>` line — describe the *scene*, not fake detail) and run
-  the **Lifestyle shot (tier-2, AI)** workflow
-  (`.github/workflows/lifestyle-shot.yml`, `scripts/lifestyle-shot.sh`). It
-  calls the Z.AI GLM-Image API with the `ZAI_KEY` secret, sizes the result to
-  budget, embeds it with the disclosure below, runs `readme-gate.sh`, and
-  opens a **draft PR** to approve — GLM-Image is text-to-image, so the scene
-  is generated from the prompt, and the image is cosmetic by construction.
+  `<shot> | <prompt>` line — describe the *scene*, not fake detail) and land
+  it on main. That is the whole trigger: the **Lifestyle shot (tier-2, AI)**
+  workflow (`.github/workflows/lifestyle-shot.yml`,
+  `scripts/lifestyle-shot.sh`) fires on the manifest itself, so writing the
+  prompt *is* the request — no button to press. It calls the Z.AI GLM-Image
+  API with the `ZAI_KEY` secret, sizes the result to budget, embeds it with
+  the disclosure below, runs `readme-gate.sh`, and opens a **draft PR** to
+  approve — GLM-Image is text-to-image, so the scene is generated from the
+  prompt, and the image is cosmetic by construction. Dispatch the workflow
+  by hand only to re-roll a shot you don't like, or to override the size.
 - **In-session**, only when the session actually has an image-generation tool
   (check your available tools; do not shell out to external image APIs that
   aren't configured). If none is available, skip this tier silently — tier 1
@@ -148,10 +175,17 @@ Two ways to generate one, both landing the same disclosed
 
 Product shots follow the same freeze policy as `previews/CAMERAS.md`
 cameras and `animations.conf`: once reviewers have compared against a
-shot, don't silently re-frame it. Regenerate (same manifest line) whenever
-the model changes; the gate can't detect a stale PNG, so re-running
-`./scripts/product-shot.sh <name>` after geometry changes is part of the
-design's definition of done, alongside `render.sh` and `gate.sh --slice`.
+shot, don't silently re-frame it. The freeze lives in the manifest line, so
+CI regenerating a shot never breaks it — same camera in, same framing out.
+
+Keeping a shot current after a geometry change used to be a manual step in
+the design's definition of done, and it failed exactly the way manual steps
+do (issue #69: three previews with no generator went stale through a thread
+redesign, and every check stayed green). It is CI's now: `regen` re-renders
+the shots of every design in a change's blast radius and commits them, so a
+committed PNG cannot depict older geometry than the `.scad` beside it. What
+remains yours is the manifest — and the judgement about framing that no
+gate can make.
 
 Because renders are reproducible, staleness is *checkable* even though the
 gate doesn't check it: re-run the shot on an unchanged design and the PNG
