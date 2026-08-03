@@ -15,18 +15,35 @@ workflow did). Section 7 says what changes when nobody is watching.
 
 ## 0. Claim exactly one issue
 
-1. If the invoker named an issue, take it. Otherwise select per §1.
-2. **Lock check** — an issue is taken if any of these hold; move to the next
-   candidate:
+1. **A named issue is the only candidate.** If the invoker named one it is
+   that issue or nothing: if it fails any check below, stop and report *that
+   issue*. Never fall through to a different one — shipping a PR for an issue
+   nobody asked about is the worst thing this skill can do, and it looks like
+   success. Only an unnamed invocation selects per §1.
+2. **Baseline** — clean worktree (`git status --porcelain` empty, untracked
+   included) on a branch freshly based on the current default branch. The
+   contract's timestamp only proves it predates the diff if there was no diff
+   when you posted it.
+3. **Lock check** — an issue is taken if any of these hold:
    - a comment contains the marker `🚢 SHIP-LOCK`
-   - an open PR body says `Closes #<N>` / `Fixes #<N>` (search open PRs)
+   - **an open PR closes it.** Don't grep for `Closes #N`: GitHub honours
+     nine keywords — `close`/`closes`/`closed`, `fix`/`fixes`/`fixed`,
+     `resolve`/`resolves`/`resolved` — case-insensitively, each optionally
+     followed by `:`. Read the issue's linked-PR metadata instead, so
+     `Resolved: #38` doesn't read as unclaimed.
    - a remote branch `claude/issue-<N>-*` already exists
-3. Claim it by posting the §2 contract as a comment led by `🚢 SHIP-LOCK`.
+4. Claim it by posting the §2 contract as a comment led by `🚢 SHIP-LOCK`.
    One per issue, ever. The comment's timestamp is the proof the contract
    predates the diff — that is the whole anti-retrofit mechanism, so post it
    **before** you read a line of implementation code.
+5. **Re-read after claiming.** Check-then-post is not atomic: two runs can
+   both pass step 3 and both post. So re-read the comments afterwards, and if
+   another `🚢 SHIP-LOCK` predates yours, edit yours to withdraw and stop —
+   last writer yields. (GitHub offers no atomic claim for an issue. If this
+   ever needs to be airtight, push a claim ref first: creating a remote branch
+   fails when it already exists, which a comment cannot.)
 
-If no issue is free, say so and stop. Never work two.
+If the issue is taken, say so and stop. Never work two.
 
 ## 1. Select — is this closeable by one PR?
 
@@ -55,9 +72,13 @@ Reporting it is the deliverable.
 
 ## 2. Freeze the scope contract — before reading code
 
-Written from the **issue text only**. Reading the implementation first
-contaminates it: you start writing criteria that describe the fix you
-already have in mind instead of the outcome the issue asked for.
+Written from the **issue thread only** — the body plus its comments. An
+owner comment picking an option is part of the spec, not outside it (§1
+treats it as the decision that makes an issue takeable); quote it in the
+contract so the reader knows which text you built from. What must stay out
+is the *implementation*: read it first and you start writing criteria that
+describe the fix you already have in mind instead of the outcome the issue
+asked for.
 
 ```markdown
 🚢 SHIP-LOCK — shipping this as one PR.
@@ -96,29 +117,48 @@ Know the difference, because getting it backwards is how this skill fails in
 both directions:
 
 - **Consequence of the fix ⇒ in scope, ship it.** A `lib/` geometry change
-  moves every design that includes it: committed previews under
-  `designs/*/previews/` re-render, the design's NOTES.md derivation is now
-  wrong, the gallery may shift. Leaving those stale ships a repo that
-  contradicts itself. Re-render with the **frozen cameras**
-  (`./scripts/render.sh <name> --previews`) — never reframe a camera to make
-  a diff look better.
+  moves every design that includes it. Find them rather than guessing — grep
+  for the `use`/`include` of the file you changed (and for a `styles/` token
+  change, every `designs/*/style.conf` naming it) — then regenerate *every*
+  committed artifact those designs derive from source, not just the one you
+  remembered:
+  - `./scripts/render.sh <name> --previews` — the frozen review shots
+  - `./scripts/animate.sh <name>` — any `animations.conf` GIFs
+  - `./scripts/product-shot.sh <name>` — any `shots.conf` product shots
+  - the design's NOTES.md derivation, which is now arithmetic about a shape
+    that changed, and `./scripts/gallery.sh` if a contact sheet moved
+
+  Cameras are **frozen**: re-render them, never reframe one to make a diff
+  look better. Leaving any of these stale ships a repo that contradicts
+  itself — and the product page is the one a stranger sees first.
 - **Defect you noticed on the way ⇒ out of scope, file it.** Open a new
   issue with the reproduction you already have, link it from the PR, move
   on. This is the single most common creep: the fix is done, the file is
   open, and the adjacent wart is *right there*.
 - **Refactor, rename, tidy ⇒ out of scope.** Always. Even one line.
-- **Contract wrong?** If implementation proves an AC impossible or
-  incomplete, amend it on the issue thread as a new comment saying what
-  changed and why — then keep going. Amending in the open is legitimate;
-  silently drifting is not.
+- **Contract wrong?** Amend it on the issue thread as a new comment saying
+  what changed and why. Amending in the open is legitimate; silently drifting
+  is not. But sort the amendment first, because the two kinds are not alike:
+  - **Non-material** — the deliverable is unchanged and you are correcting
+    how it gets verified: a measurement the issue got wrong, an evidence
+    command that cannot work, a criterion that restates rather than tests.
+    Post it and keep going.
+  - **Material** — it changes an outcome, an option, or a deliverable. That
+    is rewriting the request. Post the reason and **stop for a decision**,
+    unattended always and attended unless the invoker is there to answer.
+    An AC turning out to be impossible is exactly when a skill is most
+    tempted to redefine the goal to something it can hit.
 
 ## 5. Verify — two independent passes
 
 **Pass A — would CI pass?** Run `/preflight`. It owns the check set and the
 scoping rules; do not maintain a competing list here. A red result is a stop.
 
-**Pass B — scope audit.** Both directions, over
-`git diff --name-only $(git merge-base origin/<default-branch> HEAD)`:
+**Pass B — scope audit.** Both directions, over every path this branch
+touches — `git diff --name-only $(git merge-base origin/<default-branch>
+HEAD)` for tracked files **plus `git status --porcelain`** for untracked
+ones. The diff alone cannot see a file that was never added, which is
+precisely the shape a stray script or a leftover build artifact takes:
 
 | direction | question | failure mode it catches |
 |---|---|---|
