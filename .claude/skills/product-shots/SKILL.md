@@ -86,10 +86,22 @@ If the `bpy` module is missing, run `.claude/hooks/session-start.sh --force`
 
 ## Tier 2: AI-restyled lifestyle shot
 
-Only when the session actually has an image-generation tool (check your
-available tools; do not shell out to external image APIs that aren't
-configured). If none is available, skip this tier silently — tier 1 is the
-deliverable — and leave the idea in NOTES.md for a session that has one.
+Two ways to generate one, both landing the same disclosed
+`previews/lifestyle-<shot>.png`:
+
+- **In CI (the wired path).** Write `designs/<name>/lifestyle.conf` (one
+  `<shot> | <prompt>` line — describe the *scene*, not fake detail) and run
+  the **Lifestyle shot (tier-2, AI)** workflow
+  (`.github/workflows/lifestyle-shot.yml`, `scripts/lifestyle-shot.sh`). It
+  calls the Z.AI GLM-Image API with the `ZAI_KEY` secret, sizes the result to
+  budget, embeds it with the disclosure below, runs `readme-gate.sh`, and
+  opens a **draft PR** to approve — GLM-Image is text-to-image, so the scene
+  is generated from the prompt, and the image is cosmetic by construction.
+- **In-session**, only when the session actually has an image-generation tool
+  (check your available tools; do not shell out to external image APIs that
+  aren't configured). If none is available, skip this tier silently — tier 1
+  is the deliverable — and leave the idea in NOTES.md for a session that has
+  one.
 
 - **Start from the committed tier-1 raytrace** so the generated image at
   least begins from the real part. Prompt for: same object, same viewpoint,
