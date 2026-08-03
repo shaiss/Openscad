@@ -164,8 +164,22 @@ derivative_gate() {
         fail=1
         continue
       fi
-      dhash=$(lineage_mesh_hash "$dstl")
-      phash=$(lineage_mesh_hash "$pstl")
+      # Tested rather than assigned bare. `x=$(cmd)` adopts cmd's status, and
+      # under `set -e` a nonzero one aborts the whole run — which would let a
+      # single unreadable export take down the gate for every design after it,
+      # exactly the aggregate-and-continue discipline gate_one is built on.
+      # lineage_mesh_hash exits nonzero only when a file exists but will not
+      # parse as a binary STL; a missing file is the empty mesh and succeeds.
+      if ! dhash=$(lineage_mesh_hash "$dstl"); then
+        echo "FAIL  derivative ${name}: override ${label} — the derivative's export could not be read back, so the claim cannot be settled"
+        fail=1
+        continue
+      fi
+      if ! phash=$(lineage_mesh_hash "$pstl"); then
+        echo "FAIL  derivative ${name}: override ${label} — the parent's export could not be read back, so the claim cannot be settled"
+        fail=1
+        continue
+      fi
       if [[ "$dhash" == "$phash" ]]; then
         echo "FAIL  derivative ${name}: override ${label} — the override did not take, the mesh is identical to the parent's"
         printf '      %s\n' \

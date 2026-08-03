@@ -135,7 +135,16 @@ lineage_selftest() {
     fi
   done
 
+  # Tested, not assigned bare: `x=$(cmd)` adopts cmd's status and errexit
+  # would abort the selftest mid-way, reporting nothing about the assertions
+  # it had not reached yet — a selftest has to say which property broke.
   local h_base h_ok h_typo
+  for f in base derivative-ok derivative-typo; do
+    if ! lineage_mesh_hash "${out}/${f}.stl" >/dev/null; then
+      echo "FAIL  selftest: ${out}/${f}.stl did not parse as a binary STL"
+      return 1
+    fi
+  done
   h_base=$(lineage_mesh_hash "${out}/base.stl")
   h_ok=$(lineage_mesh_hash "${out}/derivative-ok.stl")
   h_typo=$(lineage_mesh_hash "${out}/derivative-typo.stl")
