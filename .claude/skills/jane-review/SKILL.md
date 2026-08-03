@@ -110,6 +110,25 @@ two-thirds empty background, gets one re-frame request *now*, not in round
 three. Insist close-ups include context (a slice of the neighboring
 feature) so a 0.5 mm channel has something to be 0.5 mm *of*.
 
+**AI-styled lifestyle shots** (`previews/lifestyle-*.png`) are a different
+animal from the deterministic studio shots, and the honesty rule is the
+inverse of what a printability reviewer expects. They are cosmetic and
+*assumed geometrically approximate* — an image generator will add, drop and
+reshape features — so a geometry mismatch against the tier-1 raytrace is
+**not** a finding, and demanding pixel-faithful geometry from a restyle is
+out of scope. What **is** a blocking finding is a **disclosure failure**: a
+`lifestyle-*.png` embedded without an `AI-styled scene` alt label, or without
+a visible warning note in the paragraph directly below it saying the image is
+AI-generated and its geometry approximate, or a lifestyle shot placed where a
+reader would take it for the real print (used as the hero/only image, or
+captioned so it reads as a photo). `scripts/readme-gate.sh` now enforces the
+label and note mechanically; your job is the judgment it can't make — that
+the note actually *reads* as a warning and the shot isn't dressed up as a
+photograph of the printed part. And note the gate triggers on the
+`lifestyle-*.png` **filename**: an AI render committed under any other name
+(`hero.png`, `scene.png`) escapes it entirely, so check every photo-like
+image on the page, not just the files named `lifestyle-*`.
+
 ## 5. Output contract
 
 Deliver, in order:

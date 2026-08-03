@@ -1,0 +1,293 @@
+#!/usr/bin/env bash
+# Generate a tier-2 AI-restyled *lifestyle* shot for a design from a text
+# prompt via the Z.AI GLM-Image API, size it to the product-shot budget, and
+# embed it in the design's README with the canonical disclosure readme-gate
+# requirement 9 demands (an "AI-styled scene" alt label and a "geometry is
+# approximate" caption). The shot is COSMETIC and geometrically approximate —
+# GLM-Image is text-to-image, so it renders an impression of the scene, not the
+# real mesh; the studio product shot (tier 1) stays the geometry-true image.
+# See .claude/skills/product-shots/SKILL.md (tier 2) and issue #66.
+#
+#   ZAI_KEY=... ./scripts/lifestyle-shot.sh <design>
+#   ./scripts/lifestyle-shot.sh <design> --mock   # offline placeholder, no API
+#
+# Reads designs/<design>/lifestyle.conf ("<shot> | <prompt>" per line) and
+# writes designs/<design>/previews/lifestyle-<shot>.png. Re-running is safe:
+# the README embed is inserted only if it isn't there already. Meant to run in
+# CI (.github/workflows/lifestyle-shot.yml) where ZAI_KEY is a repo secret;
+# --mock lets the whole pipeline be exercised locally without a key.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+# shellcheck source=scripts/preview-budget.sh
+. scripts/preview-budget.sh          # MAX_SHOT_BYTES
+
+ZAI_MODEL="${ZAI_MODEL:-glm-image}"
+ZAI_ENDPOINT="${ZAI_ENDPOINT:-https://api.z.ai/api/paas/v4/images/generations}"
+ZAI_SIZE="${ZAI_SIZE:-1280x1280}"   # a size the GLM-Image docs show in examples
+
+design="${1:-}"
+mock=0
+[[ "${2:-}" == "--mock" ]] && mock=1
+if [[ -z "$design" ]]; then
+  echo "usage: ZAI_KEY=... $0 <design> [--mock]" >&2
+  exit 2
+fi
+# The design name is interpolated into paths (designs/<design>/...); pin it to
+# the repo's kebab-case convention so a stray "../" or a space can't write or
+# edit outside the design directory.
+if [[ ! "$design" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+  echo "invalid design name '${design}' — must be kebab-case ([a-z0-9-])" >&2
+  exit 2
+fi
+
+conf="designs/${design}/lifestyle.conf"
+if [[ ! -f "$conf" ]]; then
+  echo "no ${conf} — nothing to generate" >&2
+  exit 1
+fi
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+# trim leading/trailing whitespace without touching interior spaces
+trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
+
+# Shrink an image (any format) to a stripped PNG that fits MAX_SHOT_BYTES,
+# stepping the width down until it does. Photoreal 1280-wide PNGs can blow the
+# 3 MiB budget, so this is not optional. The ">" on -resize means "only shrink,
+# never enlarge", so a small source is never upscaled. Fails (rather than
+# silently shipping an over-budget file) if it can't be met.
+fit_budget() {
+  local src="$1" out="$2" w=1280
+  convert "$src" -resize "${w}x>" -strip "$out"
+  while (( $(stat -c %s "$out") > MAX_SHOT_BYTES )) && (( w > 480 )); do
+    w=$(( w * 85 / 100 ))
+    convert "$src" -resize "${w}x>" -strip "$out"
+  done
+  if (( $(stat -c %s "$out") > MAX_SHOT_BYTES )); then
+    echo "could not fit ${out} under $((MAX_SHOT_BYTES / 1024 / 1024)) MiB (down to ${w}px wide)" >&2
+    return 1
+  fi
+}
+
+generated=()
+while IFS= read -r line || [[ -n "$line" ]]; do
+  # Full-line comments and blank lines only — a '#' inside a prompt is content
+  # (a scene may legitimately say "buoy #3"), so do not strip inline.
+  trimmed="$(trim "$line")"
+  [[ -z "$trimmed" || "$trimmed" == '#'* ]] && continue
+  shot="$(trim "${line%%|*}")"
+  prompt="$(trim "${line#*|}")"
+  if [[ -z "$shot" || -z "$prompt" || "$line" != *"|"* ]]; then
+    echo "malformed lifestyle.conf line (want '<shot> | <prompt>'): $line" >&2
+    exit 1
+  fi
+  # <shot> becomes the filename stem (lifestyle-<shot>.png) and part of the
+  # README embed URL — pin it to kebab-case so it can't escape previews/ or
+  # produce a broken markdown link.
+  if [[ ! "$shot" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+    echo "invalid shot name '${shot}' in ${conf} — must be kebab-case ([a-z0-9-])" >&2
+    exit 1
+  fi
+
+  outdir="designs/${design}/previews"
+  mkdir -p "$outdir"
+  out="${outdir}/lifestyle-${shot}.png"
+
+  if (( mock )); then
+    # Offline placeholder so the fit-to-budget, README-embed and gate steps are
+    # testable without the API or a key. Never commit a --mock image.
+    convert -size "$ZAI_SIZE" gradient:'#2b3a4a'-'#c98f5a' \
+      -gravity center -pointsize 42 -fill white \
+      -annotate 0 "MOCK lifestyle shot\n${design} / ${shot}\n(placeholder, not for commit)" \
+      "$tmp/gen.png"
+  else
+    if [[ -z "${ZAI_KEY:-}" ]]; then
+      echo "ZAI_KEY is not set — export it (CI: repo secret) or pass --mock" >&2
+      exit 1
+    fi
+    req_body="$(python3 -c 'import json,sys; print(json.dumps({"model":sys.argv[1],"prompt":sys.argv[2],"size":sys.argv[3]}))' \
+      "$ZAI_MODEL" "$prompt" "$ZAI_SIZE")"
+    # Capture body AND status (no -f): a 4xx body carries the real reason — a
+    # rejected size, an invalid key, a content-filter block — which we must
+    # surface, not swallow, on the first live run. The Authorization header goes
+    # in via -K - (stdin config) so the key never lands in curl's argv (readable
+    # from /proc); the printf is a bash builtin, so it doesn't fork either.
+    # --connect-timeout/--max-time bound a stalled third-party call.
+    http="$(printf 'header = "Authorization: Bearer %s"\n' "$ZAI_KEY" \
+      | curl -sS -K - --connect-timeout 15 --max-time 120 -w $'\n%{http_code}' \
+        -X POST "$ZAI_ENDPOINT" \
+        -H "Content-Type: application/json" \
+        -d "$req_body")" || { echo "GLM-Image request failed (curl transport error)" >&2; exit 1; }
+    code="${http##*$'\n'}"
+    resp="${http%$'\n'*}"
+    if [[ "$code" != 2?? ]]; then
+      echo "GLM-Image HTTP ${code}: ${resp:0:800}" >&2
+      exit 1
+    fi
+    # Parse ONCE from the captured body. Accept a hosted url or inline base64;
+    # surface an error/refusal object or an unexpected shape (async task,
+    # content filter) with the raw body instead of a bare traceback.
+    parsed="$(printf '%s' "$resp" | python3 -c '
+import json, sys
+raw = sys.stdin.read()
+try:
+    obj = json.loads(raw)
+except Exception:
+    sys.stderr.write("non-JSON GLM-Image response: %s\n" % raw[:800]); raise
+if isinstance(obj, dict) and obj.get("error"):
+    sys.stderr.write("GLM-Image error: %s\n" % json.dumps(obj["error"])[:500]); sys.exit(3)
+try:
+    item = obj["data"][0]
+    if item.get("url"):
+        print("url\t" + item["url"])
+    elif item.get("b64_json"):
+        print("b64\t" + item["b64_json"])
+    else:
+        raise KeyError("data[0] has neither url nor b64_json")
+except Exception:
+    sys.stderr.write("unexpected GLM-Image response shape: %s\n" % raw[:800]); raise')"
+    kind="${parsed%%$'\t'*}"
+    value="${parsed#*$'\t'}"
+    if [[ "$kind" == "url" ]]; then
+      # SSRF guard: require https, extract the host correctly (dropping any
+      # userinfo so https://x@169.254.169.254/ can't spoof it), then RESOLVE it
+      # and refuse if any resolved address is non-public. Resolving — rather
+      # than string-matching — is what catches decimal/hex IP literals and
+      # hostnames that point at internal targets (cloud metadata, etc.), even
+      # if the API response or ZAI_ENDPOINT is tampered with.
+      if [[ "$value" != https://* ]]; then
+        echo "refusing non-https image URL from API: ${value:0:80}" >&2
+        exit 1
+      fi
+      authority="${value#https://}"
+      authority="${authority%%[/?#]*}"   # drop path / query / fragment
+      authority="${authority##*@}"       # drop userinfo (segment after last @)
+      if [[ "$authority" == \[* ]]; then
+        host="${authority%%\]*}]"        # bracketed IPv6 literal, keep [ ... ]
+        rest="${authority#*\]}"; port="${rest#:}"; [[ "$port" == "$rest" ]] && port=443
+      else
+        host="${authority%%:*}"
+        port="${authority##*:}"; [[ "$port" == "$authority" ]] && port=443
+      fi
+      # Resolve + validate ONCE and capture the vetted IP, so curl connects to
+      # that exact address via --resolve rather than doing its own second DNS
+      # lookup — which a short-TTL rebind could swing to an internal host
+      # between the check and the fetch (TOCTOU). A literal IP host has no DNS
+      # lookup to rebind, so it's fetched directly once vetted.
+      vet="$(python3 - "$host" <<'PY'
+import sys, socket, ipaddress
+host = sys.argv[1].strip("[]")
+try:
+    ipaddress.ip_address(host); literal = True
+except ValueError:
+    literal = False
+try:
+    addrs = {ai[4][0] for ai in socket.getaddrinfo(host, None)}
+except Exception as e:
+    sys.stderr.write("refusing image URL: cannot resolve host %r (%s)\n" % (host, e)); sys.exit(1)
+vetted = ""
+for a in addrs:
+    ip = ipaddress.ip_address(a)
+    if (not ip.is_global) or ip.is_private or ip.is_loopback or ip.is_link_local \
+       or ip.is_reserved or ip.is_multicast:
+        sys.stderr.write("refusing image URL: host %r resolves to non-public %s\n" % (host, a)); sys.exit(1)
+    vetted = vetted or a
+if not vetted:
+    sys.stderr.write("refusing image URL: host %r has no addresses\n" % host); sys.exit(1)
+print("literal" if literal else "name")
+print(vetted)
+PY
+)" || exit 1
+      vetted_ip="${vet##*$'\n'}"
+      # Download hardening: --proto '=https' pins the scheme, --max-redirs 0 plus
+      # no -L means a redirect can't send curl to a fresh, unvetted host (a 3xx
+      # is refused below too), --connect-timeout/--max-time bound a stall, and
+      # --max-filesize caps an API-controlled payload before it hits ImageMagick.
+      dl_flags=(--proto '=https' --max-redirs 0 --connect-timeout 15 --max-time 300 --max-filesize 20000000)
+      if [[ "${vet%%$'\n'*}" == "name" ]]; then
+        resolve_host="${host#[}"; resolve_host="${resolve_host%]}"
+        dl_code="$(curl -fsS "${dl_flags[@]}" -o "$tmp/gen.img" -w '%{http_code}' \
+          --resolve "${resolve_host}:${port}:${vetted_ip}" "$value")" \
+          || { echo "image download failed" >&2; exit 1; }
+      else
+        dl_code="$(curl -fsS "${dl_flags[@]}" -o "$tmp/gen.img" -w '%{http_code}' "$value")" \
+          || { echo "image download failed" >&2; exit 1; }
+      fi
+      if [[ "$dl_code" == 3?? ]]; then
+        echo "refusing image URL: it returned a redirect (HTTP ${dl_code}); not following it (SSRF guard)" >&2
+        exit 1
+      fi
+    else
+      printf '%s' "$value" | base64 -d >"$tmp/gen.img"
+    fi
+    # These bytes are API-controlled. Pin ImageMagick to the detected type so it
+    # can't pick a delegate (PS/SVG/MSL/...) from sniffed content, and reject
+    # anything that isn't a plain raster image.
+    mime="$(file -b --mime-type "$tmp/gen.img")"
+    case "$mime" in
+      image/png)  coder=png ;;
+      image/jpeg) coder=jpeg ;;
+      image/webp) coder=webp ;;
+      *) echo "refusing unexpected image type from API: ${mime}" >&2; exit 1 ;;
+    esac
+    convert "${coder}:$tmp/gen.img" "$tmp/gen.png"
+  fi
+
+  fit_budget "$tmp/gen.png" "$out"
+  echo "wrote ${out} ($(( ($(stat -c %s "$out") + 1023) / 1024 )) KiB)"
+  generated+=("$shot")
+done <"$conf"
+
+# Insert the canonical disclosure embed into the README for each shot (only if
+# it isn't already embedded), directly after the tier-1 hero image so the
+# lifestyle shot sits beside the geometry-true one it augments.
+readme="designs/${design}/README.md"
+(( ${#generated[@]} )) || { echo "no shots generated (empty lifestyle.conf?)" >&2; exit 1; }
+for shot in "${generated[@]}"; do
+  DESIGN="$design" SHOT="$shot" README="$readme" python3 - <<'PY'
+import os
+design, shot, readme = os.environ["DESIGN"], os.environ["SHOT"], os.environ["README"]
+rel = f"previews/lifestyle-{shot}.png"
+hero = f"previews/{shot}.png"
+block = (
+    f"\n![AI-styled scene: {design} staged in a real-world setting]({rel})\n\n"
+    "*AI-generated impression for general illustration only — geometry is "
+    "approximate and may not exactly match the printed part; see the studio "
+    "render above and the STL for the true shape.*\n"
+)
+text = open(readme, encoding="utf-8").read()
+if f"]({rel})" in text:
+    print(f"README already embeds {rel}")
+    raise SystemExit(0)
+lines = text.splitlines(keepends=True)
+# insert after the paragraph containing the tier-1 hero embed, else after the
+# first image embed, else append.
+anchor = next((i for i, l in enumerate(lines) if f"]({hero})" in l), None)
+if anchor is None:
+    anchor = next((i for i, l in enumerate(lines) if l.lstrip().startswith("![")), None)
+if anchor is None:
+    out = text + block
+else:
+    # Advance past the hero image's paragraph, then — if the next paragraph is
+    # the hero's caption (a blank-separated emphasis line, not another image or
+    # a heading) — past that too, so the lifestyle block lands after the whole
+    # hero unit instead of wedged between the hero image and its caption.
+    def end_of_para(i):
+        while i < len(lines) and lines[i].strip():
+            i += 1
+        return i
+    end = end_of_para(anchor + 1)
+    nxt = end
+    while nxt < len(lines) and not lines[nxt].strip():
+        nxt += 1
+    if nxt < len(lines):
+        s = lines[nxt].lstrip()
+        if s[:1] in ("*", "_") and not s.startswith("!["):
+            end = end_of_para(nxt)
+    out = "".join(lines[:end]) + block + "".join(lines[end:])
+open(readme, "w", encoding="utf-8").write(out)
+print(f"embedded {rel} in {readme}")
+PY
+done

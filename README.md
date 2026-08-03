@@ -140,6 +140,8 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `animate.sh` — animated GIF previews from `animations.conf`
   - `product-shot.sh` — real-world-looking studio product shots from
     `shots.conf`, path-traced from the design's own STL export
+  - `lifestyle-shot.sh` — tier-2 AI lifestyle shots from `lifestyle.conf`
+    via the Z.AI GLM-Image API (cosmetic, geometry-approximate, disclosed)
   - `gallery.sh` — regenerates the design gallery above
   - `site.sh` — builds the static product site into `build/site`
   - `style-lift.sh` — lift a design style out of a reference mesh into
