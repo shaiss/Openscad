@@ -72,6 +72,7 @@ Gate-green is necessary and **not** sufficient. v1 is done when:
 | ~~B0~~ | ~~Make the coupling work~~ | **Done, round 2.** Nests, twists both ways, retains at 28.1 mm² bearing area | — |
 | ~~B1~~ | ~~Bed contact on the straight~~ | **Done, round 3.** lug_deg 30->40: contact 396->528 mm2, coverage 52->69%, printcheck warning cleared, joint unchanged | +4 g |
 | **B1a** | **Print the coupon and tune `port_tol`** | Now top. The joint is proven in geometry, not in plastic. Until a printed pair twists at a sane torque, every fit number here is a guess — and it is also the only way to know whether bed contact is really solved | ~90 g, 7 h |
+| B1b | Degenerate zero-volume shells | argus-diff reports 12 bodies of 0.0 mm3 on the straight under CI's manifold backend; CGAL shows 4-6 zero-area triangles at r=ro and r=o_in. Pre-existing, zero material, harmless to slicing — but it makes every geometric diff noisy, which costs a reviewer attention on the diffs that matter | Needs openscad-nightly locally first |
 | B2 | Elbow-45 | First thing everyone asks for, and two of them make any turn 0–90° | Must assert the inscribed circle ≥ 70 mm (N1) |
 | B3 | Rim saddle | The only route for glass enclosures (N9), and no-drill lowers the entry cost more than any other item | Needs an internal ramp ≤ 15° (N4) |
 | B4 | Turnaround chamber | Prerequisite for any branch — N3 means every branch terminus must be turn-around-able | First part enclosing volume, so first needing vents |

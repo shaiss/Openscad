@@ -262,9 +262,33 @@ trade is not worth making before a real print says it is needed.
 - **Nothing has been printed.** `port_tol = 0.30` is still a guess, and the
   coupon is what settles it. Geometry says the joint retains; only a printed
   pair says it does so at a torque a human wants to apply.
-- **Degenerate faces** warning on the straight under CGAL 2021.01. Absent
-  under the manifold backend, so it is a meshing artifact rather than a
-  design fault — but trace it rather than assuming.
+- **Degenerate faces — traced, not fixed, and the earlier note here was
+  wrong.** They are NOT absent under manifold; they manifest differently.
+  Under CGAL 2021.01 the straight is one watertight component with 4-6
+  zero-area triangles. Under the manifold backend CI uses, argus-diff sees
+  **13 bodies — twelve of them 0.0 mm3**, i.e. the same slivers resolved as
+  detached zero-volume shells. Zero material either way, so a slicer ignores
+  them, but it is sloppy geometry and argus flags it on every diff.
+
+  Both live at exactly two radii: `r = ro` (42.40) and `r = o_in` (45.55) —
+  places where one solid's boundary surface passes exactly through another
+  solid's face. The inner sector's anchoring half crosses the tube's outer
+  cylinder at `ro`; something crosses the outer sector's inner face at
+  `o_in`.
+
+  **They predate the round-3 widening**: `lug_deg = 30` produces 6 and
+  `lug_deg = 40` produces 4, at identical radii. Widening slightly reduced
+  them. Do not attribute them to that change.
+
+  Tried and rejected: extending the rib from `o_in + bite` out to `r_out`,
+  on the theory that the rib crossing the sector's inner face caused it.
+  No change — still 4 at the same radii. Reverted, since it altered geometry
+  without fixing anything and would have invalidated the mate-test result.
+
+  Not chased further because it is pre-existing, zero-volume, and does not
+  advance a ranked backlog item. `openscad-nightly` is not installed in this
+  environment, so CI's manifold mesh cannot be reproduced locally — that is
+  the first thing to fix if anyone picks this up.
 - Bulkhead spigot/counterbore fit is drawn but not dimensioned against a
   real wall-thickness range.
 - No `previews/cameras.conf`, no `shots.conf`, no product shot yet.
