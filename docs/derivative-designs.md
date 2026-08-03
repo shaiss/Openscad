@@ -204,8 +204,8 @@ can be wrong out loud.
 
 | Check | Where | What it catches |
 |---|---|---|
-| `lineage check` | `scripts/check.sh`, every run | Static faults: unknown or retired keys, duplicate keys, a parent that is not a design, self-reference, cycles, a `replaces` part the parent does not have, declaration-vs-include drift **including order**, and any diamond that is not explicitly asserted. |
-| derivative render gate | `scripts/gate.sh`, per design shipping a derives.conf | Renders each `replaces:` part from the derivative and from the parent with the same `-D part=`, compares facet-payload hashes, and fails on identical — the signature from silence #2. Then renders each `diamond-ok:` ancestor and requires zero facets. |
+| `lineage check` | `scripts/check.sh`, every run | Static faults: unknown or retired keys, duplicate keys, a parent that is not a design, self-reference, cycles, a `replaces` part the parent does not have, declaration-vs-include drift **including order**, any diamond that is not explicitly asserted, and a `ci.parts` that does not cover its parents' (which would leave inherited parts ungated). |
+| derivative render gate | `scripts/gate.sh`, per design shipping a derives.conf | Renders each `replaces:` part from the derivative and from the parent with the same `-D part=`, compares facet-payload hashes, and fails on identical — the signature from silence #2. Fails first if the derivative renders **nothing** for a part it claims — an empty mesh is trivially unequal to the parent's, so folding that into "differs" would pass a part that went missing. Then renders each `diamond-ok:` ancestor in **every configuration it can ship in** — its default render and each of its `ci.parts` values — and requires zero facets from all of them, because a diamond doubles whatever a `-D part=` draws, not just the default. |
 | `./scripts/lineage.sh selftest` | CI's render gate, before the gate itself | That the comparison still separates a working override from a typo'd one *on the OpenSCAD actually installed*. A gate that has silently stopped firing looks exactly like a gate with nothing to report. |
 | blast radius | CI's classifier job, via `lineage blast-radius` | A change under `designs/<parent>/` re-gates every transitive descendant, whose geometry moved without the diff naming a file in its directory. A change under `tools/lineage/` counts as infra and gates everything, since it can move every blast radius including the one being computed. |
 | product-page link | `scripts/readme-gate.sh` | A derivative whose README does not link each parent's directory. |
@@ -290,10 +290,11 @@ weaker than it looks:
   backend) build could not be installed in the container that made them — the
   egress proxy returns 403 for the OBS nightly repo.
 
-  What CI does establish, every run: `./scripts/lineage.sh selftest` executes
-  in the `render-gate` job under `OPENSCAD_BIN=openscad-nightly
-  OPENSCAD_ARGS=--backend=manifold`, before the gate and blocking, and it
-  passes. So on nightly+Manifold a real override still changes the mesh, a
+  What CI does establish on every run that gates designs: `./scripts/lineage.sh
+  selftest` executes in the `render-gate` job under
+  `OPENSCAD_BIN=openscad-nightly OPENSCAD_ARGS=--backend=manifold`, before the
+  gate and blocking, and it passes. `render-gate` is conditional, so a PR that
+  gates nothing re-proves nothing. On nightly+Manifold a real override still changes the mesh, a
   typo'd override still reproduces the base's mesh exactly, and a geometry-free
   entry point is still distinguishable from one that emits geometry. The
   behaviours the gate is built on hold there.

@@ -113,11 +113,13 @@ jobs:
               esac
               case "$f" in
                 # tools/lineage is here and tools/printcheck is not:
-                # printcheck only ever reads exported STLs, while the lineage
-                # tooling reads .scad sources — its selftest fixtures are
-                # .scad files, and its checks assert things about a design's
-                # include lines — so a change there can change what the
-                # syntax/eval job concludes.
+                # printcheck only ever reads exported STLs, after the fact,
+                # while check.sh itself RUNS the lineage resolver
+                # (`./scripts/lineage.sh check`) and fails on what it reports —
+                # so editing the resolver can change what the syntax/eval job
+                # concludes. Not because of the selftest fixtures: those live
+                # under tools/ and check.sh's globs cover only designs/, lib/,
+                # templates/ and styles/, so it never reads them.
                 designs/*|lib/*|templates/*|scripts/*|styles/*|\
                 tools/lineage/*|.github/workflows/ci.yml)
                   scad=true ;;

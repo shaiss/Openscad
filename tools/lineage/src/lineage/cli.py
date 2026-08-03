@@ -96,9 +96,21 @@ def cmd_blast_radius(args) -> int:
 
 
 def cmd_parents(args) -> int:
-    """Direct parents, in include order."""
+    """Direct parents that are real designs, in include order.
+
+    Filtered, not `declared_parents`. Every consumer of this command turns a
+    parent name into a path — readme-gate.sh demands a link to
+    `../<parent>/`, gallery.sh writes one into the README — so handing back a
+    name with no design behind it makes them insist on a link that 404s, which
+    is the one thing readme-gate's own rule says it will not gate in. A parent
+    that is not a design is `lineage check`'s finding and only its finding;
+    reporting it a second time, as a demand to link it, helps nobody.
+
+    This is also what `order` and `primary_parent` already traverse, so the
+    nesting a reader sees and the credit they see now come from one list.
+    """
     lineage = load(args)
-    for name in lineage.declared_parents(require(lineage, args.name)):
+    for name in lineage.parents(require(lineage, args.name)):
         print(name)
     return 0
 

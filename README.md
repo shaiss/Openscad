@@ -89,6 +89,14 @@ this needs Python 3.11) — [printcheck](tools/printcheck/)
 (`pip install -e tools/printcheck`), and [stylelift](tools/stylelift/)
 (`pip install -e tools/stylelift`, for the style scripts).
 
+A bare `python3` (3.10 or newer) is also required now, not only for those
+pip-installed tools: `check.sh` and `gallery.sh` both call `scripts/lineage.sh`,
+which runs [lineage](tools/lineage/) straight out of `tools/lineage/src` with no
+install step — deliberately, so CI can resolve the lineage graph before it has
+installed anything. The consequence for a local checkout is that both scripts
+need `python3` on PATH and that directory present; `gallery.sh` fails loudly
+rather than quietly dropping the lineage from the page.
+
 ## How designs get made
 
 This repo runs a session-per-design co-design loop: a human brings the idea

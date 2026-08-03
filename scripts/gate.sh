@@ -180,7 +180,31 @@ derivative_gate() {
         fail=1
         continue
       fi
-      if [[ "$dhash" == "$phash" ]]; then
+      dfacets=$(lineage_facet_count "$dstl") || dfacets="?"
+      pfacets=$(lineage_facet_count "$pstl") || pfacets="?"
+      # Emptiness is judged BEFORE difference, and is its own failure.
+      #
+      # An empty render hashes to a sentinel, and a sentinel is trivially
+      # unequal to any real mesh — so folding this into the "differs" branch
+      # would report `ok ... mesh differs from the parent (12 → 0 facets)` for a
+      # derivative that produced no geometry whatsoever for the part it claims
+      # to replace. Nothing else would catch it either: these exports live in
+      # build/.lineage and are never printchecked, so an empty part ships behind
+      # a green gate whose message asserts the opposite. A render that emitted
+      # nothing is not evidence that a redefinition bound; it is evidence that
+      # the derivative's dispatcher no longer handles this part, or that the
+      # override replaced it with nothing.
+      if [[ "$dfacets" == 0 ]]; then
+        echo "FAIL  derivative ${name}: override ${label} — the derivative renders no geometry at all for a part it claims to replace"
+        printf '      %s\n' \
+          "The parent renders ${pfacets} facets here and the derivative renders none," \
+          "which is not an override taking effect — it is the part going missing." \
+          "Usually the derivative redefined the part's module with an empty body, or" \
+          "redefined the dispatcher so this part value no longer reaches any geometry." \
+          "If the part genuinely should not exist in this design, drop it from" \
+          "replaces: rather than shipping an empty STL under its name."
+        fail=1
+      elif [[ "$dhash" == "$phash" ]]; then
         echo "FAIL  derivative ${name}: override ${label} — the override did not take, the mesh is identical to the parent's"
         printf '      %s\n' \
           "Both sides hash to ${dhash}." \
@@ -192,8 +216,6 @@ derivative_gate() {
           "actually names ${parent}, and check the redefinition sits after that include."
         fail=1
       else
-        dfacets=$(lineage_facet_count "$dstl") || dfacets="?"
-        pfacets=$(lineage_facet_count "$pstl") || pfacets="?"
         echo "ok    derivative ${name}: override ${label} — mesh differs from the parent (${pfacets} → ${dfacets} facets)"
       fi
     done <<<"$replaces"
@@ -218,27 +240,57 @@ derivative_gate() {
         fail=1
         continue
       fi
-      astl="${outdir}/${ancestor}--base-safe.stl"
-      if ! lineage_render_binstl "designs/${ancestor}/${ancestor}.scad" "$astl"; then
-        echo "FAIL  derivative ${name}: base-safe ${ancestor} — its entry point did not render, so the claim cannot be proven"
-        fail=1
-        continue
+      # Every configuration the ancestor can ship in, not just the default
+      # render. A `part`-dispatching entry point — which is the multi-part
+      # convention this repo recommends — emits nothing at all under its
+      # default `part` value and geometry under the others, so proving only
+      # the default proves nothing: the diamond still doubles whatever
+      # `-D part=...` draws. Measured: an ancestor whose top level is
+      # `if (part=="tray") tray();` passes a default-only proof while a
+      # diamond over it echo-counts its top level firing twice under
+      # `-D part="tray"`.
+      local cfgs=("") cfg cfgargs cfglabel bad=0
+      if [[ -f "designs/${ancestor}/ci.parts" ]]; then
+        while read -r cfg || [[ -n "$cfg" ]]; do
+          [[ -z "$cfg" || "$cfg" == \#* ]] && continue
+          cfgs+=("$cfg")
+        done < "designs/${ancestor}/ci.parts"
       fi
-      if ! facets=$(lineage_facet_count "$astl"); then
-        echo "FAIL  derivative ${name}: base-safe ${ancestor} — its export could not be read back, so the claim cannot be proven"
+      for cfg in "${cfgs[@]}"; do
+        cfgargs=()
+        cfglabel="default render"
+        if [[ -n "$cfg" ]]; then
+          cfgargs=(-D "part=\"${cfg}\"")
+          cfglabel="part=${cfg}"
+        fi
+        astl="${outdir}/${ancestor}--base-safe-${cfg:-default}.stl"
+        if ! lineage_render_binstl "designs/${ancestor}/${ancestor}.scad" "$astl" \
+            ${cfgargs[@]+"${cfgargs[@]}"}; then
+          echo "FAIL  derivative ${name}: base-safe ${ancestor} — its ${cfglabel} did not render, so the claim cannot be proven"
+          fail=1
+          bad=1
+          continue
+        fi
+        if ! facets=$(lineage_facet_count "$astl"); then
+          echo "FAIL  derivative ${name}: base-safe ${ancestor} — its ${cfglabel} could not be read back, so the claim cannot be proven"
+          fail=1
+          bad=1
+          continue
+        fi
+        [[ "$facets" == 0 ]] && continue
+        bad=1
         fail=1
-        continue
-      fi
-      if [[ "$facets" == 0 ]]; then
-        echo "ok    derivative ${name}: base-safe ${ancestor} — its entry point emits no geometry"
-      else
-        echo "FAIL  derivative ${name}: base-safe ${ancestor} — its entry point emits ${facets} facets, so the diamond-ok claim is false"
+        echo "FAIL  derivative ${name}: base-safe ${ancestor} — its ${cfglabel} emits ${facets} facets, so the diamond-ok claim is false"
         printf '      %s\n' \
           "Anything ${ancestor}'s top level draws lands in this design twice, and the" \
           "duplicate unions cleanly enough that no downstream check can see it." \
           "Split designs/${ancestor}/${ancestor}.scad into a geometry-free module" \
-          "library plus a thin dispatcher that calls it, then re-assert diamond-ok."
-        fail=1
+          "library plus a thin dispatcher that calls it, then re-assert diamond-ok." \
+          "Guarding the top-level geometry behind a part value is not enough: the" \
+          "diamond doubles whatever that value renders, and this proof checks them all."
+      done
+      if [[ "$bad" == 0 ]]; then
+        echo "ok    derivative ${name}: base-safe ${ancestor} — emits no geometry in any of its ${#cfgs[@]} configuration(s)"
       fi
     done <<<"$required"
   fi
@@ -279,13 +331,20 @@ gate_one() {
     done < "designs/${name}/ci.parts"
   else
     echo "== ${name}: render =="
+    # No early return on failure. Returning here skipped derivative_gate at the
+    # end of this function, so a derivative whose default render broke produced
+    # no derivative section at all — and "no section" is exactly what a
+    # derivative with nothing to prove also looks like, in the log and in the
+    # PR comment. The run is red either way, but the reader cannot tell which
+    # of the two happened, which is the ambiguity this whole gate exists to
+    # remove. (The ci.parts branch above already `continue`s for this reason.)
     if ! xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
         -o "build/${name}.stl" "$src"; then
       echo "FAIL  ${name}: render failed"
       fail=1
-      return 0
+    else
+      stls+=("build/${name}.stl")
     fi
-    stls+=("build/${name}.stl")
   fi
 
   # "Print this first" coupon wrapper (repo convention, see CLAUDE.md): a

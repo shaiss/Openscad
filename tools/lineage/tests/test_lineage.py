@@ -84,7 +84,8 @@ def test_clean_tree_with_no_lineage_at_all_passes(tmp_path):
 def test_single_parent_happy_path(tmp_path):
     root = tree(tmp_path)
     design(root, "base", parts=["top", "bottom"])
-    derivative(root, "deep", "base", extra="replaces: base:top\n")
+    derivative(root, "deep", "base", extra="replaces: base:top\n",
+               parts=["top", "bottom"])
     assert messages(root) == []
     lineage = Lineage.discover(root)
     assert lineage.parents("deep") == ["base"]
@@ -104,7 +105,7 @@ def test_multi_parent_without_a_diamond_passes(tmp_path):
 def test_comments_and_blank_lines_are_ignored(tmp_path):
     root = tree(tmp_path)
     design(root, "base", parts=["top"])
-    design(root, "deep", includes=("base",), conf=(
+    design(root, "deep", includes=("base",), parts=["top"], conf=(
         "# Parents in include order. LAST WINS on any module both define.\n"
         "\n"
         "variant-of:    base   # keeps the tray, new lid\n"
@@ -247,7 +248,7 @@ def test_a_cycle_is_reported_even_when_scoped_to_another_member(tmp_path):
 def test_rule9_replaces_must_be_parent_colon_part(tmp_path, entry):
     root = tree(tmp_path)
     design(root, "base", parts=["top"])
-    derivative(root, "deep", "base", extra=f"replaces: {entry}\n")
+    derivative(root, "deep", "base", extra=f"replaces: {entry}\n", parts=["top"])
     message = one(root)
     assert repr(entry) in message
     assert "'<parent>:<part>'" in message
@@ -257,7 +258,8 @@ def test_rule10_replaces_parent_must_be_declared(tmp_path):
     root = tree(tmp_path)
     design(root, "base", parts=["top"])
     design(root, "elsewhere", parts=["top"])
-    derivative(root, "deep", "base", extra="replaces: elsewhere:top\n")
+    derivative(root, "deep", "base", extra="replaces: elsewhere:top\n",
+               parts=["top"])
     message = one(root)
     assert "'elsewhere'" in message
     assert "does not declare" in message
@@ -266,7 +268,8 @@ def test_rule10_replaces_parent_must_be_declared(tmp_path):
 def test_rule11_replaces_part_must_be_in_the_parents_ci_parts(tmp_path):
     root = tree(tmp_path)
     design(root, "base", parts=["top", "bottom"])
-    derivative(root, "deep", "base", extra="replaces: base:lid\n")
+    derivative(root, "deep", "base", extra="replaces: base:lid\n",
+               parts=["top", "bottom"])
     message = one(root)
     assert "'lid'" in message
     assert "designs/base/ci.parts" in message
@@ -810,3 +813,81 @@ def test_cli_mesh_hash_fails_on_a_malformed_stl(tmp_path, capsys):
     code, _, err = run(capsys, "mesh-hash", str(stl))
     assert code == 1
     assert "bad.stl" in err
+
+
+# --------------------------------------------------------------------------
+# Rule 15 — inherited parts stay gated (decision #2, "gate everything")
+#
+# gate.sh builds a design's part list from its OWN ci.parts, so without this
+# rule a derivative of a multi-part parent gates only its default render and
+# reports green while every inherited part goes unrendered. Worse on a parent
+# whose default render is an unprintable assembled preview: zero printable
+# parts gated, nothing red.
+# --------------------------------------------------------------------------
+
+def test_rule15_derivative_of_a_multipart_parent_needs_its_own_ci_parts(tmp_path):
+    root = tree(tmp_path)
+    design(root, "base", parts=["top", "door"])
+    derivative(root, "deriv", "base")
+    msg = one(root, ["deriv"])
+    assert "has no ci.parts" in msg
+    assert "top, door" in msg
+
+
+def test_rule15_partial_ci_parts_names_the_gap(tmp_path):
+    root = tree(tmp_path)
+    design(root, "base", parts=["top", "door"])
+    derivative(root, "deriv", "base", parts=["top"])
+    msg = one(root, ["deriv"])
+    assert "missing part(s)" in msg
+    assert "door" in msg
+
+
+def test_rule15_full_coverage_passes(tmp_path):
+    root = tree(tmp_path)
+    design(root, "base", parts=["top", "door"])
+    derivative(root, "deriv", "base", parts=["top", "door"])
+    assert messages(root, ["deriv"]) == []
+
+
+def test_rule15_extra_parts_are_fine(tmp_path):
+    """A derivative may add parts of its own; it may not drop its parents'."""
+    root = tree(tmp_path)
+    design(root, "base", parts=["top"])
+    derivative(root, "deriv", "base", parts=["top", "bracket"])
+    assert messages(root, ["deriv"]) == []
+
+
+def test_rule15_parent_without_ci_parts_demands_nothing(tmp_path):
+    root = tree(tmp_path)
+    design(root, "base")
+    derivative(root, "deriv", "base")
+    assert messages(root, ["deriv"]) == []
+
+
+def test_rule15_multi_parent_needs_the_union(tmp_path):
+    root = tree(tmp_path)
+    design(root, "a", parts=["top"])
+    design(root, "b", parts=["door"])
+    design(root, "combo", includes=("a", "b"),
+           conf="variant-of: a, b\n", parts=["top"])
+    msg = one(root, ["combo"])
+    assert "missing part(s)" in msg and "door" in msg
+
+
+# --------------------------------------------------------------------------
+# `lineage parents` is the link-producing view, so it must not name a
+# non-design: readme-gate.sh turns each entry into a demand for a link to
+# ../<parent>/, and gallery.sh writes one into README.md.
+# --------------------------------------------------------------------------
+
+def test_cli_parents_omits_a_declared_parent_that_is_not_a_design(tmp_path, capsys):
+    root = tree(tmp_path)
+    design(root, "real")
+    design(root, "deriv", includes=("real",),
+           conf="variant-of: bogus, real\n")
+    code, out, _ = run(capsys, "parents", "deriv", "--root", str(root))
+    assert code == 0
+    assert out == ["real"], out
+    # ...and the bad name is still reported, once, by check
+    assert any("bogus" in m for m in messages(root, ["deriv"]))

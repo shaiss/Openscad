@@ -300,6 +300,59 @@ def check_diamonds(lineage: Lineage, name: str) -> list[Problem]:
 
 
 # --------------------------------------------------------------------------
+# Rule 15 — inherited parts have to stay gated
+# --------------------------------------------------------------------------
+
+def check_inherited_parts(lineage: Lineage, name: str) -> list[Problem]:
+    """Rule 15: a derivative must gate every part its parents gate.
+
+    Decision #2 is "gate everything, nothing is assumed inherited", and without
+    this rule that is a slogan rather than a fact. gate.sh builds a design's
+    part list from its OWN ci.parts, so a derivative that ships none renders
+    only its default — and a derivative of a design whose default render is an
+    unprintable assembled preview (sushi-battleship says exactly that in its
+    own ci.parts comment) then gates zero printable parts and reports green,
+    where the same edit to the parent would have gated three.
+
+    A partial ci.parts is the same hole, narrower: override one shared
+    top-level variable — a wall thickness — and every unlisted part moves with
+    it, ungated. So the requirement is coverage of the union, not merely
+    non-emptiness.
+    """
+    design = lineage.designs[name]
+    parents = lineage.parents(name)
+    if not parents:
+        return []
+
+    inherited: list[str] = []
+    for parent in parents:
+        for part in lineage.designs[parent].parts:
+            if part not in inherited:
+                inherited.append(part)
+    if not inherited:
+        return []
+
+    if not design.has_ci_parts:
+        return [Problem(name, (
+            f"parents ({_list(parents)}) gate parts ({_list(inherited)}) but "
+            f"designs/{name}/ has no ci.parts, so this design gates only its "
+            f"default render — every part it inherits goes unrendered, "
+            f"unprintchecked and unsliced. Nothing is inherited unchanged: an "
+            f"override of one shared variable moves parts you never touched. "
+            f"Add a ci.parts listing at least: {', '.join(inherited)}"))]
+
+    missing = [p for p in inherited if p not in design.parts]
+    if missing:
+        return [Problem(name, (
+            f"designs/{name}/ci.parts is missing part(s) its parents gate: "
+            f"{_list(missing)} (parents: {_list(parents)}). A part this design "
+            f"does not list is never rendered or printchecked for it, and "
+            f"'inherited, so unchanged' is exactly the assumption an override "
+            f"breaks. List it, or drop it from the parent"))]
+    return []
+
+
+# --------------------------------------------------------------------------
 # The whole check
 # --------------------------------------------------------------------------
 
@@ -335,6 +388,7 @@ def check(lineage: Lineage, names=None) -> list[Problem]:
         problems.extend(by_design.get(name, []))
         problems.extend(check_replaces(lineage, name))
         problems.extend(check_include_drift(lineage, name))
+        problems.extend(check_inherited_parts(lineage, name))
         if not (cycle_members & ({name} | set(lineage.ancestors(name)))):
             problems.extend(check_diamonds(lineage, name))
 

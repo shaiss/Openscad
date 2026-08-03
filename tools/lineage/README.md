@@ -202,6 +202,14 @@ design base-safe by failing to parse.
 14. A `diamond-ok` entry that is not actually a diamond confluence for this
     design. An assertion that has silently stopped applying is the same class
     of bug it was written to prevent.
+15. **A derivative's `ci.parts` must cover its parents'.** `gate.sh` builds a
+    design's part list from its own `ci.parts`, so a derivative that ships none
+    renders only its default — and for a parent whose default render is an
+    unprintable assembled preview, that is *zero* printable parts gated, green.
+    A partial list is the same hole: override one shared top-level variable and
+    every unlisted part moves with it, ungated. This is what makes decision #2
+    ("gate everything, nothing is assumed inherited") a fact rather than a
+    slogan. Extra parts of your own are fine; dropping a parent's is not.
 
 Syntax is reported before semantics, per file: a `derives.conf` that did not
 parse has no trustworthy parent list, and piling drift errors on top of a
