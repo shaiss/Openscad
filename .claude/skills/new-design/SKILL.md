@@ -83,7 +83,8 @@ they like rather than one of the packs already here.
 In all three cases you declare the shot and CI produces it — the manifest
 is the deliverable, the image is derived. Run a generator yourself only to
 look at the result; `product-shot.sh` additionally needs `bpy`
-(`.claude/hooks/session-start.sh --with-bpy`), which is not installed by
+(`.claude/hooks/session-start.sh --force --with-bpy` — `--force` too, or the
+hook no-ops outside Claude Code on the web), which is not installed by
 default precisely because you no longer need it to ship a design.
 
 ## 3. First render before first commit
@@ -91,12 +92,20 @@ default precisely because you no longer need it to ship a design.
 ```bash
 ./scripts/render.sh <name>       # STL + contact sheet must succeed
 ./scripts/gate.sh --slice <name> # printcheck + PrusaSlicer test-slice must exit 0
-./scripts/readme-gate.sh <name>  # product page must pass
+./scripts/readme-gate.sh <name>  # see below — not a "must pass" before the first push
 ```
 
-The readme-gate will fail on a `shots.conf` entry whose PNG isn't there
-yet. That is expected before the first push — CI renders it and commits it
-back. Don't install bpy just to clear that message.
+The first two must pass here: they judge geometry, which is yours.
+
+`readme-gate.sh` is different before the first push. It fails on any
+`shots.conf` or `animations.conf` entry whose image doesn't exist yet, and
+those images are CI's to render — so that failure is **expected**, and
+"must pass" only applies after `regen` has run and committed them. Check
+that everything *else* it reports is clean (title, pitch, Print settings,
+Parameters), and don't install bpy just to clear the missing-image lines.
+
+On a fork branch it *is* a real failure — CI can't push there, so the
+images are yours to generate and commit (see `/preflight`).
 
 The product shot comes before the readme gate on purpose: the template
 embeds `previews/product-hero.png`, so the gate fails on a missing image

@@ -87,15 +87,19 @@ trap 'rm -rf "$tmp"' EXIT
 
 # Local images the page may embed, and the ones the gate REQUIRES it to embed.
 required_embeds=()
+# `|| [[ -n "$line" ]]` on both loops, matching readme-gate.sh and animate.sh:
+# a manifest saved without a trailing newline makes `read` return non-zero on
+# the last entry, dropping it. That would silently omit a required embed, and
+# the gate would then reject the draft for something the model did right.
 if [[ -f "${dir}/animations.conf" ]]; then
-  while IFS= read -r line; do
+  while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%%#*}"; [[ "$line" =~ [^[:space:]] ]] || continue
     n="${line%%|*}"; n="$(tr -d '[:space:]' <<<"$n")"
     [[ -n "$n" ]] && required_embeds+=("previews/${n}.gif")
   done <"${dir}/animations.conf"
 fi
 if [[ -f "${dir}/shots.conf" ]]; then
-  while IFS= read -r line; do
+  while IFS= read -r line || [[ -n "$line" ]]; do
     line="${line%%#*}"; [[ "$line" =~ [^[:space:]] ]] || continue
     n="${line%%|*}"; n="$(tr -d '[:space:]' <<<"$n")"
     [[ -n "$n" ]] && required_embeds+=("previews/${n}.png")
@@ -241,8 +245,12 @@ PY
   # key, an oversized request, a rejected parameter — which must be surfaced,
   # not swallowed. The key goes in via -K - (stdin config) so it never lands in
   # curl's argv (readable from /proc); printf is a builtin, so it doesn't fork.
+  # --retry covers the transient statuses (429 and 5xx, which is what an
+  # overload looks like) so one busy moment doesn't lose the whole draft; a
+  # 4xx that needs the request changed is not retried and falls through below.
   http="$(printf 'header = "x-api-key: %s"\n' "$ANTHROPIC_API_KEY" \
-    | curl -sS -K - --connect-timeout 15 --max-time 900 -w $'\n%{http_code}' \
+    | curl -sS -K - --connect-timeout 15 --max-time 900 \
+      --retry 3 --retry-delay 5 --retry-max-time 600 -w $'\n%{http_code}' \
       -X POST "$CLAUDE_ENDPOINT" \
       -H "anthropic-version: 2023-06-01" \
       -H "content-type: application/json" \
@@ -291,6 +299,18 @@ fi
 if [[ ! -s "$tmp/draft.md" ]]; then
   echo "${design}: generator produced an empty page" >&2
   exit 1
+fi
+
+# The marker is the ONLY in-file signal that a human didn't write this page,
+# and nothing downstream can enforce it: readme-gate ignores HTML comments, so
+# a draft that dropped it passes and gets committed while the CI job summary
+# still tells the reviewer to look for it. Asking the model for it is not the
+# same as having it — insert it after the H1 when it is missing.
+if ! grep -qF "$MARKER" "$tmp/draft.md"; then
+  MARKER="$MARKER" awk 'NR==1 { print; print ""; print ENVIRON["MARKER"]; next } { print }' \
+    "$tmp/draft.md" >"$tmp/draft.marked.md"
+  mv "$tmp/draft.marked.md" "$tmp/draft.md"
+  echo "${design}: generator omitted the draft marker — inserted it"
 fi
 
 # ------------------------------------------------------- gate, or put back ---

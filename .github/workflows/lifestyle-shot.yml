@@ -74,11 +74,15 @@ jobs:
             names="$INPUT_DESIGN"
           else
             # A force-push or a first push leaves github.event.before pointing
-            # at nothing; fall back to this commit's own diff rather than
-            # failing the run on a range git can't resolve.
+            # at nothing. Fall back to the empty tree, which diffs the WHOLE
+            # pushed tree: comparing only HEAD against its parent would miss a
+            # manifest added by any earlier commit in a multi-commit push, and
+            # the workflow would then report success having generated nothing.
+            # Erring wide is the right way round — the path filter means this
+            # only fires when a lifestyle.conf actually moved.
             range="${BEFORE}..${GITHUB_SHA}"
             if ! git rev-parse --quiet --verify "${BEFORE}^{commit}" >/dev/null 2>&1; then
-              range="${GITHUB_SHA}^..${GITHUB_SHA}"
+              range="$(git hash-object -t tree /dev/null)..${GITHUB_SHA}"
             fi
             while IFS= read -r f; do
               case "$f" in

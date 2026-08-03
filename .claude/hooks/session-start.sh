@@ -11,7 +11,9 @@
 # product shots now, so a session no longer needs a ~1 GB wheel to produce a
 # deliverable — it needed one to produce an artifact CI could have made.
 # Pass --with-bpy (or set INSTALL_BPY=1) when you want to preview a shot
-# locally before pushing; nothing in the repo's gates requires it.
+# locally before pushing; nothing in the repo's gates requires it. On a local
+# machine that means `--force --with-bpy`: without --force the guard below
+# exits before installing anything, so --with-bpy on its own is a no-op there.
 set -euo pipefail
 
 WITH_BPY="${INSTALL_BPY:-0}"

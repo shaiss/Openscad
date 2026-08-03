@@ -23,10 +23,13 @@ name: CI
 # touches only that directory permanently unmergeable.
 #
 # That is also why the `regen` job is ungated and why the four jobs that
-# `needs:` it carry `if: !cancelled()`: a skipped `regen` would skip them
-# too, and two of them (Detect changed paths' downstream syntax check, and
-# the gate) are required contexts. regen always runs and decides internally
-# whether it has any work.
+# `needs:` it — design-docs, site-build, scad-check and scad-check-nightly —
+# carry `if: !cancelled()`: a skipped `regen` would skip all four, and one of
+# them (scad-check, "OpenSCAD syntax/geometry check") is a required context,
+# which is all it takes. regen always runs and decides internally whether it
+# has any work. Note render-gate is NOT among them: it gates STLs, which no
+# regenerated preview can affect, so it keeps `needs: changes` and starts in
+# parallel.
 on:
   push:
     branches: [main]
@@ -264,9 +267,10 @@ jobs:
     #
     # Ungated on purpose. The job always RUNS (skipping only its own
     # expensive installs when the classifier says no design moved), because
-    # four jobs `needs:` it and a job skipped via `if:` would skip those
-    # too — and three of them are required contexts (see the CAUTION at the
-    # top of this file).
+    # four jobs `needs:` it — design-docs, site-build, scad-check and
+    # scad-check-nightly — and a job skipped via `if:` would skip all four.
+    # One of them, scad-check, is a required context, and one is enough to
+    # strand a PR (see the CAUTION at the top of this file).
     #
     # Cost note: an infra change sets gate_designs=ALL, so a lib/ or
     # scripts/ edit re-renders every design's shots, Cycles included. That
@@ -294,9 +298,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          # Don't leave the push credential in .git/config: between checkout
+          # and push this job runs five generators out of the PR branch, and
+          # a same-repo PR could read a contents:write token straight out of
+          # the config (ANTHROPIC_API_KEY is exposed to the same code, but
+          # only for the one step that needs it). The push below supplies the
+          # token explicitly instead — the same shape lifestyle-shot.yml uses.
+          # Fork PRs were never exposed: their token is read-only and they get
+          # no secrets.
+          persist-credentials: false
           # The branch itself, not the PR merge ref: a merge ref is not a
-          # branch and cannot be pushed back to. persist-credentials stays
-          # on (the default) because this job needs them for that push.
+          # branch and cannot be pushed back to.
           ref: >-
             ${{ github.event_name == 'pull_request'
                 && github.event.pull_request.head.ref
@@ -317,7 +329,8 @@ jobs:
           #
           # Falls back to GITHUB_TOKEN when the secret is absent so a fork or
           # a not-yet-configured repo still regenerates; the commit step says
-          # loudly what that costs.
+          # loudly what that costs. (With persist-credentials off this only
+          # authenticates the clone; the push re-supplies it explicitly.)
           token: ${{ secrets.REGEN_TOKEN || github.token }}
 
       - name: Decide what needs regenerating
@@ -493,6 +506,9 @@ jobs:
           CAN_PUSH: ${{ steps.plan.outputs.can_push }}
           ALREADY: ${{ steps.plan.outputs.already }}
           HAVE_PAT: ${{ steps.plan.outputs.have_pat }}
+          # Scoped to this step alone — see persist-credentials on the
+          # checkout. Actions masks it in the log.
+          PUSH_TOKEN: ${{ secrets.REGEN_TOKEN || github.token }}
           BRANCH: >-
             ${{ github.event_name == 'pull_request'
                 && github.event.pull_request.head.ref
@@ -528,7 +544,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "$REGEN_SUBJECT"
-          git push origin "HEAD:${BRANCH}"
+          # Credential supplied here rather than persisted in .git/config, so
+          # the generators that ran above never had it in reach.
+          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:${BRANCH}"
           sha="$(git rev-parse HEAD)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           if [ "$HAVE_PAT" != "true" ]; then

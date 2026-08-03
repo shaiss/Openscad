@@ -87,7 +87,9 @@ Two tiers, in order:
    render locally when framing is in question:
 
    ```bash
-   .claude/hooks/session-start.sh --with-bpy   # once; bpy is not installed by default
+   # once; bpy is not installed by default. --force too: without it the hook
+   # no-ops outside Claude Code on the web, so --with-bpy alone does nothing.
+   .claude/hooks/session-start.sh --force --with-bpy
    ./scripts/product-shot.sh <name>
    ```
 
