@@ -5,9 +5,10 @@
 #      well as on a wrong-geometry WARNING: under --export-format echo
 #      OpenSCAD reports both in the export file and still exits 0.
 #   2. Full CGAL render of the lib demo to catch geometry regressions
-#   3. Lineage check (scripts/lineage.sh check): every derives.conf must
+#   3. Guard check (scripts/guard-check.sh): every lib guard still fires
+#   4. Lineage check (scripts/lineage.sh check): every derives.conf must
 #      describe the graph its entry .scad actually includes
-#   4. Docs-drift check (scripts/docs-check.sh): docs must match the tree
+#   5. Docs-drift check (scripts/docs-check.sh): docs must match the tree
 # Run before committing. For full STL+PNG output use scripts/render.sh.
 set -euo pipefail
 
@@ -130,6 +131,14 @@ for demo in lib/*-demo.scad; do
     echo "ok    ${demo} renders clean"
   fi
 done
+
+# The demos above prove the libraries still BUILD. This proves their guards
+# still REFUSE — the one thing a demo cannot cover, since a firing assert
+# would abort the render it lives in.
+echo "-- guard check: scripts/guard-check.sh"
+if ! ./scripts/guard-check.sh; then
+  fail=1
+fi
 
 # Lineage check: derives.conf parses, its parents exist, the declared parent
 # order still matches the entry .scad's include order, and every diamond is
