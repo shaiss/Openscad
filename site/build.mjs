@@ -28,7 +28,7 @@ import {
 
 const SITE_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SITE_DIR, "..");
-const GITHUB_BASE = "https://github.com/shaiss/Openscad/blob/main";
+const GITHUB_BASE = "https://github.com/shaiss/print-bench/blob/main";
 
 function parseArgs(argv) {
   let out = join(REPO_ROOT, "build", "site");
