@@ -51,9 +51,24 @@ module rib(z0) {
 module grip_band() {
     proud = 2 * style_rib_depth;
     intersection() {
-        hull() {
-            linear_extrude(h - style_edge_chamfer) plan(proud);
-            linear_extrude(h) plan(proud - style_edge_chamfer);
+        // Built like shell() below: broken at 45 degrees where it meets the
+        // bed and again at the rim. Standing proud of the ribs is no excuse
+        // for reaching the plate square — the style breaks EVERY bed edge,
+        // and the swatch is what people will copy.
+        union() {
+            hull() {
+                linear_extrude(eps) plan(proud - style_edge_chamfer);
+                translate([0, 0, style_edge_chamfer])
+                    linear_extrude(eps) plan(proud);
+            }
+            translate([0, 0, style_edge_chamfer])
+                linear_extrude(h - 2 * style_edge_chamfer) plan(proud);
+            hull() {
+                translate([0, 0, h - style_edge_chamfer])
+                    linear_extrude(eps) plan(proud);
+                translate([0, 0, h - eps])
+                    linear_extrude(eps) plan(proud - style_edge_chamfer);
+            }
         }
         // rounded in plan, so the band meets the ribs as a swelling of the
         // wall rather than as a lug bolted onto it

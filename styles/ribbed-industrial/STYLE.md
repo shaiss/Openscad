@@ -59,7 +59,7 @@ apply to a given part is skipped, not failed.
 | `upright-walls` | `orientation.vertical_share` ≥ 0.3 | advisory | the form is made of upright walls meeting flat tops, not a sloping shell — 57% of the box's surface is vertical and 35% of the lid's. Advisory because a lid is mostly lid |
 <!-- /stylelift:rules -->
 
-The three required rules are all about **treatment and discipline**, which do
+The four required rules are all about **treatment and discipline**, which do
 not change with the size of the part. The two advisory ones are shares of
 surface or edge length, which fall as a part grows — a big tray in this family
 should not be failed for being big.
@@ -93,7 +93,7 @@ the rules by construction.
 The four rib tokens describe one period of the wall articulation, measured off
 the reference to the micron:
 
-```
+```text
     pitch 5.000 mm  =  root 2.0  +  flank 1.0  +  crest 1.0  +  flank 1.0
     depth 1.000 mm     flanks at exactly 45.000 degrees
 
