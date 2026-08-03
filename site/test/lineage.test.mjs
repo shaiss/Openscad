@@ -21,7 +21,14 @@ import { fileURLToPath } from "node:url";
 
 import { readDesigns } from "../lib/content.mjs";
 import { indexPage, designPage } from "../lib/templates.mjs";
-import { parseDerivesConf, declaredParents, resolveLineage } from "../lib/lineage.mjs";
+import {
+  parseDerivesConf,
+  declaredParents,
+  resolveLineage,
+  KEYS,
+  PARENT_KEYS,
+  RETIRED_KEYS,
+} from "../lib/lineage.mjs";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
@@ -272,6 +279,14 @@ test("a design on a lineage cycle is still listed, and flagged for the build to 
     "loop-b": "variant-of: loop-a\n",
   });
   try {
+    // assertAgreement() cannot be used here: it compares two answers, and on a
+    // cycle the resolver refuses to give one. So the agreement being checked is
+    // that BOTH refuse — Python by exiting non-zero, the port by placing no
+    // design in the order.
+    const res = lineageCli(root, ["order"]);
+    assert.notEqual(res.status, 0, "tools/lineage accepted a lineage cycle");
+    assert.match(res.stderr, /cycle/i);
+
     const designs = readDesigns(root);
     // Never silently drop a design from the index...
     assert.deepEqual(designs.map((d) => d.name).sort(), ["loop-a", "loop-b"]);
@@ -318,6 +333,40 @@ test("a tree with no derivatives is unchanged: flat, alphabetical, no lineage te
     assert.doesNotMatch(html, /derived from/);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the key sets match conf.py exactly, including the retired one", () => {
+  // Read straight out of the Python module rather than restated here — a
+  // hardcoded expectation would pass while both sides drifted together away
+  // from the format the tooling actually accepts. Order matters for KEYS: it
+  // is interpolated into conf.py's error messages.
+  const res = spawnSync(
+    "python3",
+    [
+      "-c",
+      "import json; from lineage.conf import KEYS, PARENT_KEYS, RETIRED_KEYS; " +
+        "print(json.dumps({'keys': list(KEYS), 'parent_keys': list(PARENT_KEYS), " +
+        "'retired': sorted(RETIRED_KEYS)}))",
+    ],
+    {
+      encoding: "utf8",
+      env: { ...process.env, PYTHONPATH: join(REPO_ROOT, "tools", "lineage", "src") },
+    }
+  );
+  assert.equal(res.status, 0, `could not read conf.py's key sets: ${res.stderr}`);
+  const py = JSON.parse(res.stdout);
+
+  assert.deepEqual(KEYS, py.keys);
+  assert.deepEqual(PARENT_KEYS, py.parent_keys);
+  assert.deepEqual([...RETIRED_KEYS].sort(), py.retired);
+
+  // A retired key must be refused, not silently ignored — that is the whole
+  // point of keeping the set.
+  for (const retired of py.retired) {
+    const conf = parseDerivesConf(`${retired}: something\n`);
+    assert.equal(conf.problems.length, 1, `${retired} was not refused`);
+    assert.deepEqual(declaredParents(conf), []);
   }
 });
 

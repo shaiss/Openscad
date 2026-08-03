@@ -25,8 +25,11 @@ export const KEYS = ["variant-of", "derivative-of", "replaces", "diamond-ok"];
  */
 export const PARENT_KEYS = ["variant-of", "derivative-of"];
 
-/** Keys retired from an earlier draft of the format; never accepted silently. */
-const RETIRED_KEYS = new Set(["reuses"]);
+/**
+ * Keys retired from an earlier draft of the format; never accepted silently.
+ * Exported so the test can hold all three key sets against conf.py's.
+ */
+export const RETIRED_KEYS = new Set(["reuses"]);
 
 /**
  * Parse a derives.conf, collecting problems instead of throwing — one bad

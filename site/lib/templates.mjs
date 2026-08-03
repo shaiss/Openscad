@@ -203,11 +203,8 @@ ${design.scads
   }
   ${
     (design.parents || []).length
-      ? `<div class="rail-block"><h3>Derived from</h3><ul>${design.parents
-          .map(
-            (p) =>
-              `<li><a href="/designs/${encodeURIComponent(p)}/">${escapeHtml(p)}</a></li>`
-          )
+      ? `<div class="rail-block"><h3>Derived from</h3><ul>${parentLinks(design)
+          .map((link) => `<li>${link}</li>`)
           .join("")}</ul>${
           design.parents.length > 1
             ? '<p class="rail-note">In include order — the last include wins.</p>'
