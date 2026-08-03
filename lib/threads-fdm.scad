@@ -140,11 +140,18 @@ module thread_helix(d_major, depth, pitch, starts, length, w_add = 0,
     // Bounded as a chord tolerance rather than a minimum segment count; the
     // message names the seg that would satisfy it, so it says what to do
     // rather than only that something is wrong.
-    assert((d_major / 2) * (1 - cos(180 / seg)) <= _max_chord, str(
+    //
+    // Computed once and reused by both the condition and the message. Writing
+    // the expression out three times would let the number that FIRED the
+    // assert drift from the number it REPORTS — a harness lying about what it
+    // measured, which is the failure this library has now been bitten by twice
+    // (the demo's circular echo in #37, and mate-check reporting an unreadable
+    // mesh as interference).
+    chord_err = (d_major / 2) * (1 - cos(180 / seg));
+    assert(chord_err <= _max_chord, str(
         "thread seg = ", seg, " chords too coarsely at d_major = ", d_major,
-        ": chord error (d_major/2)*(1 - cos(180/seg)) = ",
-        (d_major / 2) * (1 - cos(180 / seg)), " mm exceeds the ", _max_chord,
-        " mm budget, losing ", 2 * (d_major / 2) * (1 - cos(180 / seg)),
+        ": chord error (d_major/2)*(1 - cos(180/seg)) = ", chord_err,
+        " mm exceeds the ", _max_chord, " mm budget, losing ", 2 * chord_err,
         " mm off the effective crest diameter. Raise seg to at least ",
         ceil(180 / acos(1 - 2 * _max_chord / d_major)), "."));
     // depth == 0 is allowed on purpose: it degenerates the rib to a sliver
