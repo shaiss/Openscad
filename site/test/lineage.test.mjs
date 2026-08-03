@@ -101,12 +101,15 @@ function jsLineage(root) {
  * under, or the full include-ordered parent list.
  */
 function assertAgreement(root, designNames) {
-  const { order } = jsLineage(root);
+  // One readDesigns() for the whole assertion: it walks the tree and parses
+  // every conf, so re-reading it per design made this quadratic in the design
+  // count for no gain.
+  const { designs, order } = jsLineage(root);
   assert.deepEqual(order, pythonOrder(root), "site and tools/lineage disagree about gallery order");
+  const byName = new Map(designs.map((d) => [d.name, d]));
   for (const name of designNames) {
-    const js = readDesigns(root).find((d) => d.name === name);
     assert.deepEqual(
-      js.parents,
+      byName.get(name).parents,
       pythonParents(root, name),
       `site and tools/lineage disagree about the parents of ${name}`
     );
@@ -274,6 +277,30 @@ test("a design on a lineage cycle is still listed, and flagged for the build to 
     assert.deepEqual(designs.map((d) => d.name).sort(), ["loop-a", "loop-b"]);
     // ...but do mark it, so build.mjs fails the way `lineage order` does.
     assert.ok(designs.every((d) => d.lineageCycle));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a present-but-empty derives.conf declares no parent, same as the resolver", () => {
+  // read() gives "" for an empty file, which is falsy — so "does this design
+  // have a derives.conf" and "what does it declare" must not be the same test.
+  // Both implementations treat this as a root with no parents; this pins that
+  // rather than leaving it to be re-derived by the next reader.
+  const root = fixture({ base: null, child: "" });
+  try {
+    assertAgreement(root, ["base", "child"]);
+    const child = readDesigns(root).find((d) => d.name === "child");
+    assert.equal(child.hasDerivesConf, true);
+    assert.deepEqual(child.parents, []);
+    assert.equal(child.depth, 0);
+    // Whitespace and comment-only files land in the same place.
+    const root2 = fixture({ base: null, child: "\n  \n# nothing here\n" });
+    try {
+      assertAgreement(root2, ["base", "child"]);
+    } finally {
+      rmSync(root2, { recursive: true, force: true });
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

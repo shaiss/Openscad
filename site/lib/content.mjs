@@ -148,8 +148,16 @@ export function readDesigns(repoRoot) {
     // Read like ci.parts and style.conf above, but parsed by the lineage
     // port rather than lines(): derives.conf is `key: value`, strips trailing
     // comments, and its parent order is load-bearing.
+    // Explicitly against null, not truthiness: read() returns "" for a
+    // present-but-empty derives.conf, and that is a file that exists. Parsing
+    // it yields no parents, which is what skipping it yields too — so the two
+    // agree today — but keeping one test for "the file is there" stops that
+    // equivalence from being load-bearing. site/test/lineage.test.mjs pins it.
     const derives = read(join(dir, "derives.conf"));
-    declared.set(name, derives ? declaredParents(parseDerivesConf(derives)) : []);
+    declared.set(
+      name,
+      derives !== null ? declaredParents(parseDerivesConf(derives)) : []
+    );
 
     const previewsDir = join(dir, "previews");
     const previews = existsSync(previewsDir)
