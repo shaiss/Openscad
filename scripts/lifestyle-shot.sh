@@ -147,19 +147,42 @@ except Exception:
     kind="${parsed%%$'\t'*}"
     value="${parsed#*$'\t'}"
     if [[ "$kind" == "url" ]]; then
-      # SSRF guard: only fetch a public https URL. Even if the API response or
-      # ZAI_ENDPOINT is tampered with, never let it point curl at http:// or an
-      # internal/link-local host (cloud metadata at 169.254.169.254, etc.).
+      # SSRF guard: require https, extract the host correctly (dropping any
+      # userinfo so https://x@169.254.169.254/ can't spoof it), then RESOLVE it
+      # and refuse if any resolved address is non-public. Resolving — rather
+      # than string-matching — is what catches decimal/hex IP literals and
+      # hostnames that point at internal targets (cloud metadata, etc.), even
+      # if the API response or ZAI_ENDPOINT is tampered with.
       if [[ "$value" != https://* ]]; then
         echo "refusing non-https image URL from API: ${value:0:80}" >&2
         exit 1
       fi
-      host="${value#https://}"; host="${host%%/*}"; host="${host%%:*}"
-      case "$host" in
-        localhost|0.*|127.*|10.*|169.254.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*|\[::1\]|::1|\[fe80:*|fe80:*)
-          echo "refusing image URL to a private/internal host: ${host}" >&2
-          exit 1 ;;
-      esac
+      authority="${value#https://}"
+      authority="${authority%%[/?#]*}"   # drop path / query / fragment
+      authority="${authority##*@}"       # drop userinfo (take after the last @)
+      if [[ "$authority" == \[* ]]; then
+        host="${authority%%\]*}]"        # bracketed IPv6 literal, keep [ ... ]
+      else
+        host="${authority%%:*}"          # drop :port
+      fi
+      if ! python3 - "$host" <<'PY'
+import sys, socket, ipaddress
+host = sys.argv[1].strip("[]")
+try:
+    addrs = {ai[4][0] for ai in socket.getaddrinfo(host, None)}
+except Exception as e:
+    sys.stderr.write("refusing image URL: cannot resolve host %r (%s)\n" % (host, e))
+    sys.exit(1)
+for a in addrs:
+    ip = ipaddress.ip_address(a)
+    if (not ip.is_global) or ip.is_private or ip.is_loopback or ip.is_link_local \
+       or ip.is_reserved or ip.is_multicast:
+        sys.stderr.write("refusing image URL: host %r resolves to non-public %s\n" % (host, a))
+        sys.exit(1)
+PY
+      then
+        exit 1
+      fi
       curl -fsSL "$value" -o "$tmp/gen.img"
     else
       printf '%s' "$value" | base64 -d >"$tmp/gen.img"
