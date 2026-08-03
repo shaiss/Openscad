@@ -4,7 +4,9 @@
 #      (echo export — seconds)
 #   2. Full CGAL render of the lib demo to catch geometry regressions
 #   3. Guard check (scripts/guard-check.sh): every lib guard still fires
-#   4. Docs-drift check (scripts/docs-check.sh): docs must match the tree
+#   4. Lineage check (scripts/lineage.sh check): every derives.conf must
+#      describe the graph its entry .scad actually includes
+#   5. Docs-drift check (scripts/docs-check.sh): docs must match the tree
 # Run before committing. For full STL+PNG output use scripts/render.sh.
 set -euo pipefail
 
@@ -117,6 +119,23 @@ done
 # would abort the render it lives in.
 echo "-- guard check: scripts/guard-check.sh"
 if ! ./scripts/guard-check.sh; then
+  fail=1
+fi
+
+# Lineage check: derives.conf parses, its parents exist, the declared parent
+# order still matches the entry .scad's include order, and every diamond is
+# explicitly asserted. All static, all milliseconds, so it runs unconditionally
+# rather than only when a derives.conf exists — a tree with no derivatives
+# answers in one line, and the day someone adds the first one the check is
+# already wired in rather than waiting to be remembered.
+#
+# Ahead of docs-check because docs-check regenerates the gallery, and the
+# gallery is now ordered by the same resolver: a broken derives.conf changes
+# the nesting, so without this step first the only thing the run says is
+# "README gallery is stale" — which points at the wrong file, and at a fix
+# (rerun gallery.sh) that would bake the broken lineage into the README.
+echo "-- lineage check: scripts/lineage.sh check"
+if ! ./scripts/lineage.sh check; then
   fail=1
 fi
 

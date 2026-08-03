@@ -6,11 +6,21 @@ name: CI
 # The `changes` job decides what actually runs: docs/skills-only PRs skip
 # the expensive render jobs, and design-only PRs gate just the designs they
 # touch. Downstream jobs are skipped via `if:` on the changes outputs rather
-# than workflow-level `paths:` filters, because jobs skipped via `if:` still
-# report a (skipped) check run that satisfies branch-protection required
-# checks — a paths-filtered workflow reports nothing and leaves required
-# checks pending forever. Keep the job `name:` strings stable: they are what
-# branch protection matches on.
+# than workflow-level `paths:` filters, because a paths-filtered workflow
+# reports nothing at all and leaves required checks pending forever, while an
+# `if:`-skipped job at least reports a check run. Keep the job `name:` strings
+# stable: they are what branch protection matches on.
+#
+# CAUTION, learned the hard way on PR #50: a check run reported as *skipped*
+# does NOT satisfy a required status check here. That PR had all 13 checks
+# reported and a mergeable_state of "clean", and the merge API still refused
+# it with "5 of 5 required status checks are expected", because three of the
+# five required contexts had been skipped. So any path that reaches merge
+# must actually RUN the five required jobs — Detect changed paths, Lint
+# scripts and workflows, OpenSCAD syntax/geometry check, printcheck unit
+# tests, and Render designs, gate STLs, test-slice. Adding a top-level
+# directory without adding it to the classifier below makes every PR that
+# touches only that directory permanently unmergeable.
 on:
   push:
     branches: [main]
@@ -35,6 +45,7 @@ jobs:
       scad: ${{ steps.filter.outputs.scad }}
       printcheck_tests: ${{ steps.filter.outputs.printcheck_tests }}
       stylelift_tests: ${{ steps.filter.outputs.stylelift_tests }}
+      lineage_tests: ${{ steps.filter.outputs.lineage_tests }}
       styles: ${{ steps.filter.outputs.styles }}
       gate: ${{ steps.filter.outputs.gate }}
       gate_designs: ${{ steps.filter.outputs.gate_designs }}
@@ -49,11 +60,11 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          scad=false; ptests=false; stests=false; styles=false
+          scad=false; ptests=false; stests=false; ltests=false; styles=false
           gate=false; designs=""
           if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
             # Default-branch push: run everything, gate every design.
-            scad=true; ptests=true; stests=true; styles=true
+            scad=true; ptests=true; stests=true; ltests=true; styles=true
             gate=true; designs=ALL
           else
             # Capture via command substitution so a git failure fails the
@@ -69,8 +80,14 @@ jobs:
             for f in "${files[@]}"; do
               case "$f" in
                 # A lib/script/printcheck/workflow change can break any
-                # design, so it re-gates all of them.
-                lib/*|scripts/*|tools/printcheck/*|.github/workflows/ci.yml)
+                # design, so it re-gates all of them. tools/lineage joins
+                # that list because it is what decides which designs a
+                # change reaches at all: edit the resolver and every blast
+                # radius in the tree can move, including the one this very
+                # step is about to compute — so the safe reading of a
+                # resolver edit is "assume it reaches everything".
+                lib/*|scripts/*|tools/printcheck/*|tools/lineage/*|\
+                .github/workflows/ci.yml)
                   infra=true ;;
               esac
               case "$f" in
@@ -102,9 +119,39 @@ jobs:
                 tools/stylelift/*|.github/workflows/ci.yml) stests=true ;;
               esac
               case "$f" in
-                designs/*|lib/*|templates/*|scripts/*|styles/*|\
-                .github/workflows/ci.yml)
+                tools/lineage/*|.github/workflows/ci.yml) ltests=true ;;
+              esac
+              case "$f" in
+                # tools/lineage is here and tools/printcheck is not:
+                # printcheck only ever reads exported STLs, after the fact,
+                # while check.sh itself RUNS the lineage resolver
+                # (`./scripts/lineage.sh check`) and fails on what it reports —
+                # so editing the resolver can change what the syntax/eval job
+                # concludes. Not because of the selftest fixtures: those live
+                # under tools/ and check.sh's globs cover only designs/, lib/,
+                # templates/ and styles/, so it never reads them.
+                #
+                # site/ and vercel.json are here for a different reason
+                # entirely — see the required-context note below; they cannot
+                # move geometry, but the job has to RUN for such a PR to be
+                # mergeable at all.
+                designs/*|lib/*|templates/*|scripts/*|styles/*|site/*|\
+                vercel.json|tools/lineage/*|.github/workflows/ci.yml)
                   scad=true ;;
+              esac
+              # site/ and vercel.json cannot affect geometry — the site
+              # renders content FROM the designs, it does not define any.
+              # But three of the five contexts branch protection requires
+              # are the geometry jobs, and a job skipped via `if:` does NOT
+              # satisfy a required context here (verified: PR #50, all 13
+              # checks reported, merge still refused with "5 of 5 required
+              # status checks are expected"). Without this, a site-only PR
+              # is permanently unmergeable. The cheaper fix is to require
+              # "Static site builds" instead of the geometry jobs for these
+              # paths, but that needs a branch-protection change.
+              case "$f" in
+                site/*|vercel.json)
+                  infra=true; ptests=true ;;
               esac
             done
             # The other direction: a design that declares a style the PR
@@ -117,6 +164,47 @@ jobs:
                    | tr -d '[:space:]' || true)"
               [ -n "${touched_styles[${s:-_none_}]:-}" ] && names[$n]=1
             done
+            # Blast radius. A derivative design includes its parent's .scad
+            # and redefines part of it, so a change under designs/<parent>/
+            # moves the derivative's geometry without the diff naming one
+            # file inside the derivative's own directory. Gating what git
+            # reported would render the parent, pass it, and never export
+            # the parts that inherited the change — and because a
+            # redefinition that binds nothing is completely silent (the
+            # failure scripts/gate.sh's derivative check exists to catch),
+            # the derivative can go on shipping a wrong-but-watertight STL
+            # behind a green check. Ask the resolver for the descendants.
+            #
+            # No install step, deliberately: tools/lineage is stdlib-only so
+            # that the job deciding what to install can run it first.
+            #
+            # Unguarded, and it must stay that way. The resolver exits
+            # non-zero on a cycle or an unparsable derives.conf; under
+            # `set -euo pipefail` that fails the step, which is the point.
+            # A `|| true` here would leave names at whatever the diff
+            # happened to mention and report green having never gated the
+            # parts that moved — the same fail-open trap the command
+            # substitution above was written to avoid.
+            #
+            # Two skips, both narrow. $infra already means designs=ALL, so
+            # there is nothing left to widen and nothing can go ungated by
+            # not asking — judging whether the records themselves are sound
+            # is `lineage check`'s job, not this step's. And an empty names
+            # would expand to ZERO arguments, which the resolver rejects as
+            # a usage error rather than reading as "no designs".
+            #
+            # Placed above the style sweep below so a derivative that
+            # declares a style is re-checked against it too: its geometry
+            # just moved, which is the same reason the sweep exists.
+            if ! $infra && [ "${#names[@]}" -gt 0 ]; then
+              radius="$(./scripts/lineage.sh blast-radius "${!names[@]}")"
+              while IFS= read -r n; do
+                # Same rule as the loop above: a lineage record can outlive
+                # the design it names, and gating a design with no entry
+                # point would fail the gate under the wrong design's name.
+                [ -n "$n" ] && [ -f "designs/$n/$n.scad" ] && names[$n]=1
+              done <<<"$radius"
+            fi
             # A changed design that claims a style has to be re-checked
             # against it: the claim is about its geometry, and its geometry
             # is what just moved.
@@ -133,6 +221,7 @@ jobs:
             echo "scad=$scad"
             echo "printcheck_tests=$ptests"
             echo "stylelift_tests=$stests"
+            echo "lineage_tests=$ltests"
             echo "styles=$styles"
             echo "gate=$gate"
             echo "gate_designs=$designs"
@@ -220,6 +309,27 @@ jobs:
       - name: Run tests
         run: python -m pytest tools/stylelift/tests -q
 
+  lineage-tests:
+    name: lineage unit tests
+    needs: changes
+    if: needs.changes.outputs.lineage_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install lineage
+        # The [test] extra pulls pytest and nothing else — the package's
+        # runtime dependencies are empty on purpose, since the classifier
+        # job above calls the resolver before anything is installed.
+        run: pip install -e 'tools/lineage[test]'
+      - name: Run tests
+        run: python -m pytest tools/lineage/tests -q
+
   style-gate:
     # Every style pack must stay internally consistent (style.scad and
     # STYLE.md generated from style.json) and its swatch must still satisfy
@@ -274,6 +384,36 @@ jobs:
           persist-credentials: false
       - name: Every design ships a product-page README
         run: ./scripts/readme-gate.sh
+
+  site-build:
+    # The same generator Vercel runs (vercel.json pins it), so this catches a
+    # broken deploy on the PR instead of after merge. It also link-checks every
+    # product page: the build fails on any local reference that does not
+    # resolve. Ungated for the same reason design-docs is — one small npm
+    # install, seconds to run, and always reporting keeps it usable as a
+    # required check.
+    name: Static site builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Install site dependencies
+        run: npm --prefix site ci
+      - name: Build the site (fails on any broken local reference)
+        run: node site/build.mjs --out build/site
+      - name: Upload the built site
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: site
+          path: build/site
+          if-no-files-found: error
 
   scad-check:
     name: OpenSCAD syntax/geometry check
@@ -368,6 +508,23 @@ jobs:
           cache: pip
       - name: Install printcheck
         run: pip install -e tools/printcheck
+      - name: Prove the derivative gate can still fire
+        # The gate's derivative check rests entirely on two undocumented
+        # OpenSCAD behaviours: a redefinition that binds nothing is reported
+        # nowhere, and the mesh it leaves behind is byte-identical to the
+        # parent's. Both were measured on 2021.01; this job renders on the
+        # dev snapshot with the Manifold backend, where neither is promised.
+        # The selftest renders fixtures carrying a working override and a
+        # typo'd one and asserts the comparison still separates them.
+        #
+        # Ahead of the gate, and blocking, because a gate that has silently
+        # stopped firing is indistinguishable from a gate with nothing to
+        # report — every derivative below would pass by saying nothing. It
+        # costs seconds: four small fixtures, no printcheck, no slicer.
+        env:
+          OPENSCAD_BIN: openscad-nightly
+          OPENSCAD_ARGS: --backend=manifold
+        run: ./scripts/lineage.sh selftest
       - name: Render, gate with printcheck, test-slice with PrusaSlicer
         env:
           GATE_DESIGNS: ${{ needs.changes.outputs.gate_designs }}

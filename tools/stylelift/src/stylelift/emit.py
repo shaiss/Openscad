@@ -16,6 +16,10 @@ from .spec import StyleSpec, derive
 
 # Tokens that become OpenSCAD variables: the numbers somebody types into
 # geometry. Ratios and targets stay in style.json, where the checker reads them.
+# Tokens stylelift proposes itself, with the wording for their comment. A pack
+# may define others by hand — different families have different vocabularies,
+# and a ribbed family needs words a rounded-box family does not — so this is
+# the annotation table, not the permitted set.
 SCAD_TOKENS = (
     ("corner_r", "mm", "radius of the family's rounded edges"),
     ("edge_chamfer", "mm", "leg length of the family's chamfers"),
@@ -23,6 +27,11 @@ SCAD_TOKENS = (
     ("hole_d", "mm", "the family's fastener clearance hole"),
     ("fn", "segments", "curve resolution ($fn) the family draws at"),
 )
+
+# Tokens that exist so a rule has something to compare against, and that you
+# would never build with. Kept out of style.scad: a design that wrote
+# `softness = 0.79` into its geometry would be doing something meaningless.
+CHECK_ONLY = frozenset({"softness", "bbox_fill", "grammar_rounded"})
 
 
 def sha256(path: str | Path) -> str:
@@ -50,12 +59,19 @@ def render_tokens(spec: StyleSpec) -> str:
         "",
         f'style_name = "{spec.name}";',
     ]
-    for key, unit, blurb in SCAD_TOKENS:
-        if key not in spec.tokens:
+    known = {k: (u, b) for k, u, b in SCAD_TOKENS}
+    # Every token the pack defines reaches style.scad, in a stable order:
+    # the ones stylelift knows about first, then the pack's own vocabulary.
+    ordered = ([k for k, _, _ in SCAD_TOKENS if k in spec.tokens]
+               + sorted(k for k in spec.tokens if k not in known))
+    for key in ordered:
+        if key in CHECK_ONLY:
             continue
         value = spec.tokens[key]
         text = f"{value:g}" if isinstance(value, (int, float)) else f'"{value}"'
-        lines.append(f"style_{key} = {text};  // {unit} — {blurb}")
+        unit, blurb = known.get(key, ("", ""))
+        comment = f"  // {unit} — {blurb}" if blurb else ""
+        lines.append(f"style_{key} = {text};{comment}")
     missing = [k for k, _, _ in SCAD_TOKENS if k not in spec.tokens]
     if missing:
         lines += ["",
@@ -100,10 +116,19 @@ def _tokens_table(spec: StyleSpec) -> list[str]:
         if key in spec.tokens:
             rows.append(
                 f"| `style_{key}` | {show(spec.tokens[key])} {unit} | {blurb} |")
-    for key, value in spec.tokens.items():
-        if key not in {t[0] for t in SCAD_TOKENS}:
-            rows.append(f"| `{key}` | {show(value)} | target the checker compares "
+    # The pack's own vocabulary. These reach style.scad exactly like the known
+    # ones (unless they are check-only), so they must be named the same way
+    # here — a table that showed `rib_pitch` while style.scad defined
+    # `style_rib_pitch` would send a modeller looking for a variable that does
+    # not exist.
+    for key in sorted(k for k in spec.tokens if k not in {t[0] for t in SCAD_TOKENS}):
+        value = show(spec.tokens[key])
+        if key in CHECK_ONLY:
+            rows.append(f"| `{key}` | {value} | target the checker compares "
                         "against, not a number you build with |")
+        else:
+            rows.append(f"| `style_{key}` | {value} | "
+                        "defined by this style — see the prose below |")
     return rows
 
 
