@@ -83,6 +83,30 @@ function flank_add(tol) = 2 * (sqrt(2) - 1) * tol;
 // the file header and `prof` below.
 _sink = 0.4;
 
+// How far the polygonal helix may fall inside the true circle before `seg` is
+// refused — the chord error, or sagitta, of one segment at the crest radius:
+//
+//   chord error = (d_major / 2) * (1 - cos(180 / seg))
+//
+// Issue #58 chose to refuse coarse `seg` rather than report it, and to state
+// the bound as a tolerance rather than a segment count: "how much chording is
+// too much" is a judgement, and a millimetre figure is one a reader can argue
+// with, while `seg >= 32` is a number nobody can check.
+//
+// 0.1 mm is a quarter of a 0.4 mm extrusion width and a third of the
+// desiccant-capsule's 0.3 mm thread clearance, so a thread sitting exactly at
+// this bound still chords by less than the printer resolves and well inside
+// its own fit tolerance. It refuses the failure the issue describes — losing
+// millimetres off the effective crest — by a factor of ten: seg = 8 at
+// d_major 28 is 1.066 mm of chord error, 2.13 mm off the diameter.
+//
+// Nothing that existed when this landed was affected: the seg = 48 default
+// stays legal to d_major 93 mm, and the capsule sits at 0.030 mm. What it
+// does refuse is seg <= 26 at d_major 28, i.e. a deliberately coarse setting
+// for fast iteration. Raising this to 0.15 would move that floor to seg >= 22;
+// it is one number in one place precisely so that trade can be re-made.
+_max_chord = 0.1;
+
 // One trapezoidal helix as a single polyhedron, swept `starts` times.
 //   d_major  outer (crest) diameter
 //   depth    radial thread depth; also sets the axial flank run, so the
@@ -93,8 +117,10 @@ _sink = 0.4;
 //            caller can intersect it to a clean boundary
 //   w_add    axial widening of the profile — 0 for the male thread,
 //            flank_add(tol) for the female cutter
-//   seg      profile samples per turn, the $fn of the helix; 48 is smooth
-//            enough for a 28 mm neck, raise it for larger diameters
+//   seg      profile samples per turn, the $fn of the helix. 48 is smooth
+//            enough for a 28 mm neck and stays legal to d_major 93; larger
+//            diameters need more, and the module says how many rather than
+//            leaving you to find out from the mesh (see _max_chord)
 module thread_helix(d_major, depth, pitch, starts, length, w_add = 0,
                     seg = 48) {
     // These guards travel with the module on purpose: left behind in the
@@ -107,6 +133,27 @@ module thread_helix(d_major, depth, pitch, starts, length, w_add = 0,
     // rounds down, so starts = 1.5 builds ONE rib against a lead of 1.5*pitch.
     assert(starts == floor(starts), "thread starts must be a whole number.");
     assert(seg >= 1, "thread seg must be at least 1.");
+    // `seg` samples the helix as a polygon, so the crest lands inside the
+    // circle it is meant to trace. That error scales with radius while `seg`
+    // does not, which is why a value that is fine on a 16 mm neck quietly
+    // loses millimetres off a large one — the silent shrink of issue #58.
+    // Bounded as a chord tolerance rather than a minimum segment count; the
+    // message names the seg that would satisfy it, so it says what to do
+    // rather than only that something is wrong.
+    //
+    // Computed once and reused by both the condition and the message. Writing
+    // the expression out three times would let the number that FIRED the
+    // assert drift from the number it REPORTS — a harness lying about what it
+    // measured, which is the failure this library has now been bitten by twice
+    // (the demo's circular echo in #37, and mate-check reporting an unreadable
+    // mesh as interference).
+    chord_err = (d_major / 2) * (1 - cos(180 / seg));
+    assert(chord_err <= _max_chord, str(
+        "thread seg = ", seg, " chords too coarsely at d_major = ", d_major,
+        ": chord error (d_major/2)*(1 - cos(180/seg)) = ", chord_err,
+        " mm exceeds the ", _max_chord, " mm budget, losing ", 2 * chord_err,
+        " mm off the effective crest diameter. Raise seg to at least ",
+        ceil(180 / acos(1 - 2 * _max_chord / d_major)), "."));
     // depth == 0 is allowed on purpose: it degenerates the rib to a sliver
     // buried in the core, which is how a design asks for a threadless
     // slip-fit variant of the same part. The capsule renders cleanly under
