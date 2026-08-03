@@ -103,11 +103,15 @@ Two ways to generate one, both landing the same disclosed
   is the deliverable — and leave the idea in NOTES.md for a session that has
   one.
 
-- **Start from the committed tier-1 raytrace** so the generated image at
-  least begins from the real part. Prompt for: same object, same viewpoint,
-  photographed in a real setting relevant to the design's use (the
-  battleship board on a dinner table set with sushi; the desiccant capsule
-  beside a filament dry-box), natural lighting, shallow depth of field.
+- **Prompt for the scene.** Describe the same object in a real setting
+  relevant to the design's use (the battleship board on a dinner table set
+  with sushi; the desiccant capsule beside a filament dry-box), natural
+  lighting, shallow depth of field. The CI path's GLM-Image is *text-to-image*
+  — there is no reference image, so the geometry comes from your words, which
+  is exactly why it's disclosed as approximate. **In-session only**, if your
+  image tool accepts an input image, you can additionally seed it with the
+  committed tier-1 raytrace so it at least begins from the real part (the
+  reference-conditioned CI path is a tabled backlog item — see #66).
 - **It is cosmetic, so assume it is geometrically off.** Image generators
   add, drop, and reshape features, and we do **not** reject a lifestyle shot
   for that — chasing pixel-faithful geometry out of a restyle is a losing

@@ -111,11 +111,15 @@ while IFS= read -r line || [[ -n "$line" ]]; do
       "$ZAI_MODEL" "$prompt" "$ZAI_SIZE")"
     # Capture body AND status (no -f): a 4xx body carries the real reason — a
     # rejected size, an invalid key, a content-filter block — which we must
-    # surface, not swallow, on the first live run.
-    http="$(curl -sS -w $'\n%{http_code}' -X POST "$ZAI_ENDPOINT" \
-      -H "Authorization: Bearer ${ZAI_KEY}" \
-      -H "Content-Type: application/json" \
-      -d "$req_body")" || { echo "GLM-Image request failed (curl transport error)" >&2; exit 1; }
+    # surface, not swallow, on the first live run. The Authorization header goes
+    # in via -K - (stdin config) so the key never lands in curl's argv (readable
+    # from /proc); the printf is a bash builtin, so it doesn't fork either.
+    # --connect-timeout/--max-time bound a stalled third-party call.
+    http="$(printf 'header = "Authorization: Bearer %s"\n' "$ZAI_KEY" \
+      | curl -sS -K - --connect-timeout 15 --max-time 120 -w $'\n%{http_code}' \
+        -X POST "$ZAI_ENDPOINT" \
+        -H "Content-Type: application/json" \
+        -d "$req_body")" || { echo "GLM-Image request failed (curl transport error)" >&2; exit 1; }
     code="${http##*$'\n'}"
     resp="${http%$'\n'*}"
     if [[ "$code" != 2?? ]]; then
@@ -197,16 +201,18 @@ print(vetted)
 PY
 )" || exit 1
       vetted_ip="${vet##*$'\n'}"
-      # Download WITHOUT following redirects (-L dropped): a redirect would send
-      # curl to a fresh, unvetted host, defeating the resolve-and-pin guard. A
-      # 3xx is a refusal; -f still catches 4xx/5xx.
+      # Download hardening: --proto '=https' pins the scheme, --max-redirs 0 plus
+      # no -L means a redirect can't send curl to a fresh, unvetted host (a 3xx
+      # is refused below too), --connect-timeout/--max-time bound a stall, and
+      # --max-filesize caps an API-controlled payload before it hits ImageMagick.
+      dl_flags=(--proto '=https' --max-redirs 0 --connect-timeout 15 --max-time 300 --max-filesize 20000000)
       if [[ "${vet%%$'\n'*}" == "name" ]]; then
         resolve_host="${host#[}"; resolve_host="${resolve_host%]}"
-        dl_code="$(curl -fsS -o "$tmp/gen.img" -w '%{http_code}' \
+        dl_code="$(curl -fsS "${dl_flags[@]}" -o "$tmp/gen.img" -w '%{http_code}' \
           --resolve "${resolve_host}:${port}:${vetted_ip}" "$value")" \
           || { echo "image download failed" >&2; exit 1; }
       else
-        dl_code="$(curl -fsS -o "$tmp/gen.img" -w '%{http_code}' "$value")" \
+        dl_code="$(curl -fsS "${dl_flags[@]}" -o "$tmp/gen.img" -w '%{http_code}' "$value")" \
           || { echo "image download failed" >&2; exit 1; }
       fi
       if [[ "$dl_code" == 3?? ]]; then
@@ -216,7 +222,17 @@ PY
     else
       printf '%s' "$value" | base64 -d >"$tmp/gen.img"
     fi
-    convert "$tmp/gen.img" "$tmp/gen.png"
+    # These bytes are API-controlled. Pin ImageMagick to the detected type so it
+    # can't pick a delegate (PS/SVG/MSL/...) from sniffed content, and reject
+    # anything that isn't a plain raster image.
+    mime="$(file -b --mime-type "$tmp/gen.img")"
+    case "$mime" in
+      image/png)  coder=png ;;
+      image/jpeg) coder=jpeg ;;
+      image/webp) coder=webp ;;
+      *) echo "refusing unexpected image type from API: ${mime}" >&2; exit 1 ;;
+    esac
+    convert "${coder}:$tmp/gen.img" "$tmp/gen.png"
   fi
 
   fit_budget "$tmp/gen.png" "$out"
@@ -254,7 +270,23 @@ if anchor is None:
 if anchor is None:
     out = text + block
 else:
-    out = "".join(lines[: anchor + 1]) + block + "".join(lines[anchor + 1 :])
+    # Advance past the hero image's paragraph, then — if the next paragraph is
+    # the hero's caption (a blank-separated emphasis line, not another image or
+    # a heading) — past that too, so the lifestyle block lands after the whole
+    # hero unit instead of wedged between the hero image and its caption.
+    def end_of_para(i):
+        while i < len(lines) and lines[i].strip():
+            i += 1
+        return i
+    end = end_of_para(anchor + 1)
+    nxt = end
+    while nxt < len(lines) and not lines[nxt].strip():
+        nxt += 1
+    if nxt < len(lines):
+        s = lines[nxt].lstrip()
+        if s[:1] in ("*", "_") and not s.startswith("!["):
+            end = end_of_para(nxt)
+    out = "".join(lines[:end]) + block + "".join(lines[end:])
 open(readme, "w", encoding="utf-8").write(out)
 print(f"embedded {rel} in {readme}")
 PY
