@@ -140,6 +140,17 @@ if ! ./scripts/guard-check.sh; then
   fail=1
 fi
 
+# And this proves their fits still FIT. The mirror of the guard check: a demo
+# renders a mating pair side by side and looks right at any clearance, because
+# nothing in the render measures whether the two parts actually go together.
+# Issue #37 is the cautionary tale — the demo "verified" its flank clearance by
+# echoing the identity that defines the constant, and printed the promised
+# number for as long as the geometry delivered 6.9% less.
+echo "-- mate check: scripts/mate-check.sh"
+if ! ./scripts/mate-check.sh; then
+  fail=1
+fi
+
 # Lineage check: derives.conf parses, its parents exist, the declared parent
 # order still matches the entry .scad's include order, and every diamond is
 # explicitly asserted. All static, all milliseconds, so it runs unconditionally

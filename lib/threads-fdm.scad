@@ -8,15 +8,26 @@
 // coarse multi-start lead so the lid spins closed in a fraction of a turn, and
 // a single tunable radial clearance instead of a fit class.
 //
-// KNOWN DEVIATION (issue #37): the flanks are NOT 45 degrees. The profile runs
-// from r_maj to r_min - sink, so its slope is depth/(depth + sink) — 36.87 deg
-// from horizontal at the capsule's numbers, measured on the export as
-// |nz| = 0.795..0.799 == cos(36.87). Two things follow, both inherited from
-// the capsule and both left alone here so this extraction stays geometry-for-
-// geometry identical: flank_add() below under-delivers clearance on the flanks
-// (see its comment), and the rib underside overhangs further than the 45 deg
-// rule in CLAUDE.md. Fixing it changes a released design's printed geometry,
-// so it goes through its own preview-reviewed PR, not this one.
+// The flanks are 45 degrees where they mate, and the weld skirt is vertical.
+// That distinction is the fix for issue #37, and it is worth stating plainly
+// because the obvious version of the fix does not build:
+//
+// The profile spans `depth + sink` radially but only the `depth` part of it is
+// ever exposed — `sink` is a weld allowance that the caller's core cylinder
+// swallows (thread_neck unions cylinder(d = d_min), and d_min/2 == r_min).
+// Running one straight flank across the whole span, as the profile used to,
+// makes the slope depth/(depth + sink) = 36.87 deg at the capsule's numbers,
+// measured on the export as |nz| = 0.795..0.799 == cos(36.87).
+//
+// Widening the profile to keep one straight 45 deg flank across the full span
+// (issue #37's fix A) drives w_root from 3.4 to 4.2 at the capsule's numbers
+// and trips the multi-start guard below: 4.2 is not < pitch = 4, so the
+// capsule stops rendering. So the flank runs 45 deg over `depth` and the skirt
+// drops vertically through `sink` instead — six profile points, not four.
+// w_root is unchanged, every guard keeps its bound, and the exposed geometry
+// is identical to what fix A would have produced. Measured after: |nz| = 0.707
+// on both a bare helix and the capsule's neck, and the capsule's
+// beyond-45-deg overhang falls from 4% of its surface to 1%.
 //
 // The male and female profiles come from ONE helix generator, so they cannot
 // drift apart: the female cutter is the male thread grown radially by `tol`
@@ -42,13 +53,19 @@
 // the radial gap still measures correctly — the failure that motivated the
 // derivation.
 //
-// Caveat, issue #37: the built profile's m is depth/(depth + sink), not 1, so
-// the delivered flank gap is short of `tol` — 0.2794 against 0.300 at the
-// capsule's numbers (6.9% tight), and worse as depth shrinks (13% at
-// depth 0.6, 15% at depth 0.5). Crest and root clearance are unaffected: those
-// are pure radial displacement and measure exactly `tol`. The general solution
-// is flank_add = 2*tol*(sqrt(1 + m^2) - m), which collapses to the line below
-// at m = 1; adopting it changes the capsule's lid, so it ships separately.
+// This is exact only because the mating flank really is at m = 1. It was not
+// until issue #37: the built profile ran at m = 0.75, where this delivered
+// 0.2794 against a promised 0.300 (6.9% tight, and worse as depth shrank —
+// 13% at depth 0.6, 15% at depth 0.5). The fix was to the profile, not to
+// this line, which is why the expression is unchanged. Crest and root
+// clearance were never affected: those are pure radial displacement and
+// measure exactly `tol` at any slope.
+//
+// Do not "generalise" this to flank_add = 2*tol*(sqrt(1 + m^2) - m) to
+// accommodate some other slope. That would make the constant compensate for a
+// flank angle the rest of the file promises is 45 deg, and the promise is what
+// keeps the rib printable — see lib/threads-fdm-demo.scad, which measures the
+// delivered gap on built geometry rather than restating this algebra.
 function flank_add(tol) = 2 * (sqrt(2) - 1) * tol;
 
 // ---------------------------------------------------------------------------
@@ -59,12 +76,17 @@ function flank_add(tol) = 2 * (sqrt(2) - 1) * tol;
 // welds into the core instead of merely touching it. File-level because the
 // guards in thread_helix have to reason about it — see the r_min > sink
 // assert, which was written as `d_major > 2*depth` and missed this term.
+//
+// This region is a weld allowance, not thread: in a neck it is inside the core
+// cylinder, and in a bore it is outside the lid material. That is why the
+// profile's skirt walls are vertical rather than continuing the flank — see
+// the file header and `prof` below.
 _sink = 0.4;
 
 // One trapezoidal helix as a single polyhedron, swept `starts` times.
 //   d_major  outer (crest) diameter
-//   depth    radial thread depth; also sets the axial flank run, so the flank
-//            slope comes out depth/(depth + _sink) — see issue #37
+//   depth    radial thread depth; also sets the axial flank run, so the
+//            exposed flank is 45 degrees (slope 1) at any depth
 //   pitch    axial rise per start; lead = pitch * starts
 //   starts   number of thread starts (>= 1)
 //   length   threaded length; the helix runs one lead past each end so the
@@ -115,7 +137,7 @@ module thread_helix(d_major, depth, pitch, starts, length, w_add = 0,
     assert(w_crest > 0, str(
         "thread crest width 0.25*pitch + w_add = ", w_crest,
         " must be positive; w_add is too negative for this pitch."));
-    w_root  = w_crest + 2 * depth;           // flank slope m = depth/(depth+_sink)
+    w_root  = w_crest + 2 * depth;           // 45 deg flank: depth radial, depth axial
 
     // The profile is w_root tall axially and repeats every `lead`. If it does
     // not fit, consecutive turns collide and the sweep self-intersects — the
@@ -148,22 +170,51 @@ module thread_helix(d_major, depth, pitch, starts, length, w_add = 0,
     // This also makes the advice above safe: "Raise pitch or starts" can now
     // only land a caller on a named error, never on the silent fusion.
     //
-    // Conservative by up to 2*depth*_sink/(depth + _sink) — the slice of the
-    // profile below the core surface is buried in the caller's core cylinder,
-    // so ribs overlapping only there are invisible in a neck or a bore. But
-    // thread_helix is public API and the demo's item 1 calls it bare, where
-    // that overlap is real geometry; one rule covers both uses.
+    // Exact rather than conservative, and only because the weld skirt is
+    // vertical (issue #37): w_root is the profile's width at every radius from
+    // r_min - _sink up to r_min, so the widest part of the rib is also the
+    // widest part a neck actually exposes. Had the flank instead run straight
+    // through the skirt, w_root would exceed the exposed width by 2*_sink and
+    // this bound would refuse parameter sets that mate perfectly — including
+    // the capsule's own.
     assert(starts < 2 || w_root < pitch, str(
         "multi-start ribs do not clear each other: 0.25*pitch + w_add + 2*depth"
         , " = ", w_root, " must be < pitch = ", pitch, " at starts = ", starts,
         " (adjacent starts sit pitch apart, not lead apart). Raise pitch, cut ",
         "depth, or drop to a single start."));
-    prof = [
-        [r_min - _sink, -w_root / 2],
-        [r_maj,         -w_crest / 2],
-        [r_maj,          w_crest / 2],
-        [r_min - _sink,  w_root / 2]
-    ];
+    // Six points, not four: the mating flank runs 45 degrees over `depth`
+    // (r_min -> r_maj, w_root/2 -> w_crest/2, equal radial and axial run), and
+    // the weld skirt drops VERTICALLY through `sink` below the core surface.
+    // The skirt carries no thread — the caller's core swallows it — so giving
+    // it the flank's slope would only widen w_root and trip the multi-start
+    // bound above, which is exactly what issue #37's fix A did.
+    //
+    // At depth == 0 there is no flank to slope: r_min == r_maj and
+    // w_root == w_crest, so the two skirt corners would land exactly on the
+    // two crest corners and the profile would carry duplicate vertices. That
+    // is the documented slip-fit case (`-D thread_depth=0`), not a corner
+    // nobody reaches. CGAL does collapse the zero-area faces — measured, the
+    // capsule's mesh at depth 0 is hash-identical before and after this
+    // change — but a degenerate polygon is not a thing to hand a geometry
+    // kernel on purpose, and CI also renders under the manifold backend,
+    // which is a different kernel with no such guarantee. So the degenerate
+    // pair is never constructed: at depth 0 the profile is the plain
+    // rectangle it collapses to anyway.
+    prof = depth > 0
+        ? [
+            [r_min - _sink, -w_root / 2],
+            [r_min,         -w_root / 2],
+            [r_maj,         -w_crest / 2],
+            [r_maj,          w_crest / 2],
+            [r_min,          w_root / 2],
+            [r_min - _sink,  w_root / 2]
+          ]
+        : [
+            [r_min - _sink, -w_root / 2],
+            [r_maj,         -w_crest / 2],
+            [r_maj,          w_crest / 2],
+            [r_min - _sink,  w_root / 2]
+          ];
     k     = len(prof);
     turns = (length + 2 * lead) / lead;
     N     = ceil(seg * turns);

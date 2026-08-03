@@ -213,6 +213,20 @@ jobs:
             done
             if $infra; then
               gate=true; designs=ALL
+              # An infra change gates every design THROUGH printcheck, so the
+              # analyzer is on the critical path for the whole run and its own
+              # tests belong in it — a printcheck regression would otherwise be
+              # judged by the very build that shipped it.
+              #
+              # This also closes a merge trap. "printcheck unit tests" is one of
+              # the five required contexts, and a job skipped via `if:` does NOT
+              # satisfy one (PR #50, see the note at the top of this file). With
+              # ptests set only by tools/printcheck/, site/ and this workflow, a
+              # lib/- or scripts/-only PR — the most common kind here — reported
+              # it as skipped and could never be merged. The site/* rule below
+              # already carries ptests for exactly this reason; the same hole
+              # was left open on the infra path until #37 fell into it.
+              ptests=true
             elif [ "${#names[@]}" -gt 0 ]; then
               gate=true; designs="${!names[*]}"
             fi
