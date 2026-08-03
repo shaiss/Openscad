@@ -55,7 +55,7 @@ container image removes for free.
 
 | Primitive | What it can hold | Our tools |
 |---|---|---|
-| **Source-based Functions** (Node/Python, request-scoped, 500 MB uncompressed Python bundle, managed runtime, no apt, no X server) | Pure-language code and vendored wheels | ✅ `printcheck`, `stylelift` — pure Python, 171 MB of wheels, no display. ❌ `openscad`/`prusa-slicer` — apt packages pulling Qt5/CGAL/wxWidgets and needing `xvfb` |
+| **Source-based Functions** (Node/Python, request-scoped, 500 MB uncompressed Python bundle on the standard path — Large Functions under Fluid compute raise that considerably — managed runtime, no apt, no X server) | Pure-language code and vendored wheels | ✅ `printcheck`, `stylelift` — pure Python, 171 MB of wheels, no display. ❌ `openscad`/`prusa-slicer` — apt packages pulling Qt5/CGAL/wxWidgets and needing `xvfb` |
 | **Container-image Functions/Services** (`"runtime": "container"`, an OCI image you build, run as an HTTP service) | Arbitrary system dependencies | ✅ `prusa-slicer`, `openscad-nightly` — you control the base image, so the apt packages are yours to install |
 | **Sandbox** (microVM, arbitrary binaries, custom images via VCR, session-scoped + snapshot-on-stop, metered) | Anything that runs on Linux | ✅ everything, including `prusa-slicer` and `openscad-nightly` — but each session starts cold, and it meters |
 | **Static + Edge** (build-time output, CDN, no per-request function compute) | Prebuilt pages, assets, WASM | ✅ the design gallery, product pages, committed previews — and `openscad-wasm`, which moves rendering to the *visitor's* browser |
@@ -115,9 +115,13 @@ column as an upper bound):
    prebuilt toolchain image published to GHCR and referenced with
    `container:`, which keeps everything GitHub-native and costs nothing.
    That is the change worth making, and it has nothing to do with Vercel.
-4. **A sandbox is not warmer than a runner.** Each session starts as a cold
-   VM. Unless we keep a named sandbox alive — billing while idle — we pay a
-   cold start *and* an image pull in place of the 85 s we removed.
+4. **A sandbox is not reliably warmer than a runner.** A fresh session pays
+   a cold start and an image pull in place of the 85 s we removed. A
+   *persisted* named sandbox resumes from its snapshot instead, which does
+   avoid re-pulling the image — but it trades that for snapshot storage
+   billed by the GB-month, and keeping one alive rather than stopped bills
+   provisioned memory for idle time. Neither shape is free of the overhead
+   a prebuilt GHCR image removes outright.
 5. **Reproducibility moves the wrong way.** `tools/photoshot` PNGs are
    committed and diffed, and are only byte-reproducible on the same
    machine. Rendering them on variable cloud hardware makes that guarantee
@@ -172,9 +176,11 @@ against a 500 MB limit, no display, ~1 s per STL. The obvious design —
 files**: Vercel caps non-streaming function request and response bodies
 (4.5 MB at the time of writing), and the STLs here run 2.0 MB
 (desiccant-capsule) to 7.4 MB (sushi-battleship). The two biggest would be
-rejected before `printcheck` ever ran. A real endpoint uploads direct to
-blob storage and hands the function a key, or streams. Worth building as a
-public service, but earning nothing for CI — CI just
+rejected before `printcheck` ever ran. The fix is a client upload straight
+to blob storage, with the function receiving only the storage key —
+*not* streaming, which relieves the response side and does nothing for an
+oversized request body. Worth building as a public service, but earning
+nothing for CI — CI just
 `pip install -e tools/printcheck` in 11 s and calls it locally.
 
 **Tier 3 — a hosted slice/render service.** Hosting `prusa-slicer` or full
@@ -184,6 +190,14 @@ the Sandbox SDK. Justified only if we want a user-facing "slice this and
 tell me the print time" feature, at ~13 s of metered CPU per slice, and
 subject to the same body-size problem as the `printcheck` endpoint above.
 Never justified as a CI backend.
+
+**One plan caveat across all of these.** Vercel's Hobby plan is for
+personal, non-commercial use — its fair-use terms count things like ads,
+donations, or being paid to build or host the site as commercial. A design
+gallery published for its own sake sits inside that; the moment the site or
+the `printcheck` endpoint is commercial in that sense, the baseline is Pro,
+not Hobby, and the free-allowance reasoning above has to be redone at Pro's
+rates.
 
 **Not worth hosting:** `photoshot` (needs `bpy`, minutes of path-tracing,
 and a byte-reproducibility guarantee that cloud hardware weakens), and the
