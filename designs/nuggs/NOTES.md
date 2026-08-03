@@ -624,8 +624,15 @@ the bore invert leaves the round module's material standing proud by:
 |---|---|
 | 10 mm | 1.27 mm |
 | 20 mm | 5.36 mm |
-| 22.5 mm (paw-span edge) | **6.93 mm** |
+| 22.5 mm (half a 45 mm body width) | 6.93 mm |
+| 25.71 mm (**walk-band edge**, ±40°) | **9.36 mm** |
 | 30 mm | 13.52 mm |
+
+The bolded row is the one the guard actually enforces: `nuggs_window()`
+refuses a window that eats the ±40° walk band, so 25.71 mm is the lateral
+limit that matters, not 22.5. An earlier revision labelled the 22.5 mm row
+"paw-span edge" and quoted its 6.93 mm as the step — understating it by
+2.43 mm and describing it as facing the other way (PR #78 review).
 
 That is a full-height vertical rim across the transition plane — a
 toe-stub, which is exactly N6. A chord floor at half-width 25 mm goes the

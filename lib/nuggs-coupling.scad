@@ -122,9 +122,14 @@ _NUGGS_FS = 0.8;
 // wide enough to eat the floor the animal walks on. An open module is a TUBE
 // WITH A WINDOW — its floor is the ri arc, continuous with the round mate's
 // bore to 0.000 mm at every lateral position. A flat trough floor tangent to
-// the invert instead stands 6.93 mm proud of a round mate at the paw-span edge:
-// a full-height vertical toe-stub across the joint plane. There is no third
-// option and no blend fixes it in less than a 21 mm ramp at 1:3.
+// the invert sits BELOW the round bore everywhere off the centreline, so at the
+// joint plane the round mate's material stands proud of it by
+// ri - sqrt(ri^2 - x^2) — 9.36 mm at the walk-band edge (x = 25.71, ri = 40).
+// That is a full-height vertical toe-stub across the joint plane. There is no
+// third option and no blend fixes it in less than a 21 mm ramp at 1:3.
+// (An earlier revision of this comment quoted 6.93 mm and had the step facing
+// the other way. 6.93 is the value at x = 22.5, half a 45 mm body width, not at
+// the walk-band edge this module actually guards — PR #78 review.)
 _NUGGS_WALK_HALF_DEG = 40;
 
 // ---------------------------------------------------------------------------

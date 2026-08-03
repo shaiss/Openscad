@@ -144,11 +144,21 @@ ro    = nuggs_ro(cfg);      // tube outer radius — the marked surface
 r_out = nuggs_r_out(cfg);   // coupling ring OD — the coupon's spacing
 z_top = nuggs_z_top(cfg);   // top of the port zone; the mark must clear it
 
-// Enclosed bore of the Bin Bridge, end to end: the straight plus, at each end,
-// the bulkhead's spigot through the wall and the port projection that carries
-// the joint. `-nuggs_z_tip(cfg)` IS port_proj, read from the library rather
-// than restated, so a change to the port's projection moves this number.
-run_len   = straight_len + 2 * (bh_spigot_len - nuggs_z_tip(cfg));
+// Enclosed bore of the Bin Bridge, end to end. Per end, FOUR things enclose
+// bore, not two: bulkhead_in's flange plate, its spigot through the wall,
+// bulkhead_out's flange plate, and the port projection that carries the joint.
+// `-nuggs_z_tip(cfg)` IS port_proj, read from the library rather than restated,
+// so a change to the port's projection moves this number.
+//
+// The two flange plates were missing until PR #78 review (CodeRabbit).
+// `clamp_flange()` bores its plate at `ri` over the full thickness, so a plate
+// is bore the animal walks through — it is not a mounting detail outside the
+// run. Omitting all four cost 4 * bh_flange_t = 16 mm, so this assert has
+// UNDER-REPORTED the enclosed run since v1: 230 mm against a true 246. It
+// still passes at the defaults, which is exactly why nothing caught it, and
+// under-counting is the one direction a welfare limit must never be wrong in.
+run_len   = straight_len
+            + 2 * (2 * bh_flange_t + bh_spigot_len - nuggs_z_tip(cfg));
 run_limit = 2 * body_len_mm;
 
 echo(str("nuggs: port standard R", NUGGS_PORT_REV, " at bore ", bore_d,
