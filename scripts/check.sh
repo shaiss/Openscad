@@ -9,6 +9,8 @@
 #   4. Lineage check (scripts/lineage.sh check): every derives.conf must
 #      describe the graph its entry .scad actually includes
 #   5. Docs-drift check (scripts/docs-check.sh): docs must match the tree
+#   6. readme-gate selftest (scripts/readme-gate.sh --selftest): the
+#      lifestyle-shot disclosure guards still refuse an undisclosed AI shot
 # Run before committing. For full STL+PNG output use scripts/render.sh.
 set -euo pipefail
 
@@ -170,6 +172,16 @@ fi
 
 echo "-- docs-drift check: scripts/docs-check.sh"
 if ! ./scripts/docs-check.sh; then
+  fail=1
+fi
+
+# readme-gate carries a negative-test suite for its lifestyle-shot disclosure
+# guards (requirement 9). No lifestyle-*.png exists in the tree yet, so those
+# guards are dormant on the real designs — the selftest is the only thing that
+# proves they still fire. Fast (no render), so it runs here alongside the other
+# negative-test suites even though the product-page gate itself is a CI job.
+echo "-- readme-gate selftest: scripts/readme-gate.sh --selftest"
+if ! ./scripts/readme-gate.sh --selftest; then
   fail=1
 fi
 

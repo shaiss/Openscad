@@ -101,15 +101,21 @@ deliverable — and leave the idea in NOTES.md for a session that has one.
   for that — chasing pixel-faithful geometry out of a restyle is a losing
   game, and the studio render (tier 1) and the STL are already the
   geometry-true artifacts on the page. What keeps the lifestyle shot honest
-  is the *disclosure*, not a fidelity check. Every lifestyle shot ships all
-  three:
-  - Committed as `previews/lifestyle-<shot>.png`, where `<shot>` is the
-    exact tier-1 manifest name it restyles (so `product-hero` becomes
+  is the *disclosure*, not a fidelity check. `readme-gate.sh` enforces the
+  disclosure in a fixed, **canonical** form (it checks structure, not prose —
+  the reviewers judge whether the words are honest), so follow it exactly:
+  - Commit as `previews/lifestyle-<shot>.png`, where `<shot>` is the exact
+    tier-1 manifest name it restyles (so `product-hero` becomes
     `lifestyle-product-hero.png`).
-  - Embedded with alt text that carries the label `AI-styled scene`.
-  - **A short visible note directly below the image**, so a reader skimming
-    the *rendered* page — not the markdown — sees the warning that alt text
-    alone can't give them:
+  - Embed it **only as an inline markdown image** — `![alt](path)` — never an
+    HTML `<img>` tag or a reference-style link, and if the file appears more
+    than once, *every* embed must be disclosed. (The gate refuses any other
+    form so an undisclosed hero can't hide beside a disclosed decoy.)
+  - The alt text must carry the label `AI-styled scene`.
+  - Directly below the image, a **visible caption** that a reader of the
+    rendered page sees (alt text is invisible there). It must contain the
+    canonical phrase **`geometry is approximate`** verbatim — the gate keys on
+    that fixed phrase, so a paraphrase won't pass; write the full sentence:
 
     ```markdown
     ![AI-styled scene: the board on a set dinner table](previews/lifestyle-product-hero.png)
@@ -119,8 +125,8 @@ deliverable — and leave the idea in NOTES.md for a session that has one.
     render above and the STL for the true shape.*
     ```
 - The tier-1 shot stays on the page as the geometry-true reference; the
-  lifestyle shot only augments it, giving the reader a general real-world
-  feel for the piece.
+  lifestyle shot only augments it — never the hero or the only image —
+  giving the reader a general real-world feel for the piece.
 
 ## Freezing and review
 

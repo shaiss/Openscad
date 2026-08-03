@@ -398,6 +398,12 @@ jobs:
           persist-credentials: false
       - name: Every design ships a product-page README
         run: ./scripts/readme-gate.sh
+      - name: Lifestyle-shot disclosure guards still fire
+        # No lifestyle-*.png exists in the tree yet, so the per-design gate
+        # above never exercises requirement 9. The selftest builds throwaway
+        # fixtures and proves each disclosure guard (missing embed / label /
+        # note / over-budget) still refuses what it exists to refuse.
+        run: ./scripts/readme-gate.sh --selftest
 
   site-build:
     # The same generator Vercel runs (vercel.json pins it), so this catches a

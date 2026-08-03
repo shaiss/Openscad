@@ -36,6 +36,21 @@
 #      designs/<parent>/ does NOT count: from inside designs/<name>/ it
 #      resolves to designs/<name>/designs/<parent>/ and 404s, and gating in a
 #      dead link is worse than gating in none.
+#   9. if the design ships one or more previews/lifestyle-*.png (an
+#      AI-restyled lifestyle shot — cosmetic, and assumed geometrically
+#      approximate, so it is never regenerated or geometry-checked): each must
+#      be within the size budget and disclosed in CANONICAL form — embedded
+#      ONLY as inline markdown images, every embed carrying an "AI-styled
+#      scene" alt label and a "geometry is approximate" caption in the
+#      paragraph directly below it (alt text is not shown on the rendered
+#      page). Canonical, not prose-judged: a fixed phrase an author copies
+#      from product-shots/SKILL.md, so a negated caption can't pass and the
+#      disclosure can't hide in an <img> tag beside a compliant decoy. Unlike
+#      the GIF and product-shot checks there is no manifest — the committed PNG
+#      is the trigger, since an AI restyle cannot be regenerated from source.
+#      The trigger is the filename, so an AI image committed under some other
+#      name is out of this gate's reach; naming that masquerade is the
+#      /jane-review and /drik-review disclosure rules' job, not bash's.
 #
 # Fenced code blocks and HTML comments are ignored throughout: an example
 # snippet or commented-out line is not page content, so it neither
@@ -45,11 +60,19 @@
 # NOTES.md remains the engineering log; README.md is the product page.
 set -euo pipefail
 
+# Absolute path to this script, captured before the cd below so `--selftest`
+# can re-invoke the gate against throwaway fixture directories from any CWD.
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+
 cd "$(dirname "$0")/.."
 # shellcheck source=scripts/preview-budget.sh
 # defines MAX_GIF_BYTES (shared with animate.sh) and MAX_SHOT_BYTES (the
-# product-shot budget enforced below)
+# product-shot budget, reused below for lifestyle shots)
 . scripts/preview-budget.sh
+
+# The design tree to gate. Overridable so `--selftest` can point the gate at a
+# fixture tree without touching the real designs/; defaults to designs/.
+ROOT="${READMEGATE_DESIGNS_DIR:-designs}"
 
 fail=0
 
@@ -105,9 +128,81 @@ section_has_content() {
   '
 }
 
+# Decide whether one committed lifestyle PNG is disclosed the way the gate
+# requires. Reads the (noise-stripped) README on stdin; prints one verdict.
+#
+# This is a MECHANICAL, canonical-form check, not a judge of prose. The repo's
+# own gate philosophy (see scripts/docs-check.sh) is that a check which tries
+# to decide whether free text "means" a warning is flaky and gameable — a
+# negated caption ("geometry is exact, not approximate") passes a token match,
+# a synonym ("generative AI") fails one. So the gate demands a fixed, visible
+# marker and leaves the judgment (is the note honest, is the shot masquerading
+# as a photo of the print) to /jane-review and /drik-review. The verdicts:
+#   OK             every inline embed of the PNG carries the "AI-styled scene"
+#                  alt label and a caption containing the canonical phrase
+#                  "geometry is approximate" in the paragraph directly below it
+#   MISSING_EMBED  the committed PNG is never embedded
+#   EXTRA_REF      the PNG path appears somewhere that is NOT a compliant inline
+#                  markdown image — an <img> tag, a reference-style link, a bare
+#                  link — where the disclosure scan can't see it. Lifestyle
+#                  shots must be embedded ONLY as inline `![...](path)` so an
+#                  undisclosed hero can't hide beside a disclosed decoy.
+#   MISSING_LABEL  some inline embed's alt lacks the "AI-styled scene" label
+#   MISSING_NOTE   some inline embed has no "geometry is approximate" caption
+#                  directly below it (alt text isn't shown on the rendered page)
+# The canonical caption phrase is fixed on purpose: an author copies it from
+# product-shots/SKILL.md, so synonyms don't fool it and negations don't pass it.
+lifestyle_disclosure() {
+  local png="$1"
+  awk -v png="$png" '
+    BEGIN {
+      pat = png
+      gsub(/[][(){}.^$*+?|\\]/, "\\\\&", pat)   # escape regex metacharacters
+      # ![alt](path) with the path terminated by ")", or by whitespace (the
+      # space before an optional "title") — nothing else counts as an embed.
+      embed = "!\\[[^]]*\\]\\(" pat "[) \t]"
+    }
+    {
+      lines[NR] = $0
+      s = $0                                     # count EVERY occurrence of the
+      while ((q = index(s, png)) > 0) {          # path, to compare against the
+        total++                                  # number of compliant embeds
+        s = substr(s, q + length(png))
+      }
+    }
+    END {
+      inline = 0; miss_label = 0; miss_note = 0
+      for (i = 1; i <= NR; i++) {
+        if (lines[i] !~ embed) continue
+        inline++
+        a = index(lines[i], "![")
+        rest = substr(lines[i], a + 2)
+        rb = index(rest, "]")
+        alt = tolower(substr(rest, 1, rb - 1))
+        if (alt !~ /ai[- ]styled scene/) miss_label = 1
+        para = ""; j = i + 1
+        while (j <= NR && lines[j] ~ /^[ \t]*$/) j++    # skip blanks
+        for (; j <= NR; j++) {
+          if (lines[j] ~ /^[ \t]*$/) break              # end of paragraph
+          if (lines[j] ~ /^[ \t]*#/) break              # a heading ends it
+          if (lines[j] ~ /!\[/) break                   # next image ends it
+          if (lines[j] ~ /^[ \t]*</) break              # an HTML block ends it
+          para = para " " lines[j]
+        }
+        if (tolower(para) !~ /geometry is approximate/) miss_note = 1
+      }
+      if (inline == 0 && total == 0) { print "MISSING_EMBED"; exit }
+      if (total > inline)            { print "EXTRA_REF"; exit }
+      if (miss_label)                { print "MISSING_LABEL"; exit }
+      if (miss_note)                 { print "MISSING_NOTE"; exit }
+      print "OK"
+    }
+  '
+}
+
 check_one() {
   local name="$1"
-  local dir="designs/${name}"
+  local dir="${ROOT}/${name}"
   local readme="${dir}/README.md"
   local ok=1
 
@@ -281,22 +376,216 @@ check_one() {
     done <<<"$parents"
   fi
 
+  # 9. Lifestyle (AI-styled) shots. Manifest-less on purpose: the presence of a
+  #    committed previews/lifestyle-*.png IS the trigger, because an AI restyle
+  #    cannot be regenerated from source. It is cosmetic and assumed
+  #    geometrically approximate, so the gate never checks geometry — it checks
+  #    the DISCLOSURE, in canonical form, that keeps a cosmetic image off the
+  #    page passing as a photo of the real print: in budget, embedded ONLY as
+  #    inline markdown images, each carrying an "AI-styled scene" alt label and
+  #    a "geometry is approximate" caption directly below it. See
+  #    product-shots/SKILL.md, tier 2.
+  #
+  #    Scope limit, stated honestly: the trigger is the FILENAME. An AI image
+  #    committed under any other name (hero.png, scene.png) is invisible to
+  #    this gate — a mechanical check cannot tell an AI render from a photo by
+  #    its pixels. That masquerade is exactly what the /jane-review and
+  #    /drik-review disclosure rules exist to catch; the gate closes the
+  #    honest-author failure modes, the reviewers close the adversarial one.
+  local lf lrel lbytes verdict
+  # -iname: case-insensitive, so a stray .PNG can't slip the lowercase glob.
+  while IFS= read -r lf; do
+    [[ -n "$lf" ]] || continue
+    lrel="previews/$(basename "$lf")"
+    lbytes="$(stat -c %s "$lf")"
+    if (( lbytes > MAX_SHOT_BYTES )); then
+      err "$name" "${lrel} is $(( (lbytes + 1023) / 1024 )) KiB, over the $((MAX_SHOT_BYTES / 1024 / 1024)) MiB budget — use a smaller image"
+      ok=0
+    fi
+    verdict="$(lifestyle_disclosure "$lrel" <<<"$cleaned")"
+    case "$verdict" in
+      OK) ;;
+      MISSING_EMBED)
+        err "$name" "commits ${lrel} but the README never shows it — embed it as an inline markdown image with the \"AI-styled scene\" label and a \"geometry is approximate\" caption, or drop the file"
+        ok=0 ;;
+      EXTRA_REF)
+        err "$name" "${lrel} is referenced outside an inline markdown image (an <img> tag, a reference-style link, or a bare link) — a lifestyle shot must appear ONLY as \`![AI-styled scene ...](${lrel})\` so an undisclosed copy can't hide beside a disclosed one"
+        ok=0 ;;
+      MISSING_LABEL)
+        err "$name" "an embed of ${lrel} is missing the \"AI-styled scene\" alt label — every inline embed of a lifestyle shot must carry it, so no copy reads as a photo of the print"
+        ok=0 ;;
+      MISSING_NOTE)
+        err "$name" "an embed of ${lrel} has no \"geometry is approximate\" caption directly below it — alt text isn't shown on the rendered page, so add the canonical disclosure line (see product-shots/SKILL.md)"
+        ok=0 ;;
+    esac
+  done < <(find "${dir}/previews" -maxdepth 1 -type f -iname 'lifestyle-*.png' 2>/dev/null | sort)
+
   if [[ "$ok" == 1 ]]; then
     echo "ok    ${name}"
   fi
 }
 
-if [[ $# -ge 1 ]]; then
+# --selftest: prove every lifestyle-disclosure failure still fires. Builds a
+# throwaway design tree, points the gate at it via READMEGATE_DESIGNS_DIR, and
+# asserts the verdict on a good fixture and one fixture per failure mode. This
+# is the half the per-design gate on the real tree cannot cover: no
+# lifestyle-*.png exists in designs/ yet, so without these fixtures the whole
+# check could be weakened or deleted and every gate in the repo stays green.
+# Mirrors scripts/lineage.sh selftest and scripts/guard-check.sh.
+run_selftest() {
+  local tmp
+  tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064  # expand $tmp now, when the trap is installed
+  trap "rm -rf '$tmp'" RETURN
+
+  # Write a README that passes every OTHER requirement, so the only thing a
+  # fixture can trip is the lifestyle check being probed. Echoes the dir path.
+  _fixture() {
+    local n="$1" d="$tmp/$1"
+    mkdir -p "$d/previews"
+    : >"$d/previews/contact.png"          # a normal committed preview (req 5)
+    {
+      printf '# %s\n\n' "$n"
+      printf 'A throwaway fixture for the readme-gate selftest.\n\n'
+      printf '![contact sheet](previews/contact.png)\n\n'
+      printf '## Print settings\n\n- layer height: 0.2 mm\n\n'
+      printf '## Parameters\n\n- `wall` — wall thickness (mm)\n'
+    } >"$d/README.md"
+    printf '%s' "$d"
+  }
+
+  local pass=1
+  _check() {   # _check <name> <expected-rc> <needle>
+    local n="$1" want_rc="$2" needle="$3" out rc=0
+    out="$(READMEGATE_DESIGNS_DIR="$tmp" bash "$SELF" "$n" 2>&1)" || rc=$?
+    if [[ "$rc" != "$want_rc" ]]; then
+      echo "SELFTEST FAIL  ${n}: expected exit ${want_rc}, got ${rc}"
+      sed 's/^/    /' <<<"$out"
+      pass=0
+      return
+    fi
+    if [[ -n "$needle" ]] && ! grep -qF "$needle" <<<"$out"; then
+      echo "SELFTEST FAIL  ${n}: output missing \"${needle}\""
+      sed 's/^/    /' <<<"$out"
+      pass=0
+      return
+    fi
+    echo "selftest ok    ${n} (${needle:-passes clean})"
+  }
+
+  local d
+  # The canonical disclosure block a good fixture appends: inline embed with
+  # the label, then the "geometry is approximate" caption directly below.
+  _disclosed() {   # _disclosed <dir> [png-path]
+    local dd="$1" p="${2:-previews/lifestyle-hero.png}"
+    {
+      printf '\n![AI-styled scene: the fixture on a desk](%s)\n\n' "$p"
+      printf '*AI-generated impression for general illustration only — geometry is approximate and may not exactly match the printed part.*\n'
+    } >>"$dd/README.md"
+  }
+
+  # good: embedded, labeled, canonical caption directly below -> passes
+  d="$(_fixture good)"; : >"$d/previews/lifestyle-hero.png"; _disclosed "$d"
+  _check good 0 ""
+
+  # good with a markdown title attribute on the embed -> still passes (the
+  # title must not hide the embed from the scanner). Regression: fb-title-attr.
+  d="$(_fixture good-title)"; : >"$d/previews/lifestyle-hero.png"
+  {
+    printf '\n![AI-styled scene: on a desk](previews/lifestyle-hero.png "Studio look")\n\n'
+    printf '*AI-generated impression — geometry is approximate and may not match the print.*\n'
+  } >>"$d/README.md"
+  _check good-title 0 ""
+
+  # missing-embed: committed PNG, never referenced -> MISSING_EMBED
+  d="$(_fixture missing-embed)"; : >"$d/previews/lifestyle-hero.png"
+  _check missing-embed 1 "never shows it"
+
+  # over-budget: proper disclosure, but the PNG exceeds MAX_SHOT_BYTES
+  d="$(_fixture over-budget)"
+  truncate -s "$((MAX_SHOT_BYTES + 1))" "$d/previews/lifestyle-hero.png"; _disclosed "$d"
+  _check over-budget 1 "over the"
+
+  # missing-label: canonical caption present, but no "AI-styled scene" label
+  d="$(_fixture missing-label)"; : >"$d/previews/lifestyle-hero.png"
+  {
+    printf '\n![The fixture on a desk](previews/lifestyle-hero.png)\n\n'
+    printf '*AI-generated — geometry is approximate and may not match the print.*\n'
+  } >>"$d/README.md"
+  _check missing-label 1 "AI-styled scene"
+
+  # missing-note: labeled embed, but the caption below lacks the canonical phrase
+  d="$(_fixture missing-note)"; : >"$d/previews/lifestyle-hero.png"
+  {
+    printf '\n![AI-styled scene: on a desk](previews/lifestyle-hero.png)\n\n'
+    printf 'Just some ordinary prose that discloses nothing.\n'
+  } >>"$d/README.md"
+  _check missing-note 1 "geometry is approximate"
+
+  # negated-note: caption carries the tokens but negates them ("geometry is
+  # exact, not approximate") -> the canonical phrase is absent -> MISSING_NOTE.
+  # Regression for the semantic-gaming bypass (fo-negated-note).
+  d="$(_fixture negated-note)"; : >"$d/previews/lifestyle-hero.png"
+  {
+    printf '\n![AI-styled scene: on a desk](previews/lifestyle-hero.png)\n\n'
+    printf 'A genuine studio photograph, not an AI-generated render, and the geometry is exact, not approximate.\n'
+  } >>"$d/README.md"
+  _check negated-note 1 "geometry is approximate"
+
+  # decoy: one disclosed embed and one undisclosed embed of the SAME png ->
+  # every embed must be disclosed -> MISSING_LABEL. Regression: fo-dup-decoy /
+  # disclosure-buried-on-second-embed (the "any embed OK" bypass).
+  d="$(_fixture decoy)"; : >"$d/previews/lifestyle-hero.png"
+  {
+    printf '\n![Studio hero shot](previews/lifestyle-hero.png)\n\n'
+    printf 'Straight off the print farm — exactly what you get.\n\n'
+    printf '## Reference\n\n![AI-styled scene: on a shelf](previews/lifestyle-hero.png)\n\n'
+    printf '*AI-generated — geometry is approximate and may not match the print.*\n'
+  } >>"$d/README.md"
+  _check decoy 1 "AI-styled scene"
+
+  # html-hero: an <img> hero (undisclosed) beside a compliant markdown decoy ->
+  # the path appears outside an inline embed -> EXTRA_REF. Regression:
+  # fo-html-hero-md-decoy (HTML embeds are invisible to the disclosure scan).
+  d="$(_fixture html-hero)"; : >"$d/previews/lifestyle-hero.png"
+  {
+    printf '\n<img src="previews/lifestyle-hero.png" width="900" alt="on a desk">\n\n'
+    printf 'The finished part, ready to mount.\n\n'
+    printf '## Details\n\n![AI-styled scene: on a bench](previews/lifestyle-hero.png)\n\n'
+    printf '*AI-generated — geometry is approximate and may not match the print.*\n'
+  } >>"$d/README.md"
+  _check html-hero 1 "referenced outside an inline markdown image"
+
+  # uppercase-ext: an undisclosed .PNG must still be caught (case-insensitive
+  # trigger). Regression: fo-uppercase-ext.
+  d="$(_fixture uppercase-ext)"; : >"$d/previews/lifestyle-hero.PNG"
+  {
+    printf '\n![The fixture in a camper van](previews/lifestyle-hero.PNG)\n\n'
+    printf 'Ready to install straight off the bed.\n'
+  } >>"$d/README.md"
+  _check uppercase-ext 1 "AI-styled scene"
+
+  if [[ "$pass" == 1 ]]; then
+    echo "ok    readme-gate --selftest: every lifestyle-disclosure guard fires"
+    return 0
+  fi
+  echo "FAIL  readme-gate --selftest: a lifestyle-disclosure guard did not fire"
+  return 1
+}
+
+if [[ "${1:-}" == "--selftest" ]]; then
+  run_selftest || fail=1
+elif [[ $# -ge 1 ]]; then
   check_one "$1"
 else
   found=0
-  for dir in designs/*/; do
+  for dir in "${ROOT}"/*/; do
     [[ -d "$dir" ]] || continue
     found=1
     check_one "$(basename "$dir")"
   done
   if [[ "$found" -eq 0 ]]; then
-    echo "no designs found under designs/"
+    echo "no designs found under ${ROOT}/"
   fi
 fi
 
