@@ -25,7 +25,15 @@ workflow did). Section 7 says what changes when nobody is watching.
    contract's timestamp only proves it predates the diff if there was no diff
    when you posted it.
 3. **Lock check** — an issue is taken if any of these hold:
-   - a comment contains the marker `🚢 SHIP-LOCK`
+   - **an active claim marker.** The marker is a state, not a flag: read the
+     *latest* `🚢 SHIP-LOCK` comment and act on that one.
+     `🚢 SHIP-LOCK` is active, and the issue is taken.
+     `🚢 SHIP-LOCK WITHDRAWN` is released, and blocks nothing.
+     An active claim more than a few hours old with **no**
+     `claude/issue-<N>-*` branch and **no** open PR closing the issue is
+     *stale* — a run that died between posting its lock and pushing a branch
+     must not freeze the issue forever. Take a stale claim over, naming the
+     one you superseded in your own.
    - **an open PR closes it.** Don't grep for `Closes #N`: GitHub honours
      nine keywords — `close`/`closes`/`closed`, `fix`/`fixes`/`fixed`,
      `resolve`/`resolves`/`resolved` — case-insensitively, each optionally
@@ -38,10 +46,14 @@ workflow did). Section 7 says what changes when nobody is watching.
    **before** you read a line of implementation code.
 5. **Re-read after claiming.** Check-then-post is not atomic: two runs can
    both pass step 3 and both post. So re-read the comments afterwards, and if
-   another `🚢 SHIP-LOCK` predates yours, edit yours to withdraw and stop —
-   last writer yields. (GitHub offers no atomic claim for an issue. If this
-   ever needs to be airtight, push a claim ref first: creating a remote branch
-   fails when it already exists, which a comment cannot.)
+   another *active* claim predates yours, withdraw and stop — last writer
+   yields. Withdraw by **editing your comment so its first line reads
+   `🚢 SHIP-LOCK WITHDRAWN`**; never delete it, since the timestamps are the
+   record of who claimed what and when. Withdrawing by any other wording
+   leaves a comment that still matches the marker, and the issue stays locked
+   by a run that walked away. (GitHub offers no atomic claim for an issue. If
+   this ever needs to be airtight, push a claim ref first: creating a remote
+   branch fails when it already exists, which a comment cannot.)
 
 If the issue is taken, say so and stop. Never work two.
 
