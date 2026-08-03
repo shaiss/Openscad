@@ -63,12 +63,23 @@ for conf in lib/*-guards.conf; do
     line="$(trim "$line")"
     [[ -z "$line" || "$line" == \#* ]] && continue
 
+    # Require BOTH separators before splitting anything. With only one, the
+    # two expansions below collapse: `${rest%%|*}` and `${rest#*|}` both
+    # return the whole remainder, so `name | expect` yields expect == stmt
+    # and the harness runs the expectation string as OpenSCAD — a malformed
+    # case that reports as a working guard.
+    if [[ "$line" != *"|"*"|"* ]]; then
+      echo "FAIL  ${conf}: malformed case (want 'name | expect | statement'): $line"
+      fail=1
+      continue
+    fi
+
     name="$(trim "${line%%|*}")"
     rest="${line#*|}"
     expect="$(trim "${rest%%|*}")"
     stmt="$(trim "${rest#*|}")"
 
-    if [[ -z "$name" || -z "$expect" || -z "$stmt" || "$rest" == "$line" ]]; then
+    if [[ -z "$name" || -z "$expect" || -z "$stmt" ]]; then
       echo "FAIL  ${conf}: malformed case (want 'name | expect | statement'): $line"
       fail=1
       continue
