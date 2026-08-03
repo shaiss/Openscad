@@ -156,18 +156,26 @@ product shots are the part that would grow.
 The actual prize. Every design here is parametric with Customizer sections
 — `nuggs` alone exposes `bore_d`, `wall`, `port_tol`, `n_lug`, `twist_deg`.
 [`openscad/openscad-wasm`](https://github.com/openscad/openscad-wasm) is a
-headless WASM port whose README documents STL export and
-`--enable=manifold`. Ship it as a static asset and the visitor's own
-browser renders their STL: sliders in, mesh out, no server compute, no cold
-start. A hosted render endpoint would be strictly worse — same output, but
-metered.
+headless WASM port with STL export. Ship it as a static asset and the
+visitor's own browser renders their STL: sliders in, mesh out, no server
+compute, no cold start. A hosted render endpoint would be strictly worse —
+same output, but metered.
 
-Two things to settle before building it. Its **releases are stale** — the
-newest tag is 2022.03.20, which predates the Manifold backend — so the
-artifact has to be chosen and pinned deliberately rather than taken from
-`latest`. And OpenSCAD is **GPL-2.0**: serving that WASM build to visitors
-is distribution, so it ships with its licence and notices, and with
-corresponding source or a written offer for the exact build served.
+Three things to settle before building it, all since confirmed by building
+it (see `site/README.md`):
+
+- Its **releases are stale** — the newest tag is 2022.03.20, which predates
+  the Manifold backend entirely — so the artifact has to be chosen and
+  pinned deliberately rather than taken from `latest`.
+- The flag is **`--backend=manifold`**. That repo's README still shows
+  `--enable=manifold`, which is an obsolete spelling that does *not* error:
+  OpenSCAD prints "Ignoring request to enable unknown feature" and silently
+  runs the old CGAL backend instead — measured **145× slower** (79,696 ms
+  vs 550 ms on one part). Anything built on this must assert that the
+  geometry line says `(manifold)`.
+- OpenSCAD is **GPL-2.0**: serving that WASM build to visitors is
+  distribution, so it ships with its licence and notices, and with
+  corresponding source or a written offer for the exact build served.
 
 **Tier 2 — `printcheck` as an HTTP API (Python function).** The one tool
 that fits source-based Functions outright: pure Python, 171 MB of wheels
