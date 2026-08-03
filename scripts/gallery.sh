@@ -10,6 +10,12 @@
 # Only the region between the markers is touched — hand-written prose
 # around it survives regeneration. Run after adding or renaming a design;
 # check.sh fails if the committed gallery drifts from the design list.
+#
+# Row order and nesting come from `./scripts/lineage.sh order`, not from the
+# designs/*/ glob: a derivative listed as a peer of the design whose geometry
+# it reuses reads as an independent design, and the reader has no way to tell
+# otherwise. Derivative rows (depth > 0) get a ↳ lead-in and name their
+# parents in the text column.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -44,14 +50,76 @@ pitch() {
   printf '%s' "$line" | sed 's/|/\\|/g'
 }
 
+# The lineage sentence printed under a derivative's pitch. Every parent is
+# named, not just the one the row nests under: two parents defining the same
+# module are resolved by last-include-wins, silently, so a reader shown only
+# the first parent would be reading the wrong credit for whatever the last one
+# supplied. Parents arrive in include order — that is the order that decides.
+lineage_line() {
+  local name="$1" out parents=() links=() p
+  if ! out="$(./scripts/lineage.sh parents "$name")"; then
+    echo "gallery: ./scripts/lineage.sh parents ${name} failed" >&2
+    exit 1
+  fi
+  mapfile -t parents < <(printf '%s' "$out")
+  if (( ${#parents[@]} == 0 )); then
+    # Unreachable via `order`, which only nests a design under a parent it
+    # actually has. If it ever happens the two commands disagree, and a
+    # lineage row with no lineage is worse than no gallery.
+    echo "gallery: ${name} is nested as a derivative but reports no parents" >&2
+    exit 1
+  fi
+  for p in "${parents[@]}"; do
+    links+=("[${p}](designs/${p}/)")
+  done
+  if (( ${#links[@]} == 1 )); then
+    printf '_derived from %s_' "${links[0]}"
+  else
+    local rest
+    rest="$(printf ', then %s' "${links[@]:1}")"
+    printf '_derived from %s%s — last include wins_' "${links[0]}" "$rest"
+  fi
+}
+
 gallery() {
   echo "$BEGIN"
   echo "| Design | |"
   echo "|---|---|"
-  local dir name
-  for dir in designs/*/; do
-    name="$(basename "$dir")"
-    [[ -f "designs/${name}/${name}.scad" ]] || continue
+  # No fallback to a flat glob when the resolver fails. A gallery that quietly
+  # drops its nesting is the same silent-wrong-output failure the derivative
+  # machinery exists to catch: the page still renders, still looks finished,
+  # and is wrong about which design is whose.
+  local order
+  if ! order="$(./scripts/lineage.sh order)"; then
+    echo "gallery: ./scripts/lineage.sh order failed — refusing to emit a gallery with the lineage missing" >&2
+    exit 1
+  fi
+
+  # Census cross-check. `lineage order` and the glob below are both meant to
+  # mean "a directory under designs/ with a .scad matching its name"; if they
+  # ever stop meaning the same thing, the symptom is a design silently absent
+  # from the gallery, with docs-check.sh's staleness check none the wiser
+  # because the generated file still matches the committed one.
+  local from_order from_glob dir
+  from_order="$(awk -F'\t' 'NF { print $2 }' <<<"$order" | sort)"
+  from_glob="$(for dir in designs/*/; do
+      dir="$(basename "$dir")"
+      [[ -f "designs/${dir}/${dir}.scad" ]] || continue
+      echo "$dir"
+    done | sort)"
+  if [[ "$from_order" != "$from_glob" ]]; then
+    echo "gallery: lineage order and designs/*/ disagree about which designs exist:" >&2
+    diff <(printf '%s\n' "$from_glob") <(printf '%s\n' "$from_order") >&2 || true
+    exit 1
+  fi
+
+  # The third field (the primary parent) is dropped on purpose: lineage_line
+  # re-asks for the whole include-ordered parent list, of which the primary
+  # parent is only the first entry, and a row that named one parent while the
+  # design declared two would be exactly the half-truth this nesting is for.
+  local depth name
+  while IFS=$'\t' read -r depth name _; do
+    [[ -n "$name" ]] || continue
     local thumb="designs/${name}/previews/contact-sheet.png"
     if [[ ! -f "$thumb" ]]; then
       if [[ "$CHECK" == 1 ]]; then
@@ -63,9 +131,33 @@ gallery() {
       mkdir -p "designs/${name}/previews"
       cp "build/${name}.png" "$thumb"
     fi
-    printf '| <a href="designs/%s/"><img src="%s" width="320" alt="%s previews"></a> | **[%s](designs/%s/)** — %s |\n' \
-      "$name" "$thumb" "$name" "$name" "$name" "$(pitch "$name")"
-  done
+    if (( depth == 0 )); then
+      printf '| <a href="designs/%s/"><img src="%s" width="320" alt="%s previews"></a> | **[%s](designs/%s/)** — %s |\n' \
+        "$name" "$thumb" "$name" "$name" "$name" "$(pitch "$name")"
+    else
+      # A derivative of a derivative steps in one more level. &nbsp; rather
+      # than spaces because markdown collapses leading whitespace in a cell,
+      # which would flatten the very nesting this row exists to show.
+      local indent="" i
+      for (( i = 1; i < depth; i++ )); do
+        indent+="&nbsp;&nbsp;"
+      done
+      # Assigned before the printf and status-tested explicitly. Two reasons,
+      # both measured: a command substitution that dies inside printf's own
+      # argument list still leaves printf exiting 0, and errexit does not reach
+      # in here at all — this whole function runs inside `$(gallery)`, and a
+      # failing command inside a command substitution does not abort it. Bare
+      # `lineage="$(lineage_line ...)"` printed a row with the lineage blank
+      # and the script went on to rewrite README.md and report success. Every
+      # failure below the top level has to be an explicit exit.
+      local lineage
+      if ! lineage="$(lineage_line "$name")"; then
+        exit 1
+      fi
+      printf '| <a href="designs/%s/"><img src="%s" width="320" alt="%s previews"></a> | %s↳ **[%s](designs/%s/)** — %s<br>%s |\n' \
+        "$name" "$thumb" "$name" "$indent" "$name" "$name" "$(pitch "$name")" "$lineage"
+    fi
+  done <<<"$order"
   echo "$END"
 }
 

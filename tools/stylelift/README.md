@@ -102,12 +102,22 @@ Two guards make it trustworthy on real meshes:
 | Curve resolution | segments per full turn, snapped to a value a design would write | `implied_fn` |
 | Material thickness | inward ray casts from area-weighted samples; solid parts say so | `walls.*` with `shelled` |
 | Massing | bbox fill, convexity, proportion | `massing.*` |
-| Surface direction | area shares up / down / vertical / sloped, with dominant slopes | `orientation.*` |
+| Surface direction | area shares up / down / vertical / sloped, with dominant slopes (measured from the build direction, not the bed) | `orientation.*` |
+| Overhang discipline | share of surface facing downward and shallower than 45° from the bed, excluding the footprint the bed carries | `orientation.unsupported_share`, `orientation.overhang_limit_deg` |
 | Mirror symmetry | mirrored surface samples measured against the real surface | `symmetry.{x,y,z}` |
 
 **Not** printability — that is [printcheck](../printcheck)'s job, and it stays
 there. stylelift measures wall thickness because "this family builds at 2.4 mm"
 is a style choice, not because thin walls are a defect.
+
+`unsupported_share` sits closest to that line, so it is worth being precise
+about which side it is on. printcheck asks *will this part print* and answers
+per part, weighing overhang against orientation, bridging and material.
+stylelift asks *did this designer refuse to place a face below 45 degrees*, and
+answers as a number you can hold a family to. A part can be perfectly printable
+with a 20° roof and supports; it is simply not in a family whose whole grammar
+is the 45° cut. The metric reports the share and nothing else — no verdict, no
+advice, no orientation search.
 
 ## Conformance
 

@@ -25,6 +25,17 @@
 #      scripts/product-shot.sh): every manifest entry must have its
 #      committed previews/<name>.png, the README must embed it, and each
 #      shot must stay within the size budget
+#   8. if the design ships a derives.conf (it reuses another design's
+#      geometry): the page must link every parent's design directory, so a
+#      reader who arrives at the derivative can reach what it was built from.
+#      Accepted targets, all of them sibling-relative because that is what
+#      resolves from designs/<name>/README.md: ../<parent>, ../<parent>/ and
+#      ../<parent>/README.md, written as a markdown link — ](...) — or as an
+#      HTML <a href="...">, since a page that credits its base with a working
+#      anchor has done the thing being asked for. A repo-root-relative
+#      designs/<parent>/ does NOT count: from inside designs/<name>/ it
+#      resolves to designs/<name>/designs/<parent>/ and 404s, and gating in a
+#      dead link is worse than gating in none.
 #
 # Fenced code blocks and HTML comments are ignored throughout: an example
 # snippet or commented-out line is not page content, so it neither
@@ -234,6 +245,40 @@ check_one() {
         ok=0
       fi
     done <"$shotsconf"
+  fi
+
+  # 8. Lineage credit. A derivative's product page documents the delta and
+  #    links its base — that link is the only durable form the lineage takes.
+  #    The Thingiverse-remix failure this answers is not that people refuse to
+  #    credit: it is that the credit lives in a creation-time gesture nobody
+  #    can repair afterwards, so a page that ships without it never gets one.
+  #    Here the parent list comes from derives.conf, which the design has to
+  #    keep accurate anyway (the render gate re-gates every derivative when a
+  #    parent changes), so the page and the machinery cannot disagree.
+  #    Whether derives.conf is itself well-formed is not asked here — a
+  #    retired key or a parent that does not exist is `lineage check`'s
+  #    finding, and reporting it twice in two voices helps nobody. This gate
+  #    asks one question: does the page link the parents the resolver reports?
+  local derives="${dir}/derives.conf"
+  if [[ -f "$derives" ]]; then
+    local parents parent parent_re
+    if ! parents="$(./scripts/lineage.sh parents "$name")"; then
+      err "$name" "could not read the lineage of a design that ships a derives.conf — run ./scripts/lineage.sh check"
+      ok=0
+      parents=""
+    fi
+    while IFS= read -r parent; do
+      [[ -n "$parent" ]] || continue
+      # Escape dots so a name containing one can't match a neighbour's path.
+      # The terminator class is what keeps the match honest: without it a page
+      # linking ../sushi-battleship-tall/ would satisfy a claim to derive from
+      # sushi-battleship, crediting the wrong design.
+      parent_re="${parent//./\\.}"
+      if ! grep -qE "(\]\(|href=\"|href=')\.\./${parent_re}(/|/README\.md)?[\"')# ]" <<<"$cleaned"; then
+        err "$name" "README.md never links its base — add a link to ../${parent}/ (derives.conf says this design reuses ${parent}'s geometry; a page that doesn't send the reader there is a remix with the lineage left out)"
+        ok=0
+      fi
+    done <<<"$parents"
   fi
 
   if [[ "$ok" == 1 ]]; then

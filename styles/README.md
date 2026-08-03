@@ -18,6 +18,7 @@ The point is choice. "Make me a cable clip" leaves the look to chance;
 | Style | What it is |
 |---|---|
 | [`workshop-utility`](workshop-utility/STYLE.md) | Generously rounded utility parts with 45° bed chamfers and an M3 fastener vocabulary. |
+| [`ribbed-industrial`](ribbed-industrial/STYLE.md) | Finned housings on a 1 mm module: 5 mm ribs, a 1 mm break on every edge, nothing that needs support. |
 
 `./scripts/style-lift.sh --list` prints the same list from the packs
 themselves.

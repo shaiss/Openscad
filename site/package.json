@@ -1,0 +1,14 @@
+{
+  "name": "print-bench-site",
+  "private": true,
+  "type": "module",
+  "description": "Static product site generator for the designs in this repo",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "dejavu-fonts-ttf": "^2.37.3",
+    "marked": "^16.4.0",
+    "openscad-wasm": "^0.0.4"
+  }
+}

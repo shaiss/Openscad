@@ -5,7 +5,8 @@ build/
 *.scad.bak
 *-backup.scad
 
-# Python bytecode (tools/photoshot, tools/printcheck, tools/stylelift)
+# Python bytecode (tools/photoshot, tools/printcheck, tools/stylelift,
+# tools/lineage)
 __pycache__/
 *.pyc
 

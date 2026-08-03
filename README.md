@@ -1,4 +1,4 @@
-# Openscad
+# print-bench
 
 Co-designed, review-hardened, printable: parametric 3D-printing designs
 written in [OpenSCAD](https://openscad.org/), iterated with an AI
@@ -59,6 +59,24 @@ design can `include <styles/<name>/style.scad>` to build from its numbers
 directly. See [stylelift](tools/stylelift/README.md) for how the measuring
 works, and the `/style-spec` skill for lifting a new one.
 
+## Want to remix one?
+
+Keep a design's tray and put your own lid on it. In OpenSCAD that is one
+`include` of the original plus a redefinition of the parts you want
+different — the original's own code then calls *your* version — so a remix
+here is a design directory of its own that stays tied to what it was built
+from, not a copy that quietly stops tracking it.
+
+Two things the repo adds to that. Each remix records its parents in a
+`derives.conf`, so changing an original automatically re-checks everything
+built on it. And every replacement it claims to make is proved against the
+original's own export before it can ship: OpenSCAD says nothing at all when
+a redefinition misses — misspell the part name and you get a flawless,
+watertight print of the part you were trying to replace — so the
+replacements are checked rather than trusted.
+
+Start with [docs/derivative-designs.md](docs/derivative-designs.md).
+
 ## Dependencies
 
 The scripts expect: `openscad`, `xvfb-run` (headless rendering — the
@@ -70,6 +88,14 @@ Python `bpy` — Blender as an importable module, `pip install 'bpy~=4.5.0'`
 this needs Python 3.11) — [printcheck](tools/printcheck/)
 (`pip install -e tools/printcheck`), and [stylelift](tools/stylelift/)
 (`pip install -e tools/stylelift`, for the style scripts).
+
+A bare `python3` (3.10 or newer) is also required now, not only for those
+pip-installed tools: `check.sh` and `gallery.sh` both call `scripts/lineage.sh`,
+which runs [lineage](tools/lineage/) straight out of `tools/lineage/src` with no
+install step — deliberately, so CI can resolve the lineage graph before it has
+installed anything. The consequence for a local checkout is that both scripts
+need `python3` on PATH and that directory present; `gallery.sh` fails loudly
+rather than quietly dropping the lineage from the page.
 
 ## How designs get made
 
@@ -93,21 +119,31 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `render.sh` — STL + 4-view preview sheet; `--previews` re-renders a
     design's frozen review shots, `--sweep` renders tolerance-test strips
   - `check.sh` — fast syntax/geometry validation of every `.scad` file,
-    plus the `docs-check.sh` docs-drift check (docs must match the tree)
+    plus the `guard-check.sh`, `lineage.sh` and `docs-check.sh` checks below
+  - `guard-check.sh` — negative tests for library guards: every case in a
+    `lib/*-guards.conf` must still be refused, which a demo cannot test
+    because a firing assert would abort the demo's own render
   - `gate.sh` — render printable parts and gate the STLs with printcheck;
     `--slice` adds a PrusaSlicer test-slice (this is what CI enforces)
   - `gate-summary.py` — turns a gate log into the CI results table
+  - `lineage.sh` — who derives from whom: validates the `derives.conf`
+    records, answers what a change has to re-gate, and re-proves the
+    derivative gate can still fire (`selftest`)
   - `readme-gate.sh` — every design must ship a product-page README
   - `animate.sh` — animated GIF previews from `animations.conf`
   - `product-shot.sh` — real-world-looking studio product shots from
     `shots.conf`, path-traced from the design's own STL export
   - `gallery.sh` — regenerates the design gallery above
+  - `site.sh` — builds the static product site into `build/site`
   - `style-lift.sh` — lift a design style out of a reference mesh into
     `styles/<name>/`
   - `style-check.sh` — gate the style packs and any design that declares one
   - `lint-scad.sh` — report-only [sca2d](https://gitlab.com/bath_open_instrumentation_group/sca2d) static analysis
   - `preview-budget.sh` — sourced helper defining the GIF and product-shot
     size budgets
+- `site/` — the static product site built from the designs, styles and
+  previews already committed here, and deployed on Vercel — see its
+  [README](site/README.md)
 - `styles/` — design languages lifted from reference models: the spec, the
   tokens a design builds from, and the rules CI checks parts against
 - `templates/` — starting points for a new design and its product page
@@ -119,6 +155,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   `product-shot.sh`, which turns a design's own STL export into the
   photographed-looking hero image on its product page — see its
   [README](tools/photoshot/README.md)
+- `tools/lineage/` — the lineage resolver: reads each design's
+  `derives.conf` and its include lines, and answers who derives from whom —
+  see its [README](tools/lineage/README.md)
 - `tools/stylelift/` — measures how a model is *shaped* (edge treatment,
   rounding vocabulary, proportion) and turns it into a checkable style
   spec — see its [README](tools/stylelift/README.md)
