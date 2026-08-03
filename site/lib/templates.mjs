@@ -12,7 +12,7 @@ const TAGLINE = "Parametric 3D-printable designs, gated before they ship.";
  */
 const THEME_BOOTSTRAP = `(function(){try{var t=localStorage.getItem("print-bench-theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t)}}catch(e){}})();`;
 
-export function layout({ title, description, body, canonicalPath = "/", extraHead = "" }) {
+export function layout({ title, description, body, canonicalPath = "/", extraHead = "", extraScript = "" }) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -51,6 +51,7 @@ ${body}
   </div>
 </footer>
 <script src="/assets/site.js" defer></script>
+${extraScript}
 </body>
 </html>
 `;
@@ -101,7 +102,48 @@ ${designs.map(card).join("\n")}
   });
 }
 
-export function designPage(design, { html, toc, githubBase }) {
+/**
+ * The in-browser configurator.
+ *
+ * Rendered as inert markup with the runtime URLs in data attributes; nothing
+ * is fetched until the visitor presses the button. The OpenSCAD build is
+ * ~14 MB, so loading it with the page would make every product page
+ * expensive to read.
+ */
+function configuratorPanel(design, configurator) {
+  const count = configurator.sections.reduce((n, s) => n + s.params.length, 0);
+  return `
+<section class="cfg" id="configure"
+  data-configurator="/${design.relDir}/configurator.json"
+  data-runtime="/assets/openscad/openscad.js"
+  data-worker="/assets/openscad-worker.js"
+  data-font="/assets/openscad/design.ttf">
+  <h2>Make it fit</h2>
+  <p>This design has <strong>${count} tunable parameters</strong>. Change them
+  and render your own STL — OpenSCAD runs in your browser, so nothing is
+  uploaded and nothing is installed.</p>
+  <p class="cfg-caveat"><strong>An STL you configure here is ungated.</strong>
+  The files this project ships have each passed a printability check and a
+  PrusaSlicer test-slice; your variant has not. Treat it as a starting point,
+  and print the fit coupon first if the design has one.</p>
+  <button class="btn btn-primary" type="button" data-open>Open the configurator</button>
+  <div class="cfg-panel" data-panel hidden>
+    <div class="cfg-controls" data-controls></div>
+    <div class="cfg-actions">
+      <button class="btn btn-primary" type="button" data-render>Render STL</button>
+      <button class="btn" type="button" data-reset>Reset</button>
+      <a class="btn" data-download hidden>Download STL</a>
+    </div>
+    <p class="cfg-status" data-status></p>
+    <div class="cfg-diagnostics" data-diagnostics hidden></div>
+    <p class="cfg-foot muted">Rendering is done by
+      <a href="/assets/openscad/README.txt">OpenSCAD compiled to WebAssembly</a>
+      (GPL-2.0) on your own machine. The first render downloads it, about 14 MB.</p>
+  </div>
+</section>`;
+}
+
+export function designPage(design, { html, toc, githubBase, configurator }) {
   const src = `${githubBase}/${design.relDir}`;
   const rail = `<aside class="rail">
   ${toc ? `<div class="rail-block"><h3>On this page</h3>${toc}</div>` : ""}
@@ -136,6 +178,7 @@ ${design.scads
   <div class="design-layout">
     <article class="prose">
 ${html}
+${configurator ? configuratorPanel(design, configurator) : ""}
     </article>
 ${rail}
   </div>
@@ -146,6 +189,7 @@ ${rail}
     description: plainText(design.pitch),
     body,
     canonicalPath: `/${design.relDir}/`,
+    extraScript: configurator ? '<script src="/assets/configurator.js" defer></script>' : "",
   });
 }
 
