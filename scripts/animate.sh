@@ -28,14 +28,24 @@
 # committed GIF that the README embeds and holds them to a size budget.
 #
 # Frames render in OpenSCAD preview mode (fast, same as the PNG previews).
-# Requires: openscad, xvfb-run, ImageMagick (convert); gifsicle is used to
-# shrink the palette if installed, but is optional.
+# Requires: openscad (or whatever OPENSCAD_BIN names), xvfb-run, ImageMagick
+# (convert); gifsicle is used to shrink the palette if installed, but is
+# optional.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 # lib/ resolves `use <printability.scad>`; the repo root resolves
 # `include <styles/<name>/style.scad>` (see scripts/style-lift.sh).
 export OPENSCADPATH="$PWD/lib:$PWD"
+
+# OPENSCAD_BIN selects the binary (e.g. openscad-nightly); OPENSCAD_ARGS
+# passes extra flags (e.g. --backend=manifold — nightly-only, 2021.01 has
+# no --backend). Both default to the stable invocation, same as render.sh
+# and product-shot.sh. This script used to hardcode `openscad`, which made
+# it the one generator that ignored the repo-wide contract — invisible
+# until CI's regen job ran it on a runner that only has the nightly build.
+OPENSCAD_BIN="${OPENSCAD_BIN:-openscad}"
+read -ra OSC_ARGS <<<"${OPENSCAD_ARGS:-}"
 
 # shellcheck source=scripts/preview-budget.sh
 . scripts/preview-budget.sh          # defines MAX_GIF_BYTES
@@ -107,7 +117,8 @@ animate_one() {
               'BEGIN { printf "%.4f", rz + s * i / n }')"
       t="$(awk -v i="$i" -v n="$frames" 'BEGIN { printf "%.6f", i / n }')"
       prefix="$(printf '%s/f%04d' "$tmpdir" "$i")"
-      xvfb-run -a openscad -o "${prefix}.png" --imgsize="${size/x/,}" \
+      xvfb-run -a "$OPENSCAD_BIN" ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
+        -o "${prefix}.png" --imgsize="${size/x/,}" \
         --camera="${cam[0]},${cam[1]},${cam[2]},${cam[3]},${cam[4]},${rz},${cam[6]}" \
         -D "\$t=${t}" "${dargs[@]}" "$src" 2>/dev/null
     done
