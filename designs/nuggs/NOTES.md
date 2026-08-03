@@ -89,7 +89,7 @@ bulkhead → bin wall.
   overlap" the same document claims. Engagement is an *angle*, not a chord.
   Recorded here so the 2.4 mm figure is not reintroduced from the dossier.
 - **The rib must be much narrower than the sector** (`rib_deg = 12` against
-  `lug_deg = 30`). The entry slot has to admit the rib axially, so a
+  `lug_deg = 40`). The entry slot has to admit the rib axially, so a
   full-width rib means a full-width slot and nothing left to twist under.
   This is the non-obvious constraint that made round 1's joint hold nothing.
 - **The circumferential run is full sector width**, so the joint retains in
@@ -197,7 +197,9 @@ leaves 4° of margin before the rib runs off the end of the sector.
 2. **The bayonet assert encoded the wrong constraint.** `twist_deg +
    lug_deg <= pitch` allowed defaults that collide on any twist. The mate's
    *like-radius* sectors sit half a pitch away, so the real limit is
-   **`pitch/2`**. Now asserted, with `lug_deg = 30`, `twist_deg = 14`.
+   **`pitch/2`**. Now asserted. Round 2 set `lug_deg = 30`, `twist_deg = 14`;
+   round 3 widened `lug_deg` to 40 for bed adhesion, which the mate test
+   confirmed leaves the joint unchanged.
 3. **Nothing retained.** The rib was as wide as the sector, so the entry
    slot that admits it consumed the whole sector and left nothing to twist
    under; and the lead-in taper was a *solid subtracted cone*, which
