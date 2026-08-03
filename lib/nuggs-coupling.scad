@@ -300,33 +300,15 @@ function nuggs_cfg(
         "NUGGS RIB DEPTH: the rib tip radius ", rib_in, " has fallen to or",
         " inside the tube OD ", ro, ". rib_h is deeper than the whole inner",
         " band; there is no groove floor left to cut."))
-    assert(abs(circ_clr - port_tol) < 1e-6, str(
-        "NUGGS PORT_TOL (circumferential): the gap between a rib flank and its",
-        " groove flank must BE port_tol in millimetres at the rib radius; the",
-        " built widths deliver ", circ_clr, " against ", port_tol,
-        ". Derive the bayonet's angular widths with nuggs_tol_deg(cfg, r);",
-        " never set them from port_tol directly — that spends a millimetre as",
-        " if it were a degree."))
-    assert(circ_clr_max <= port_tol * 1.05, str(
-        "NUGGS PORT_TOL (circumferential): the loose end of the engagement",
-        " band delivers ", circ_clr_max, " against port_tol ", port_tol,
-        ", more than 5% over, so the angle is being derived at the wrong",
-        " radius. Derive it at rib_in, the tightest radius where the flanks",
-        " face each other."))
-    // The entry slot is the only way in, and it is deliberately much narrower
-    // than the sector so there is solid material left to twist under. Let it
-    // reach the sector's full width and it severs the sector instead.
-    assert(slot_deg < lug_deg, str(
-        "NUGGS SLOT: the entry slot is ", slot_deg, " deg wide against a ",
-        lug_deg, " deg sector — it consumes the sector it is cut into and",
-        " there is nothing left for the mate's rib to twist under."))
     // MEASURED silent failure: at rib_h = 2.5 (which the design's old
     // `rib_h < lug_r/2 - 0.4` assert allowed) the web is -0.10 mm, the entry
     // slot cuts clean through the projecting inner sector, and the export is
     // still watertight and ONE body — 39764.8 mm3 against 41784.5. Nothing in
     // check.sh, gate.sh, printcheck or a mate test notices. This guard replaces
     // that one: it is strictly tighter at the shipped nozzle and it bounds the
-    // thing that actually breaks.
+    // thing that actually breaks. It runs BEFORE the circumferential pins below
+    // so that a too-deep rib is reported as the structural failure it is, not
+    // as a tolerance-derivation failure it merely also trips.
     assert(web >= 2 * nozzle, str(
         "NUGGS WEB: the projecting inner sector is left ", web,
         " mm thick between its groove floor and its bore-side face (lug_r*split",
@@ -334,6 +316,35 @@ function nuggs_cfg(
         " mm two-extrusion floor. At web <= 0 the entry slot cuts clean through",
         " the sector and the mesh stays watertight and one body. Cut rib_h, cut",
         " port_tol, or widen lug_r."))
+    assert(abs(circ_clr - port_tol) < 1e-6, str(
+        "NUGGS PORT_TOL (circumferential): the gap between a rib flank and its",
+        " groove flank must BE port_tol in millimetres at the rib radius; the",
+        " built widths deliver ", circ_clr, " against ", port_tol,
+        ". Derive the bayonet's angular widths with nuggs_tol_deg(cfg, r);",
+        " never set them from port_tol directly — that spends a millimetre as",
+        " if it were a degree."))
+    // The loose end of the same band. Two radial planes cannot be parallel, so
+    // one angular width cannot deliver the same millimetre gap at both ends of
+    // the engagement band; 5% is the spread this design accepts (it sits at
+    // 2.26%). Exceeding it means one of two things and the message names both:
+    // the angle was derived at the wrong radius, or the band is radially so
+    // deep that no single radius can size it.
+    assert(circ_clr_max <= port_tol * 1.05, str(
+        "NUGGS PORT_TOL (circumferential): the loose end of the engagement",
+        " band delivers ", circ_clr_max, " against port_tol ", port_tol,
+        ", more than 5% over. Either the angle is being derived at the wrong",
+        " radius — derive it at rib_in, the tightest radius where the flanks",
+        " face each other — or rib_h is so deep against rib_in = ", rib_in,
+        " that one angular width cannot size both ends of the band."))
+    // The entry slot is the only way in, and it is deliberately much narrower
+    // than the sector so there is solid material left to twist under. Let it
+    // reach the sector's full width and it severs the sector instead. Note this
+    // is NOT covered by BAYONET TRAVEL above: that bound only implies it while
+    // twist_deg >= 2*tol_a, and twist_deg may legally be smaller.
+    assert(slot_deg < lug_deg, str(
+        "NUGGS SLOT: the entry slot is ", slot_deg, " deg wide against a ",
+        lug_deg, " deg sector — it consumes the sector it is cut into and",
+        " there is nothing left for the mate's rib to twist under."))
     assert(bite + t2 <= lug_r * split, str(
         "NUGGS RIB OD: the rib's fusing overlap puts its outer face at ",
         r_mid + t2 + bite, ", past the coupling ring OD ", r_out,
