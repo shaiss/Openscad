@@ -6,37 +6,64 @@ running the PrusaSlicer CLI or other tooling as Vercel functions.*
 
 Evaluated against Vercel's actual compute primitives (docs checked live on
 2026-08-02) and against measured timings from this repo's CI and toolchain.
-**Verdict: yes to hosting, no to hosting CI on it — and the always-running
-container isn't a product Vercel sells.** The two things genuinely worth
+**Verdict: yes to hosting, no to hosting CI on it — and no Vercel primitive
+guarantees an always-running daemon, though a container image gets closer
+than this document originally allowed.** The two things genuinely worth
 hosting are a design site with a browser-side parametric configurator, and
 `printcheck` as an HTTP API. Neither is CI.
 
 ## Three claims, separated
 
-**1. "A container always running the PrusaSlicer CLI."** Nothing on Vercel
-stays up between requests. Functions are request-scoped and freeze when the
-response is sent. Sandboxes are session-scoped microVMs with a plan-capped
-timeout; `persistent: true` means *snapshot the filesystem on stop*, not
-*keep running*. If you want a warm PrusaSlicer daemon, that's Fly/Render/a
-VPS, not Vercel.
+**1. "A container always running the PrusaSlicer CLI."** No Vercel compute
+primitive is *guaranteed* to stay up between requests, but the picture is
+more nuanced than "functions freeze":
+
+- **Source-based Functions** are request-scoped, with no way to install
+  system packages — you get the managed language runtime and your
+  dependencies, so `apt-get install prusa-slicer` is simply not available.
+- **Container-image Functions/Services** *do* take arbitrary system
+  dependencies: Vercel builds an OCI image (`"runtime": "container"` in
+  `vercel.json`) and runs it as an HTTP service. This is a real route for
+  PrusaSlicer, and the original version of this document was wrong to say
+  otherwise.
+- **Fluid compute** reuses warm instances across requests, so a hot path
+  can skip cold starts — but reuse is an optimisation, not a residency
+  guarantee, and it does not give you a daemon you can count on being alive.
+- **Sandboxes** are session-scoped microVMs with a plan-capped timeout;
+  `persistent: true` means *snapshot the filesystem on stop*, not *keep
+  running*.
+
+So the honest answer to the original question is: PrusaSlicer **can** be
+hosted on Vercel via a container image or a Sandbox — what you cannot buy
+is a guaranteed always-on daemon, and neither route is a good fit for CI
+(below).
 
 **2. "Host the CI ones."** Measured below: the whole CI run is 115 s wall
-clock and the gate's real work is 53 s. Moving it to Vercel would add money
-(Actions minutes are free on this public repo; Sandbox bills active CPU),
-lose the GitHub-native check runs, artifacts, job summary and sticky
-comments `ci.yml` is built on, and remove only ~85 s of cumulative install
-overhead that a prebuilt container image removes for free.
+clock and the gate's real work is 53 s. Moving it to Vercel trades free
+compute for metered compute — standard GitHub-hosted runners are free for
+public repositories like this one and don't draw down any minutes quota,
+while Vercel's compute products meter usage against plan allowances (Hobby
+gets a monthly allotment and then stops; Pro bills past its credit). It
+would also mean rebuilding the GitHub-native reporting `ci.yml` depends on,
+to remove only ~85 s of cumulative install overhead that a prebuilt
+container image removes for free.
 
 **3. "Or anything else."** This is where the yes lives. See
 [What is worth hosting](#what-is-actually-worth-hosting-ranked).
 
-## The three Vercel primitives against this toolchain
+## The Vercel primitives against this toolchain
 
 | Primitive | What it can hold | Our tools |
 |---|---|---|
-| **Functions** (Node/Python, request-scoped, 500 MB uncompressed Python bundle, no apt, no X server) | Pure-language code and vendored wheels | ✅ `printcheck`, `stylelift` — pure Python, 171 MB of wheels, no display. ❌ `openscad`/`prusa-slicer` — apt packages pulling Qt5/CGAL/wxWidgets and needing `xvfb`; you cannot `apt-get install` into a function |
-| **Sandbox** (microVM, arbitrary binaries, custom images via VCR, session-scoped + snapshot-on-stop, billed on active CPU) | Anything that runs on Linux | ✅ everything, including `prusa-slicer` and `openscad-nightly` — but each session is a cold VM, and it bills |
-| **Static + Edge** (build-time output, CDN, no per-request compute) | Prebuilt pages, assets, WASM | ✅ the design gallery, product pages, committed previews, downloadable STLs — and `openscad-wasm`, which moves rendering to the *visitor's* browser at zero server cost |
+| **Source-based Functions** (Node/Python, request-scoped, 500 MB uncompressed Python bundle, managed runtime, no apt, no X server) | Pure-language code and vendored wheels | ✅ `printcheck`, `stylelift` — pure Python, 171 MB of wheels, no display. ❌ `openscad`/`prusa-slicer` — apt packages pulling Qt5/CGAL/wxWidgets and needing `xvfb` |
+| **Container-image Functions/Services** (`"runtime": "container"`, an OCI image you build, run as an HTTP service) | Arbitrary system dependencies | ✅ `prusa-slicer`, `openscad-nightly` — you control the base image, so the apt packages are yours to install |
+| **Sandbox** (microVM, arbitrary binaries, custom images via VCR, session-scoped + snapshot-on-stop, metered) | Anything that runs on Linux | ✅ everything, including `prusa-slicer` and `openscad-nightly` — but each session starts cold, and it meters |
+| **Static + Edge** (build-time output, CDN, no per-request function compute) | Prebuilt pages, assets, WASM | ✅ the design gallery, product pages, committed previews — and `openscad-wasm`, which moves rendering to the *visitor's* browser |
+
+Numbers that gate a design decision (bundle caps, request/response body
+caps, per-plan allowances) move; check
+[the limits pages](https://vercel.com/docs/limits) before committing to one
+rather than trusting the figures quoted here.
 
 ## Measured baseline
 
@@ -67,16 +94,21 @@ column as an upper bound):
 
 ## Why the CI gate stays on GitHub Actions
 
-1. **Cost inversion.** This repo is public, so GitHub-hosted runners are
-   free and unmetered. Vercel Sandbox bills active CPU and memory. Moving
-   the gate converts a free 53 s of compute per PR into a billed one, for
-   no capability we lack.
-2. **It would lose the integration the workflow is built on.** `ci.yml`
-   depends on per-job check runs that branch protection matches by name,
-   `$GITHUB_STEP_SUMMARY`, `upload-artifact` for the STLs and f3d renders,
-   and two sticky PR comments with stale-run guards. A Vercel-hosted gate
-   would have to re-implement all of it against the GitHub API, from a
-   place where a failure isn't visible as a failed check.
+1. **Cost inversion.** This repo is public, and standard GitHub-hosted
+   runners are free for public repositories — that usage isn't charged and
+   doesn't draw down an included-minutes quota. Vercel's compute meters
+   against plan allowances instead (Sandbox bills active CPU, provisioned
+   memory, creations and transfer; a Hobby allotment stops when spent, Pro
+   bills past its credit). Moving the gate converts 53 s of free compute
+   per PR into metered compute, for no capability we lack.
+2. **It would mean rebuilding the integration the workflow is built on.**
+   `ci.yml` depends on per-job check runs that branch protection matches by
+   name, `$GITHUB_STEP_SUMMARY`, `upload-artifact` for the STLs and f3d
+   renders, and two sticky PR comments with stale-run guards. A Vercel-hosted
+   gate *could* report failures as real failed checks — a GitHub App with
+   `checks:write` can create a check run and set `conclusion: failure` — but
+   it would have to recreate the check names, summaries, artifacts, sticky
+   comments and stale-run guards through the API, and then keep them working.
 3. **The overhead it would fix is fixable for free.** The one real waste is
    installing `openscad-nightly` from the OBS repo in three separate jobs —
    19 + 29 + 37 = 85 s of cumulative machine time every run. The fix is a
@@ -100,35 +132,58 @@ is not wiring but content: `live: false`, and `openscad-tau.vercel.app`
 returns 404 because the repo root has no site to build. There is a slot
 waiting for exactly this, already plumbed.
 
-**Tier 1 — the design site (static, zero compute).** Everything a product
-page needs is already committed: `designs/*/README.md`, `previews/*.png`,
-the product shots, the GIFs, and the gallery `scripts/gallery.sh` generates.
-A static build over `designs/` gives every design a real page with a
-Download STL button, built from files CI already gates. This is what the
-Vercel account is for, and it costs nothing per visit.
+**Tier 1 — the design site (static).** Everything a product page needs is
+already committed: `designs/*/README.md`, `previews/*.png`, the product
+shots, the GIFs, and the gallery `scripts/gallery.sh` generates. A static
+build over `designs/` gives every design a real page, built from files CI
+already gates.
 
-**Tier 1 — the browser configurator (static, zero compute).** The actual
-prize. Every design here is parametric with Customizer sections — `nuggs`
-alone exposes `bore_d`, `wall`, `port_tol`, `n_lug`, `twist_deg`.
+Two caveats worth stating plainly. **It cannot ship STLs**: `build/` is
+gitignored and STLs are regenerated from source, never committed, so there
+is nothing static to put behind a Download button — that has to come from
+the configurator below. And **static is not free of usage**: there is no
+per-request function compute, but every visit still spends Edge Requests
+and Fast Data Transfer against the plan's monthly allowance, and on Hobby
+exhausting it pauses the project rather than billing overage. Our preview
+assets are 3.8 MB across 22 files today, which is small, but the GIFs and
+product shots are the part that would grow.
+
+**Tier 1 — the browser configurator (static assets, visitor's compute).**
+The actual prize. Every design here is parametric with Customizer sections
+— `nuggs` alone exposes `bore_d`, `wall`, `port_tol`, `n_lug`, `twist_deg`.
 [`openscad/openscad-wasm`](https://github.com/openscad/openscad-wasm) is a
-full headless WASM port with STL export and `--enable=manifold`. Ship it as
-a static asset and the visitor's own browser renders their STL: sliders in,
-mesh out, no server, no bill, no cold start. A hosted render endpoint would
-be strictly worse — same output, but metered.
+headless WASM port whose README documents STL export and
+`--enable=manifold`. Ship it as a static asset and the visitor's own
+browser renders their STL: sliders in, mesh out, no server compute, no cold
+start. A hosted render endpoint would be strictly worse — same output, but
+metered.
+
+Two things to settle before building it. Its **releases are stale** — the
+newest tag is 2022.03.20, which predates the Manifold backend — so the
+artifact has to be chosen and pinned deliberately rather than taken from
+`latest`. And OpenSCAD is **GPL-2.0**: serving that WASM build to visitors
+is distribution, so it ships with its licence and notices, and with
+corresponding source or a written offer for the exact build served.
 
 **Tier 2 — `printcheck` as an HTTP API (Python function).** The one tool
-that fits Functions outright: pure Python, 171 MB of wheels against a
-500 MB limit, no display, ~1 s per STL. `POST` an STL, get the printability
-report. Worth building as a public service and as the backend for a "check
-my STL" box on the site. Note it earns nothing for CI — CI just
+that fits source-based Functions outright: pure Python, 171 MB of wheels
+against a 500 MB limit, no display, ~1 s per STL. The obvious design —
+`POST` an STL, get the report — **does not survive contact with our own
+files**: Vercel caps non-streaming function request and response bodies
+(4.5 MB at the time of writing), and the STLs here run 2.0 MB
+(desiccant-capsule) to 7.4 MB (sushi-battleship). The two biggest would be
+rejected before `printcheck` ever ran. A real endpoint uploads direct to
+blob storage and hands the function a key, or streams. Worth building as a
+public service, but earning nothing for CI — CI just
 `pip install -e tools/printcheck` in 11 s and calls it locally.
 
-**Tier 3 — a Sandbox-backed slice/render service.** The only way to host
-`prusa-slicer` or full `openscad-nightly` on Vercel: a custom image in the
-Vercel Container Registry with the toolchain baked in, driven from a
-function via the Sandbox SDK. Justified only if we want a user-facing
-"slice this and tell me the print time" feature — 13 s of billed CPU per
-slice. Never justified as a CI backend.
+**Tier 3 — a hosted slice/render service.** Hosting `prusa-slicer` or full
+`openscad-nightly` means a container image with the toolchain baked in —
+either as a container-image Function/Service, or driven from a function via
+the Sandbox SDK. Justified only if we want a user-facing "slice this and
+tell me the print time" feature, at ~13 s of metered CPU per slice, and
+subject to the same body-size problem as the `printcheck` endpoint above.
+Never justified as a CI backend.
 
 **Not worth hosting:** `photoshot` (needs `bpy`, minutes of path-tracing,
 and a byte-reproducibility guarantee that cloud hardware weakens), and the
@@ -139,9 +194,11 @@ gate itself (reasons above).
 1. Build the static design site on the existing `openscad` project — it is
    pure upside over a 404, and the content is already committed and gated.
 2. Add the `openscad-wasm` configurator to it. That is the "hosted shared
-   tool" with real leverage, and it runs on the free tier forever because
-   the compute is the visitor's.
+   tool" with real leverage: the rendering compute is the visitor's, so the
+   only usage it costs us is serving the asset. Pin the build deliberately
+   and satisfy GPL-2.0 when shipping it.
 3. Ship `printcheck` as a Python function if we want it usable outside this
-   repo. Keep the CI gate calling the local CLI either way.
+   repo — with an upload path that isn't a plain `POST`, since our own STLs
+   exceed the body cap. Keep the CI gate calling the local CLI either way.
 4. If CI install time is the actual itch, fix it with a GHCR toolchain
    image and `container:` — not by moving CI off GitHub.
