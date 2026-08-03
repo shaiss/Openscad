@@ -61,8 +61,13 @@ A complete Bin Bridge is two bulkhead pairs and one straight.
 - **Infill:** 20 %
 - **Supports:** none needed — every downward-facing surface is ≥ 50°
 - **Orientation:** tube axis vertical
-- **Brim:** required, `outer_and_inner`, 5 mm. Not optional: the part stands
-  on a narrow ring and no automated check in this repo can see that risk.
+- **Brim:** required, `outer_and_inner`, 5 mm. Not optional, and worth
+  understanding: the straight has no flat base — it stands on the six port
+  sector tips, 528 mm² across 69% of the circumference, holding up a 180 mm
+  tall part for ten hours. A brim roughly triples the anchored area, but it
+  does **not** bridge the gaps between the tips (each is ~17 mm of arc, and
+  a 5 mm brim reaches 5 mm). Use it anyway; also print on a clean, degreased
+  plate, and do not run a draughty room.
 - **You will also need:** an 89 mm bi-metal hole saw. It is a stocked size
   but *not* in a typical 13-piece set, and there is no way around a hole
   larger than the bore.
@@ -83,6 +88,7 @@ dry fully. Never a dishwasher — the heated dry cycle exceeds even PETG.
 | `straight_len` | 160 mm | Face-to-face run length |
 | `port_tol` | 0.30 mm | **The one fit knob.** Tune on the coupon in ±0.05 steps |
 | `wall` | 2.4 mm | Tube shell; 6 perimeters at a 0.4 mm nozzle |
+| `lug_deg` | 40° | Coupling sector width. Also sets first-layer area, since the part stands on these tips — raise it toward 46 for more bed grip, never past `pitch/2 − twist_deg` |
 | `wall_hole_d` | 89 mm | Enclosure-wall hole — a stocked hole-saw size |
 | `twist_deg` | 40° | The locking twist |
 

@@ -7,20 +7,21 @@ Full research dossier with sources: [`docs/nuggs-research.md`](../../docs/nuggs-
 
 ![4-view contact sheet](previews/contact-sheet.png)
 
-## Status — round 2; the coupling now works, still not printed
+## Status — round 3; coupling works, bed contact fixed, still not printed
 
 `./scripts/gate.sh --slice nuggs` **exits 0**. All four parts are
 watertight single bodies with no CRITICAL findings:
 
 | part | printcheck | filament | note |
 |---|---|---|---|
-| straight | 76/100 | 145.4 g | small bed contact patch — still the live problem |
-| bulkhead_in | 84/100 | 53.5 g | |
-| bulkhead_out | 84/100 | 32.6 g | |
-| coupon | 76/100 | 82.1 g | |
+| straight | 84/100 | 149.6 g | bed-contact warning cleared in round 3 |
+| bulkhead_in | 84/100 | 56.7 g | |
+| bulkhead_out | 84/100 | 36.2 g | |
+| coupon | 84/100 | 90.5 g | |
 
-Round 2 narrowed the sectors, which took ~15 g off the straight and ~29 g
-off the coupon.
+Round 3 widened them again for bed adhesion, putting ~4 g back on the
+straight and ~8 g on the coupon. Every part now scores 84 locally; the
+remaining warnings are the CGAL degenerate-faces artifact and 3% overhang.
 
 A green gate is **not** validation, but the joint is no longer taken on
 faith: `nuggs-matetest.scad` now confirms two identical ports nest, twist
@@ -96,6 +97,9 @@ bulkhead → bin wall.
 - **`chamfer_ang = 50`, not 45.** printcheck's overhang test is a strict `>`
   against cos 45°, and OpenSCAD's inscribed polygons put a nominal 45° cone
   at 45.0086°. 50° costs nothing and removes the ambiguity.
+- **`lug_deg` is a bed-adhesion parameter as much as a coupling one.** The
+  part stands on the sector tips, so sector width sets first-layer area. Keep
+  it as wide as the asserts allow, minus headroom for `twist_deg`.
 - **`bite = 0.8` everywhere two solids meet.** A zero-volume "kiss" contact
   leaves CGAL counting the parts as separate bodies — this cost two debug
   rounds (see below).
@@ -203,15 +207,56 @@ leaves 4° of margin before the rib runs off the end of the sector.
    circumferential run at the seat so it retains either way round. The
    taper is gone; square tips are also the better bed-contact face.
 
+## Bed contact — measured, and why widening the sectors fixed it (round 3)
+
+The straight prints tube-axis-vertical (horizontal is 23% overhang), is
+180 mm tall, and takes ~10.5 h. For all of that the only thing holding it
+down is the first layer — and it does not stand on its tube wall at all.
+Measured **0 mm2 at the tube radius**: the port sectors project `port_proj`
+past the tube face, so the part stands on the sector tips.
+
+| | round 2 | round 3 |
+|---|---|---|
+| first-layer contact | 396.0 mm2 | **527.7 mm2** |
+| ratio to bbox footprint | 4.4% (printcheck warns) | **5.9% (clear)** |
+| circumference anchored | 52% | **69%** |
+| contact shape | 6 islands, ~2.8 mm wide | 6 wider islands |
+
+**A brim does not solve this.** At `r_out = 48.4`, a 30 deg gap is 25.3 mm
+of arc; a 5 mm brim reaches 5 mm from each island edge, so it never bridges.
+A brim roughly triples the anchored area (396 -> ~1110 mm2 estimated) but
+leaves six separate brimmed islands. It is a real mitigation and still
+required — it is not the fix.
+
+**What actually fixed it: `lug_deg` 30 -> 40.** The sectors were narrower
+than the asserts allow. The ceiling is `pitch/2 - twist_deg` = 46, so there
+were 16 free degrees sitting unused. Widening costs ~4 g and buys 33% more
+first-layer area and 17 points of coverage.
+
+**It does not touch the joint.** Verified, not assumed — the mate test reads
+identically at `lug_deg` 30, 40 and 44: free at the insertion clocking,
+47.8 mm3 of retention at both locked clockings. Retention is set by
+`rib_deg`, which did not move.
+
+40 rather than 44 (which would give 580.5 mm2 / 75%) because 44 leaves only
+2 deg of headroom on `lug_deg + twist_deg <= pitch/2`. 40 leaves 6, so
+`twist_deg` can still grow to 20 if the printed coupon says the twist is
+too short. Bed adhesion is a probability; twist travel is a fit the coupon
+has not yet measured, and the unmeasured one gets the margin.
+
+**Still not solved:** the six islands are still islands. If a printed
+straight lifts a corner, the next lever is a sacrificial first-layer tie
+ring outboard of `r_out` (free space in the assembly, since the mate never
+exceeds `r_out`) — deliberately not done yet, because a sacrificial part
+that must be removed is an N6 chew-edge risk if a user forgets, and that
+trade is not worth making before a real print says it is needed.
+
 ## Open items — next round
 
-- **Bed contact is the live problem, and now the top-ranked one.** Printed
-  upright the straight stands on its sector tips, not a full annulus:
-  printcheck reports "Small bed contact patch" and scores 76. The plain-tube
-  100/100 in the dossier was measured *without* ports. Options: a
-  sacrificial first-layer disc, a wider tip land, or printing port-up on a
-  raft. Every user prints this part first, so a failed 145 g / 10 h print is
-  the worst available first impression.
+- **Bed contact is improved but not proven.** The warning is cleared and
+  coverage is up to 69%, but it is still six islands and no one has printed
+  it. A brim remains mandatory in the README. See the round-3 section above
+  for the next lever if a real print lifts.
 - **Nothing has been printed.** `port_tol = 0.30` is still a guess, and the
   coupon is what settles it. Geometry says the joint retains; only a printed
   pair says it does so at a torque a human wants to apply.
