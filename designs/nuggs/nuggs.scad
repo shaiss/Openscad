@@ -20,8 +20,12 @@ lug_r = 6.0;
 port_proj = 10.0;
 // Coupling sectors per face (3 = kinematically determinate)
 n_lug = 3;
-// Angular width of each sector (deg). Asserted lug_deg + twist_deg <= pitch/2
-lug_deg = 30;
+// Angular width of each sector (deg). Asserted lug_deg + twist_deg <= pitch/2.
+// Wider is better for bed adhesion: the part prints standing on these tips,
+// so lug_deg sets the first-layer area and how much of the circumference is
+// anchored. 40 leaves 6 deg of headroom for twist_deg to grow; the ceiling
+// here is 46.
+lug_deg = 40;
 // Radial depth of the locking rib (mm)
 rib_h = 1.0;
 // Axial width of the locking rib / groove (mm)
