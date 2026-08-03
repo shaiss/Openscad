@@ -406,8 +406,18 @@ module clamp_flange(t) {
     }
 }
 
-// Inner half: flange inside the enclosure, full-bore spigot through the wall,
-// and one genderless port facing into the enclosure.
+// Inner half: flange inside the enclosure and a full-bore spigot through the
+// wall. Deliberately NO coupling port.
+//
+// It carried one until issue #56 finding 3: `mirror([0,0,1]) nuggs_port()`
+// put 14 150 mm3 of sector tips, groove mouths and proud rib tabs 13 mm INTO
+// the enclosure, at bedding height, reaching r = 48.4. Nothing mates with it —
+// in the Bin Bridge the straight couples to bulkhead_out on the far side of
+// the wall, `assembled()` never instantiates this part, and the README has
+// always described it as "inner flange + full-bore spigot". It could only ever
+// have served an in-enclosure module, and PM.md puts any in-cage configuration
+// in Never scope. So it was unreachable geometry that failed N6 in the one
+// place the animal actually lives. Removed; reasoning in NOTES.md.
 module nuggs_bulkhead_in() {
     difference() {
         union() {
@@ -415,12 +425,14 @@ module nuggs_bulkhead_in() {
             // spigot passes through the enclosure wall, bore never necked
             translate([0, 0, bh_flange_t])
                 tube(bh_spigot_len, ri, ri + bh_spigot_wall);
-            // port faces back out of the flange
-            mirror([0, 0, 1]) nuggs_port();
         }
-        translate([0, 0, -port_proj - eps])
-            cylinder(r = ri, h = port_proj + bh_flange_t + bh_spigot_len + 2 * eps);
-        mirror([0, 0, 1]) bore_lead(0.001, 1);
+        translate([0, 0, -eps])
+            cylinder(r = ri, h = bh_flange_t + bh_spigot_len + 2 * eps);
+        // Edge break on the enclosure-side bore mouth. With the port gone this
+        // face IS the mouth the animal enters, so it is the one that must never
+        // present a lip to a claw or a loaded pouch (N6). It only ever widens
+        // the bore, so N1 is untouched.
+        bore_lead(-0.001, 1);
     }
 }
 
