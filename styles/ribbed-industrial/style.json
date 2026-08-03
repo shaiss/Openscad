@@ -1,0 +1,374 @@
+{
+  "schema": "stylelift/style@1",
+  "name": "ribbed-industrial",
+  "title": "Ribbed Industrial",
+  "summary": "Finned utility housings on a 1 mm module: 5 mm ribs, a 1 mm break on every edge, and nothing that needs support.",
+  "provenance": {
+    "reference": [
+      {
+        "file": "compressor-box.stl",
+        "sha256": "b33a17f369b5cc015c26a7e4266ef513637f959b6eb09f21b3de18b3c958d9e3",
+        "source": "Clockspring3D '819 Compressor Box' (box + lid), supplied by the repo owner. Not redistributed; the sha256 below identifies it.",
+        "license": "Personal use, no redistribution \u2014 reference measured locally, mesh never committed"
+      },
+      {
+        "file": "compressor-box-lid.stl",
+        "sha256": "61a32a87401bbb74eeba70848e26f69c27e4eb72db4f302839755ac1f365836f",
+        "source": "Clockspring3D '819 Compressor Box' (box + lid), supplied by the repo owner. Not redistributed; the sha256 below identifies it.",
+        "license": "Personal use, no redistribution \u2014 reference measured locally, mesh never committed"
+      }
+    ],
+    "lifted_by": "stylelift",
+    "primary": "compressor-box.stl",
+    "others_measured": [
+      {
+        "file": "compressor-box-lid.stl",
+        "softness": 0.7432,
+        "dominant_r_mm": 1.0
+      }
+    ]
+  },
+  "tokens": {
+    "corner_r": 4.0,
+    "edge_chamfer": 1.0,
+    "wall": 3.0,
+    "fn": 64,
+    "max_overhang_deg": 45,
+    "rib_pitch": 5.0,
+    "rib_depth": 1.0,
+    "rib_crest": 1.0
+  },
+  "asserted": {
+    "material": "opaque PLA or PETG; the reference is printed as a two-colour assembly, one colour per part, never one part in two colours",
+    "finish": "printed as-is \u2014 layer lines are part of the look and run with the ribs",
+    "suits": "shop and desk housings that get picked up: boxes, caddies, lidded containers, anything with a lid or a moving part",
+    "non_goals": "not a display style. No supports, no sculpted relief, no text on visible faces, no fillet where a chamfer will do"
+  },
+  "rules": [
+    {
+      "id": "edge-break",
+      "metric": "edges.chamfers.dominant_leg_mm",
+      "op": "near",
+      "value": 1.0,
+      "tol": 0.3,
+      "severity": "required",
+      "when": {
+        "metric": "edges.chamfers.count",
+        "op": "min",
+        "value": 1
+      },
+      "why": "every edge in this family is broken by the same 1 mm 45-degree cut. Length-weighted, the 1.0 mm leg carries 83% of the box's chamfer band length and is the lid's largest single size too; it also appears at 0.9958 mm on an unrelated design by the same hand. The +-30% band is set by what the metric actually reports rather than by the design intent: dominant_leg_mm is an unweighted median over every band, so the lid reads 1.2112 despite being a 1 mm part. Wide enough for that artifact, still narrow enough to reject a 0.6 mm-chamfer family"
+    },
+    {
+      "id": "breaks-its-edges",
+      "metric": "edges.chamfers.count",
+      "op": "min",
+      "value": 8,
+      "severity": "required",
+      "why": "a part with no 45-degree breaks at all is not in this family, whatever size its chamfers would have been; the reference carries 260 bands on the box and 291 on the lid, so 8 is a floor no real part in the style can fall below"
+    },
+    {
+      "id": "support-free",
+      "metric": "orientation.unsupported_share",
+      "op": "max",
+      "value": 0.1,
+      "severity": "required",
+      "why": "the discipline the whole style is built on: no downward surface sits shallower than 45 degrees. The box needs support on 0.66% of its surface and the lid on 6.93%, against a limit of 10% that leaves room for one honest bridge"
+    },
+    {
+      "id": "chunky-sections",
+      "metric": "walls.p05_mm",
+      "op": "min",
+      "value": 2.0,
+      "severity": "required",
+      "why": "nothing in this family is thin \u2014 the box's 5th-percentile section is 2.5 mm and the lid's 3.18 mm. Ribs read as machined only on a wall heavy enough to carry them"
+    },
+    {
+      "id": "chamfer-grammar",
+      "metric": "edges.grammar.chamfered_share",
+      "op": "min",
+      "value": 0.03,
+      "severity": "advisory",
+      "why": "this family cuts where other families fillet (5.6% of the box's shaped edge length, 11.5% of the lid's). A share of edge length, which falls as a part grows, so advisory"
+    },
+    {
+      "id": "upright-walls",
+      "metric": "orientation.vertical_share",
+      "op": "min",
+      "value": 0.3,
+      "severity": "advisory",
+      "why": "the form is made of upright walls meeting flat tops, not a sloping shell \u2014 57% of the box's surface is vertical and 35% of the lid's. Advisory because a lid is mostly lid"
+    }
+  ],
+  "measured": {
+    "source": "compressor-box.stl",
+    "mesh": {
+      "faces": 32230,
+      "vertices": 16117,
+      "watertight": true,
+      "bodies": 1
+    },
+    "massing": {
+      "extents_mm": [
+        83.997,
+        98.0,
+        80.0
+      ],
+      "aspect": [
+        1.0,
+        0.8571,
+        0.8163
+      ],
+      "volume_mm3": 113381.622,
+      "bbox_fill": 0.1722,
+      "convexity": 0.1857,
+      "surface_area_mm2": 69314.152
+    },
+    "edges": {
+      "folds": 48345,
+      "soft_length_mm": 24019.718,
+      "hard_length_mm": 19561.331,
+      "softness": 0.5512,
+      "tessellation": "strip",
+      "strip_share": 0.7445,
+      "rounding": {
+        "convex": [
+          {
+            "r_mm": 1.5772,
+            "share": 0.427,
+            "length_mm": 4419.195,
+            "implied_fn": 8.0,
+            "sweep_deg": 12.6
+          },
+          {
+            "r_mm": 7.8945,
+            "share": 0.1372,
+            "length_mm": 1419.726,
+            "implied_fn": 104.9,
+            "sweep_deg": 23.0
+          },
+          {
+            "r_mm": 13.1231,
+            "share": 0.0818,
+            "length_mm": 846.993,
+            "implied_fn": 178.3,
+            "sweep_deg": 28.5
+          },
+          {
+            "r_mm": 18.0622,
+            "share": 0.0798,
+            "length_mm": 825.978,
+            "implied_fn": 247.5,
+            "sweep_deg": 22.3
+          },
+          {
+            "r_mm": 10.3425,
+            "share": 0.0782,
+            "length_mm": 809.803,
+            "implied_fn": 139.6,
+            "sweep_deg": 177.7
+          },
+          {
+            "r_mm": 29.4985,
+            "share": 0.0767,
+            "length_mm": 793.81,
+            "implied_fn": 408.3,
+            "sweep_deg": 23.3
+          }
+        ],
+        "concave": [
+          {
+            "r_mm": 2.2304,
+            "share": 0.6769,
+            "length_mm": 6678.36,
+            "implied_fn": 8.0,
+            "sweep_deg": 90.0
+          },
+          {
+            "r_mm": 1.0001,
+            "share": 0.2484,
+            "length_mm": 2451.337,
+            "implied_fn": 36.0,
+            "sweep_deg": 52.5
+          }
+        ],
+        "dominant_r_mm": 1.5772,
+        "dominant_share": 0.427,
+        "implied_fn": 8.0
+      },
+      "form": {
+        "convex": [
+          {
+            "r_mm": 41.0,
+            "share": 0.8125,
+            "length_mm": 1767.89,
+            "implied_fn": 460.8,
+            "sweep_deg": 30.1
+          },
+          {
+            "r_mm": 67.2113,
+            "share": 0.1482,
+            "length_mm": 322.546,
+            "implied_fn": 625.1,
+            "sweep_deg": 17.0
+          }
+        ],
+        "concave": [
+          {
+            "r_mm": 49.9146,
+            "share": 0.8118,
+            "length_mm": 2759.567,
+            "implied_fn": 249.0,
+            "sweep_deg": 285.2
+          }
+        ],
+        "dominant_r_mm": 41.0
+      },
+      "chamfers": {
+        "bands": [
+          {
+            "leg_mm": 1.0,
+            "width_mm": 1.4142,
+            "turn_deg": 90.0,
+            "length_mm": 126.0,
+            "convex": true
+          },
+          {
+            "leg_mm": 1.0,
+            "width_mm": 1.4142,
+            "turn_deg": 90.0,
+            "length_mm": 126.0,
+            "convex": true
+          },
+          {
+            "leg_mm": 1.0,
+            "width_mm": 1.4142,
+            "turn_deg": 90.0,
+            "length_mm": 64.602,
+            "convex": true
+          },
+          {
+            "leg_mm": 1.0,
+            "width_mm": 1.4142,
+            "turn_deg": 90.0,
+            "length_mm": 59.396,
+            "convex": true
+          },
+          {
+            "leg_mm": 1.0,
+            "width_mm": 1.4142,
+            "turn_deg": 90.0,
+            "length_mm": 54.065,
+            "convex": true
+          },
+          {
+            "leg_mm": 1.0,
+            "width_mm": 1.4142,
+            "turn_deg": 90.0,
+            "length_mm": 50.893,
+            "convex": true
+          },
+          {
+            "leg_mm": 1.0,
+            "width_mm": 1.4142,
+            "turn_deg": 90.0,
+            "length_mm": 50.893,
+            "convex": true
+          },
+          {
+            "leg_mm": 1.0,
+            "width_mm": 1.4142,
+            "turn_deg": 90.0,
+            "length_mm": 50.893,
+            "convex": true
+          }
+        ],
+        "count": 260,
+        "length_mm": 2450.096,
+        "dominant_leg_mm": 1.0
+      },
+      "grammar": {
+        "rounded_share": 0.5918,
+        "chamfered_share": 0.0562,
+        "sharp_share": 0.352
+      }
+    },
+    "features": {
+      "cylinders": [
+        {
+          "d_mm": 98.39,
+          "kind": "hole",
+          "axis": "oblique",
+          "count": 1,
+          "implied_fn": 247.0
+        },
+        {
+          "d_mm": 99.39,
+          "kind": "hole",
+          "axis": "oblique",
+          "count": 1,
+          "implied_fn": 249.1
+        }
+      ],
+      "count": 2,
+      "hole_count": 2,
+      "dominant_hole_d_mm": 98.39
+    },
+    "orientation": {
+      "assumes_z_up": true,
+      "up_share": 0.0986,
+      "down_share": 0.1031,
+      "vertical_share": 0.5708,
+      "sloped_share": 0.2276,
+      "unsupported_share": 0.0066,
+      "overhang_limit_deg": 45.0,
+      "dominant_slopes": [
+        {
+          "angle_deg": 45.01,
+          "share": 0.1502
+        },
+        {
+          "angle_deg": 40.88,
+          "share": 0.0569
+        }
+      ]
+    },
+    "walls": {
+      "measured": true,
+      "shelled": false,
+      "samples": 2000,
+      "p05_mm": 2.5,
+      "median_mm": 4.714,
+      "mode_mm": 4.367,
+      "min_mm": 1.983
+    },
+    "symmetry": {
+      "x": 0.9313,
+      "y": 0.9887,
+      "z": 0.7607
+    },
+    "ratios": {
+      "radius_to_size": 0.0161
+    },
+    "config": {
+      "flat_deg": 0.5,
+      "soft_max_deg": 40.0,
+      "band_max_deg": 75.0,
+      "chamfer_min_deg": 15.0,
+      "min_chamfer_mm": 0.3,
+      "noise_radius_multiple": 5.0,
+      "width_ratio": 3.0,
+      "chamfer_width_ratio": 1.6,
+      "taper_tol": 1.15,
+      "turn_consistency": 0.7,
+      "mode_tol": 0.12,
+      "mode_min_share": 0.05,
+      "closed_turn_deg": 350.0,
+      "thickness_samples": 2000,
+      "symmetry_samples": 1500,
+      "vertical_tol_deg": 5.0,
+      "overhang_limit_deg": 45.0,
+      "bed_tol_mm": 0.01
+    }
+  }
+}
