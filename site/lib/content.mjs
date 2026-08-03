@@ -9,6 +9,8 @@
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 
+import { declaredParents, parseDerivesConf, resolveLineage } from "./lineage.mjs";
+
 export const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]);
 
 function read(path) {
@@ -116,8 +118,21 @@ function lines(path) {
     .filter((l) => l && !l.startsWith("#"));
 }
 
+/**
+ * Every design, in gallery order, with its lineage resolved.
+ *
+ * Order and nesting come from the lineage record, not from the designs/*&#47;
+ * glob — a derivative listed as a peer of the design whose geometry it reuses
+ * reads as an independent design, and the reader has no way to tell otherwise.
+ * That is the rule scripts/gallery.sh follows for the README; issue #55 was
+ * this surface disagreeing with it.
+ *
+ * Each design gains two fields: `depth` (0 for a root) and `parents` (real
+ * parent designs, in include order — empty for a root).
+ */
 export function readDesigns(repoRoot) {
   const out = [];
+  const declared = new Map();
   for (const name of dirs(join(repoRoot, "designs"))) {
     const dir = join(repoRoot, "designs", name);
     const entry = join(dir, `${name}.scad`);
@@ -129,6 +144,20 @@ export function readDesigns(repoRoot) {
     const readme = read(readmePath);
     const parts = lines(join(dir, "ci.parts"));
     const styleConf = lines(join(dir, "style.conf"));
+
+    // Read like ci.parts and style.conf above, but parsed by the lineage
+    // port rather than lines(): derives.conf is `key: value`, strips trailing
+    // comments, and its parent order is load-bearing.
+    // Explicitly against null, not truthiness: read() returns "" for a
+    // present-but-empty derives.conf, and that is a file that exists. Parsing
+    // it yields no parents, which is what skipping it yields too — so the two
+    // agree today — but keeping one test for "the file is there" stops that
+    // equivalence from being load-bearing. site/test/lineage.test.mjs pins it.
+    const derives = read(join(dir, "derives.conf"));
+    declared.set(
+      name,
+      derives !== null ? declaredParents(parseDerivesConf(derives)) : []
+    );
 
     const previewsDir = join(dir, "previews");
     const previews = existsSync(previewsDir)
@@ -163,9 +192,35 @@ export function readDesigns(repoRoot) {
         ? "contact-sheet.png"
         : previews[0] || null,
       hasCoupon: existsSync(join(dir, `${name}-coupon.scad`)),
+      hasDerivesConf: derives !== null,
     });
   }
-  return out;
+
+  const { parents, order, unreachable } = resolveLineage(
+    out.map((d) => d.name),
+    declared
+  );
+  const byName = new Map(out.map((d) => [d.name, d]));
+
+  const ordered = [];
+  for (const row of order) {
+    const design = byName.get(row.name);
+    design.depth = row.depth;
+    design.parents = parents.get(row.name);
+    ordered.push(design);
+  }
+  // A design on a lineage cycle has no place in the tree. Still list it —
+  // dropping a design from the index silently is worse than showing it
+  // unnested — and flag it so build.mjs can fail the build, which is what the
+  // Python `order` does (exit 1) rather than answering.
+  for (const name of unreachable) {
+    const design = byName.get(name);
+    design.depth = 0;
+    design.parents = parents.get(name);
+    design.lineageCycle = true;
+    ordered.push(design);
+  }
+  return ordered;
 }
 
 export function readStyles(repoRoot) {

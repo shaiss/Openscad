@@ -405,6 +405,14 @@ jobs:
           cache-dependency-path: site/package-lock.json
       - name: Install site dependencies
         run: npm --prefix site ci
+      # Runs before the build so a lineage disagreement is reported as what it
+      # is, rather than as whatever the index happens to render. These tests
+      # cross-check site/lib/lineage.mjs against tools/lineage by running both
+      # over the same fixture trees — the site cannot call the Python resolver
+      # (Vercel installs npm deps only), so it ports it, and nothing else
+      # notices when a port drifts. python3 is preinstalled on this runner.
+      - name: Run the site unit tests
+        run: npm --prefix site test
       - name: Build the site (fails on any broken local reference)
         run: node site/build.mjs --out build/site
       - name: Upload the built site

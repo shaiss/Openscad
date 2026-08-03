@@ -57,7 +57,30 @@ ${extraScript}
 `;
 }
 
+/** Links to a design's parents, in include order. */
+function parentLinks(design) {
+  return (design.parents || []).map(
+    (p) => `<a href="/designs/${encodeURIComponent(p)}/">${escapeHtml(p)}</a>`
+  );
+}
+
+/**
+ * The credit sentence a derivative carries, word for word the one
+ * scripts/gallery.sh writes into the README — including the multi-parent
+ * form, where every parent is named rather than just the one the row nests
+ * under, and the suffix says which of them wins.
+ */
+function lineageCredit(design) {
+  const links = parentLinks(design);
+  if (links.length === 0) return "";
+  if (links.length === 1) return `derived from ${links[0]}`;
+  const rest = links.slice(1).map((l) => `, then ${l}`).join("");
+  return `derived from ${links[0]}${rest} — last include wins`;
+}
+
 function card(design) {
+  const depth = design.depth || 0;
+  const derived = depth > 0 && (design.parents || []).length > 0;
   const thumb = design.thumb
     ? `<a class="card-media" href="/${design.relDir}/"><img src="/${design.relDir}/previews/${design.thumb}" alt="${escapeHtml(design.name)} preview"></a>`
     : "";
@@ -70,11 +93,22 @@ function card(design) {
   if (design.warning) {
     tags.push(`<span class="tag tag-warn">${escapeHtml(design.warning)}</span>`);
   }
-  return `<article class="card">
+  // A derivative is marked in three ways that survive a card grid reflowing
+  // to one column: the ↳ lead-in, the credit line, and the indent. The credit
+  // is the load-bearing one — the others are position, and position alone is
+  // what let this read as an independent design.
+  const open = derived
+    ? `<article class="card card-derived" style="--lineage-depth:${depth}">`
+    : `<article class="card">`;
+  const lead = derived ? '<span class="lineage-mark" aria-hidden="true">↳</span> ' : "";
+  const credit = derived
+    ? `\n    <p class="card-lineage">${lineageCredit(design)}</p>`
+    : "";
+  return `${open}
   ${thumb}
   <div class="card-body">
-    <h2><a href="/${design.relDir}/">${escapeHtml(design.title)}</a></h2>
-    <p>${inlineMarkdown(design.pitch)}</p>
+    <h2>${lead}<a href="/${design.relDir}/">${escapeHtml(design.title)}</a></h2>
+    <p>${inlineMarkdown(design.pitch)}</p>${credit}
     <div class="card-foot">${tags.join("\n      ")}</div>
   </div>
 </article>`;
@@ -165,6 +199,17 @@ ${design.scads
       ? `<div class="rail-block"><h3>Printable parts</h3><ul>${design.parts
           .map((p) => `<li><code>${escapeHtml(p)}</code></li>`)
           .join("")}</ul></div>`
+      : ""
+  }
+  ${
+    (design.parents || []).length
+      ? `<div class="rail-block"><h3>Derived from</h3><ul>${parentLinks(design)
+          .map((link) => `<li>${link}</li>`)
+          .join("")}</ul>${
+          design.parents.length > 1
+            ? '<p class="rail-note">In include order — the last include wins.</p>'
+            : ""
+        }</div>`
       : ""
   }
   ${

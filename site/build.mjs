@@ -201,6 +201,27 @@ function main() {
   const onAsset = (p) => assets.add(p);
   const onError = (m) => errors.push(m);
 
+  // Lineage credits are emitted as raw markup by the templates, so unlike
+  // every link inside a product page they never pass through the markdown
+  // reference checker. Check them here, or a derivative would ship a dead
+  // internal link with the build still green — the same class of silent
+  // divergence issue #55 was filed for.
+  const designNames = new Set(designs.map((d) => d.name));
+  for (const design of designs) {
+    if (design.lineageCycle) {
+      onError(
+        `designs/${design.name}/derives.conf: sits on a lineage cycle, so it has no place in the tree — run ./scripts/lineage.sh check`
+      );
+    }
+    for (const parent of design.parents) {
+      if (!designNames.has(parent)) {
+        onError(
+          `designs/${design.name}/derives.conf: names parent '${parent}', which the site does not publish`
+        );
+      }
+    }
+  }
+
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
 

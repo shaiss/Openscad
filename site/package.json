@@ -4,7 +4,8 @@
   "type": "module",
   "description": "Static product site generator for the designs in this repo",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "dejavu-fonts-ttf": "^2.37.3",
