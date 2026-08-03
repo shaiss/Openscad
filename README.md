@@ -59,6 +59,24 @@ design can `include <styles/<name>/style.scad>` to build from its numbers
 directly. See [stylelift](tools/stylelift/README.md) for how the measuring
 works, and the `/style-spec` skill for lifting a new one.
 
+## Want to remix one?
+
+Keep a design's tray and put your own lid on it. In OpenSCAD that is one
+`include` of the original plus a redefinition of the parts you want
+different — the original's own code then calls *your* version — so a remix
+here is a design directory of its own that stays tied to what it was built
+from, not a copy that quietly stops tracking it.
+
+Two things the repo adds to that. Each remix records its parents in a
+`derives.conf`, so changing an original automatically re-checks everything
+built on it. And every replacement it claims to make is proved against the
+original's own export before it can ship: OpenSCAD says nothing at all when
+a redefinition misses — misspell the part name and you get a flawless,
+watertight print of the part you were trying to replace — so the
+replacements are checked rather than trusted.
+
+Start with [docs/derivative-designs.md](docs/derivative-designs.md).
+
 ## Dependencies
 
 The scripts expect: `openscad`, `xvfb-run` (headless rendering — the
@@ -97,6 +115,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `gate.sh` — render printable parts and gate the STLs with printcheck;
     `--slice` adds a PrusaSlicer test-slice (this is what CI enforces)
   - `gate-summary.py` — turns a gate log into the CI results table
+  - `lineage.sh` — who derives from whom: validates the `derives.conf`
+    records, answers what a change has to re-gate, and re-proves the
+    derivative gate can still fire (`selftest`)
   - `readme-gate.sh` — every design must ship a product-page README
   - `animate.sh` — animated GIF previews from `animations.conf`
   - `product-shot.sh` — real-world-looking studio product shots from
@@ -119,6 +140,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   `product-shot.sh`, which turns a design's own STL export into the
   photographed-looking hero image on its product page — see its
   [README](tools/photoshot/README.md)
+- `tools/lineage/` — the lineage resolver: reads each design's
+  `derives.conf` and its include lines, and answers who derives from whom —
+  see its [README](tools/lineage/README.md)
 - `tools/stylelift/` — measures how a model is *shaped* (edge treatment,
   rounding vocabulary, proportion) and turns it into a checkable style
   spec — see its [README](tools/stylelift/README.md)

@@ -7,6 +7,12 @@ Reads the `== name: printcheck stl ==` / `SCORE:` / `== test-slice ... ==` /
 `estimated printing time` lines gate.sh emits and renders one row per gated
 STL. Used by CI for both the job summary and the sticky PR comment; safe on
 partial logs (a crashed gate run still yields whatever rows completed).
+
+Also reads gate.sh's `<status>  derivative <name>: <kind> <subject> — <detail>`
+lines into their own section. A derivative whose override silently failed to
+bind renders, slices and scores exactly like a healthy part, so the derivative
+check is the only place that failure is visible at all — leaving it out of the
+PR comment would make the report itself complicit in the silence.
 """
 import re
 import sys
@@ -31,6 +37,7 @@ def main() -> int:
 
     rows = []          # {stl, score, verdict, criticals, warnings, time, slice_fail}
     pre_fails = []     # FAIL lines emitted before printcheck ran (render/missing)
+    derivs = []        # {ok, design, kind, subject, detail} from derivative_gate
     cur = None
     for line in lines:
         m = re.match(r"== .*: printcheck (\S+) ==", line)
@@ -39,6 +46,21 @@ def main() -> int:
                    "criticals": 0, "warnings": 0, "time": "—", "grams": "—",
                    "slice_fail": False}
             rows.append(cur)
+            continue
+        # Claimed before the pre_fails match below and before the per-row
+        # counters: derivative lines belong to a design, not to whichever
+        # printcheck row happens to still be open, and matching them first
+        # means a reworded gate.sh message can never quietly land in the wrong
+        # section instead of failing to parse where someone would notice.
+        # `derivative ` is the discriminator, so the pattern cannot swallow an
+        # ordinary `FAIL  <design>: render failed`.
+        m = re.match(r"(ok|FAIL)\s+derivative (\S+): "
+                     r"(override|base-safe|derives\.conf)(?: (\S+))? — (.+)$",
+                     line)
+        if m:
+            status, design, kind, subject, detail = m.groups()
+            derivs.append({"ok": status == "ok", "design": design, "kind": kind,
+                           "subject": subject or "", "detail": detail.strip()})
             continue
         m = re.match(r"FAIL\s+(.+: (?:render failed|\S+ not found))$", line)
         if m:
@@ -72,7 +94,7 @@ def main() -> int:
 
     print("### printcheck + slice results")
     print()
-    if not rows and not pre_fails:
+    if not rows and not pre_fails and not derivs:
         print("_no gate output captured_")
         return 0
     if rows:
@@ -99,6 +121,23 @@ def main() -> int:
         print("**Failed before printcheck ran:**")
         for p in pre_fails:
             print(f"- ❌ {p}")
+    if derivs:
+        # Its own section rather than extra rows in the table above: these
+        # checks are about a design's relationship to its parent, and the STL
+        # they would otherwise hang off is the one that looks perfect.
+        print()
+        print("### Derivative override checks")
+        print()
+        print("| Design | Check | Result |")
+        print("|---|---|---|")
+        for d in derivs:
+            check = f"{d['kind']} `{d['subject']}`" if d["subject"] else d["kind"]
+            # Escaped the way gallery.sh escapes its pitches: a stray pipe in a
+            # gate message would silently add a column and shift every cell
+            # after it, turning a failure report into a garbled one.
+            detail = d["detail"].replace("|", "\\|")
+            print(f"| `{d['design']}` | {check} "
+                  f"| {'✅' if d['ok'] else '❌'} {detail} |")
     return 0
 
 
