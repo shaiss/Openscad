@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Fast validation of every .scad file in the repo (no STL output).
 #   1. Syntax/eval check of all designs, lib, template and style files
-#      (echo export — seconds)
+#      (echo export — seconds). Fails on ERROR and on a failing assert as
+#      well as on a wrong-geometry WARNING: under --export-format echo
+#      OpenSCAD reports both in the export file and still exits 0.
 #   2. Full CGAL render of the lib demo to catch geometry regressions
 #   3. Guard check (scripts/guard-check.sh): every lib guard still fires
 #   4. Lineage check (scripts/lineage.sh check): every derives.conf must
@@ -33,6 +35,17 @@ fail=0
 # for. This pattern covers the top-level cases the echo pass does reach.
 FATAL_WARN="Ignoring unknown module|Ignoring unknown function|Can't open include file"
 
+# A failing assert is not a warning and it is not an exit code either. Under
+# `--export-format echo` OpenSCAD writes
+#   ERROR: Assertion '(bore_d >= min_bore_mm)' failed ...
+# into the export file and **exits 0**, so before this pattern existed the
+# success branch below printed `ok` for a design whose welfare asserts were
+# firing. gate.sh caught it on the real render, but the fast pre-commit check
+# — the one a developer actually runs — reported the design valid. Designs in
+# this repo use asserts as the enforcement mechanism for non-negotiables
+# (see designs/nuggs/PM.md), so an unenforced assert is the whole safety net.
+FATAL_ERR="ERROR|Assertion.*failed"
+
 # Under `--export-format echo` OpenSCAD writes its diagnostics into the export
 # file, not to stderr — so the old `-o /dev/null` threw every WARNING away and
 # the FATAL_WARN test below could never fire. Export to a real file and read
@@ -48,8 +61,13 @@ check() {
     -o "$ECHO_OUT" --export-format echo "$f" 2>&1) || rc=$?
   out=$(printf '%s\n%s' "$err" "$(cat "$ECHO_OUT")")
   if (( rc == 0 )); then
+    # Exit 0 does not mean the file evaluated cleanly — check for ERROR first.
+    if grep -qE "$FATAL_ERR" <<<"$out"; then
+      echo "FAIL  $f  (ERROR/failed assert — OpenSCAD still exited 0)"
+      grep -E "$FATAL_ERR" <<<"$out" | sed 's/^/      /'
+      fail=1
     # Surface WARNINGs even on success
-    if grep -q "WARNING" <<<"$out"; then
+    elif grep -q "WARNING" <<<"$out"; then
       if grep -qE "$FATAL_WARN" <<<"$out"; then
         echo "FAIL  $f  (unresolved module/include — wrong geometry, not a nit)"
         fail=1

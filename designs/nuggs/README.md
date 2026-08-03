@@ -35,7 +35,7 @@ part. That is why it is short, opaque, open at both ends, and lives
 | Cannot be ventilated / condenses | No closed volumes. Every run is open at both ends into a ventilated enclosure — no caps, no blind branches |
 | Cannot be cleaned | One twist releases any module for a hand wash, without disturbing the nest |
 | Transparent tube gives no refuge | Opaque, uncoloured filament; you inspect it by it being short and straight |
-| Endless tube mazes | Total enclosed length asserted at ≤ 2 × body length |
+| Endless tube mazes | Total enclosed length asserted at ≤ 2 × body length, and **one straight per run** — engraved on the part, see [Assembly & use](#assembly--use) |
 | Eats cage floor and substrate | Runs between enclosures at bedding height — zero floor area, zero substrate |
 
 **Measure your hamster.** `body_len_mm` defaults to 180 mm and sets the
@@ -87,16 +87,32 @@ dry fully. Never a dishwasher — the heated dry cycle exceeds even PETG.
 | `min_bore_mm` | 70 mm | Welfare floor (DTSchB pouch-full entrance minimum). Never lower it |
 | `body_len_mm` | 180 mm | Your animal's head-and-body length; sets the TVT length budget |
 | `straight_len` | 160 mm | Face-to-face run length |
-| `port_tol` | 0.30 mm | **The one fit knob.** Tune on the coupon in ±0.05 steps |
+| `port_tol` | 0.30 mm | **The one fit knob.** A real clearance in millimetres on every coupling surface — radial, axial *and* circumferential — whatever bore you set. Tune on the coupon in ±0.05 steps |
 | `wall` | 2.4 mm | Tube shell; 6 perimeters at a 0.4 mm nozzle |
 | `lug_deg` | 40° | Coupling sector width. Also sets first-layer area, since the part stands on these tips — raise it toward 46 for more bed grip, never past `pitch/2 − twist_deg` |
 | `wall_hole_d` | 89 mm | Enclosure-wall hole — a stocked hole-saw size |
 | `twist_deg` | 14° | The locking twist. Bounded by `rib_deg + twist_deg ≤ lug_deg` |
+| `mark_h` | 5 mm | Cap height of the engraved revision mark. 0 leaves parts unmarked |
 
 All parameters are at the top of `nuggs.scad`, grouped in Customizer
 sections; override on the command line with `-D 'straight_len=120'`.
 
 ## Assembly & use
+
+> ### One straight per run. Never chain two.
+>
+> This is the one rule the model cannot enforce for you. The total enclosed
+> tube must stay within **2 × your animal's head-and-body length** (TVT
+> Merkblatt 62). One straight plus both bulkhead throats is 160 + 2×(25+10)
+> = **230 mm**, inside the 360 mm budget at `body_len_mm = 180`. Two
+> straights coupled together is **420 mm** and breaks it — and because
+> every NUGGS face mates with every other, two straights *will* click
+> together and feel right. `assert` runs at render time and cannot see what
+> you assemble on the bench, so the rule is engraved on the outside of every
+> straight instead: **NUGGS R1 / ONE STRAIGHT PER RUN**.
+>
+> If you need a longer bridge, move the enclosures closer or raise
+> `body_len_mm` to your *measured* animal — never add a second straight.
 
 Drill one 89 mm hole in each facing wall, at bedding height, level with
 each other. Bolt a bulkhead pair into each hole with 6 × M4. Push the
@@ -105,3 +121,18 @@ coupling is symmetric — then the same at the other end.
 
 To open a run — for cleaning, or because an animal is in trouble — twist
 one joint back 14° and lift the straight away. Do not pull the animal.
+
+### Markings
+
+Every part that has a face the animal can never reach carries its port
+revision engraved on it, so you can tell what a printed part conforms to
+years later:
+
+| Part | Mark | Where |
+|---|---|---|
+| `straight` | `NUGGS R1` + `ONE STRAIGHT PER RUN` | outer tube wall, mid-length — in the room, between the enclosures |
+| `bulkhead_out` | `NUGGS R1` | flange rim, outside the enclosure wall |
+| `bulkhead_in` | *(none, deliberately)* | every face it has is either inside the enclosure or buried in the wall hole |
+
+The marks are **engraved, never raised** — a proud character is a
+chew-initiation edge. Set `mark_h = 0` to omit them.

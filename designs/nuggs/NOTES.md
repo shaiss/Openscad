@@ -7,21 +7,22 @@ Full research dossier with sources: [`docs/nuggs-research.md`](../../docs/nuggs-
 
 ![4-view contact sheet](previews/contact-sheet.png)
 
-## Status — round 3; coupling works, bed contact fixed, still not printed
+## Status — round 4; the one fit knob is now actually one knob, still not printed
 
-`./scripts/gate.sh --slice nuggs` **exits 0**. All four parts are
+`./scripts/gate.sh --slice` **exits 0** — run over *all* designs, not just
+nuggs, because round 4 touched `scripts/check.sh`. All four nuggs parts are
 watertight single bodies with no CRITICAL findings:
 
-| part | printcheck | filament | note |
-|---|---|---|---|
-| straight | 84/100 | 149.6 g | bed-contact warning cleared in round 3 |
-| bulkhead_in | 84/100 | 56.7 g | |
-| bulkhead_out | 84/100 | 36.2 g | |
-| coupon | 84/100 | 90.5 g | |
+| part | printcheck | filament | round 3 | note |
+|---|---|---|---|---|
+| straight | 84/100 | 149.5 g | 84 / 149.6 g | now carries the engraved rev + rule; costs 0.1 g and moves the overhang fraction not at all (3%) |
+| bulkhead_in | **100/100** | **38.1 g** | 84 / 56.7 g | inward port removed (#56/3) — no warnings left at all, including the degenerate faces |
+| bulkhead_out | 84/100 | 36.2 g | 84 / 36.2 g | rev engraved on the flange rim, no measurable cost |
+| coupon | 84/100 | 90.4 g | 84 / 90.5 g | deliberately unmarked — a 25 mm stub is port zone end to end |
 
-Round 3 widened them again for bed adhesion, putting ~4 g back on the
-straight and ~8 g on the coupon. Every part now scores 84 locally; the
-remaining warnings are the CGAL degenerate-faces artifact and 3% overhang.
+The remaining 84s are the CGAL degenerate-faces artifact and 3–5% overhang,
+both pre-existing. `bulkhead_in` losing its degenerate faces along with its
+port is a data point for B1b: the slivers live in `nuggs_port()`.
 
 A green gate is **not** validation, but the joint is no longer taken on
 faith: `nuggs-matetest.scad` now confirms two identical ports nest, twist
@@ -60,8 +61,12 @@ bulkhead → bin wall.
   across straight + both bulkhead throats. At defaults: 160 + 2×(25+10) =
   230 ≤ 360 ✓. The bed limit (240 mm incl. port projections) binds before
   the welfare limit does, so a single-straight run cannot breach it by
-  accident. **Two straights chained would** — OpenSCAD cannot assert what a
-  human assembles; the README says "one straight per run".
+  accident. **Two straights chained would** (420 mm) — OpenSCAD cannot
+  assert what a human assembles, so the rule is carried in the two places a
+  human meets it: engraved on the outer wall of every straight
+  (`ONE STRAIGHT PER RUN`, round 4) and called out in a block quote at the
+  head of the README's assembly section. Both were *claimed* here from
+  round 1 and neither existed until round 4 — see below.
 - **Genderless coupling, and it is the whole thesis.** One tolerance knob,
   one coupon, zero coupler parts, and any module leaves the middle of a run
   in one twist — which is what the emergency-access requirement actually
@@ -165,14 +170,24 @@ straights joined face to face — the mate is the same part mirrored and
 clocked by `pitch/2`. Zero volume means they can occupy that position;
 non-zero means they cannot. Seated, then again after a 2 mm axial pull:
 
-| clocking | seated | pulled 2 mm | reading |
-|---|---|---|---|
-| 60° (insertion) | 0 | **free** | pushes together and comes apart — the entry path |
-| 46° (twist −14°) | 0 | **47.8 mm³** | locked |
-| 74° (twist +14°) | 0 | **47.8 mm³** | locked |
+Re-measured in round 4 after the `port_tol` fix changed every circumferential
+clearance in the joint. Clockings are read off the harness's own echo, never
+typed in:
+
+| clocking | seated (gap 0) | pulled 2 mm | round 3 | reading |
+|---|---|---|---|---|
+| 60° (insertion) | 0 mm³ | **free** (empty mesh) | free | pushes together and comes apart — the entry path |
+| 46° (twist −14°) | 0 mm³ | **47.7583 mm³** | 47.7583 | locked |
+| 74° (twist +14°) | 0 mm³ | **47.7585 mm³** | 47.7585 | locked |
 
 Retains in **both** twist directions, so there is no handedness to get
 right at 11 pm with a hamster in the tube.
+
+Retention is *identical* to round 3, which is the expected result rather than
+a suspicious one: when the joint is locked the rib sits in the middle of the
+circumferential run, and the fix widened that run by 0.088° at each **end**.
+Nothing bears on the ends. What the fix changed is the flank clearance during
+the twist, which is a fit, not a retention.
 
 **Retention capacity.** The rib reaches `rib_h` into the mate's inner-shell
 band, giving a radial engagement of 44.25 → 45.25 mm = 1.00 mm over a
@@ -253,6 +268,172 @@ exceeds `r_out`) — deliberately not done yet, because a sacrificial part
 that must be removed is an N6 chew-edge risk if a user forgets, and that
 trade is not worth making before a real print says it is needed.
 
+## Round 4 — issue #56: the knob that wasn't one, and three untrue claims
+
+Five defects, all reproduced before being fixed. Ordered as the issue orders
+them.
+
+### 1. `port_tol` was millimetres and degrees in the same function
+
+`bayonet_groove()` used `t = port_tol` correctly as millimetres in the z and
+radial terms, and then fed the same number straight into `rotate([0,0,a0-t])`
+and into the sector widths `rib_deg + 2*t` / `lug_deg + 2*t`, where OpenSCAD
+read it as **degrees**.
+
+Rib and groove flanks are radial planes, so a fixed angle is a gap that grows
+with radius. Measured from the echo, at the default 80 mm bore:
+
+| | circumferential clearance per side |
+|---|---|
+| what the docs promise | 0.300 mm |
+| what the geometry delivered, r = 44.25 (rib tip) | **0.2317 mm — 77 %** |
+| what the geometry delivered, r = 45.25 (inner-sector face) | 0.2369 mm |
+| at the asserted minimum `port_tol = 0.10` | 0.0772 mm — under one extrusion |
+
+And it was bore-dependent, which is the part that really breaks the standard:
+the same knob bought a different fit on a different bore, so a coupon tuned on
+one bore mis-tunes another.
+
+**Fixed** by deriving the angle from the radius — `tol_deg(r) = port_tol/r *
+180/PI` — and sizing at `rib_in`, the tightest radius at which a rib flank
+faces a groove flank, so the realised clearance is ≥ `port_tol` across the
+whole engagement band rather than only on average. An explicit `port_tol_deg`
+parameter was rejected: it would have made the "one knob" claim false by
+construction, which is the thing being fixed.
+
+Measured after, straight off the model's own echo:
+
+| bore_d | port_tol | realised, tight end (r = rib_in) | loose end (r = i_out) |
+|---|---|---|---|
+| 70 | 0.10 / 0.30 / 0.60 | 0.100 / 0.300 / 0.600 | 0.1025 / 0.3076 / 0.6153 |
+| 80 | 0.10 / 0.30 / 0.60 | 0.100 / 0.300 / 0.600 | 0.1023 / 0.3068 / 0.6136 |
+| 120 | 0.10 / 0.30 | 0.100 / 0.300 | 0.1016 / 0.3047 |
+
+The knob now means millimetres at every bore. The residual 1.5–2.5 % spread
+across the band is geometric — two radial planes cannot be parallel — and is
+bounded by an assert.
+
+**Regression pin.** Two asserts plus an echo, and they are deliberately not
+tautologies: `circ_clr` is read back *out of* `slot_deg`, the angular width
+the geometry actually uses, and converted to millimetres at `rib_in`. Writing
+`rib_deg + 2*port_tol` again fails the render at 0.2317 ≠ 0.300 instead of
+quietly tightening the joint by 23 %. The second assert catches the angle
+being derived at the wrong radius.
+
+**The joint was re-verified, not assumed** — see the mate-test table above.
+Retention is unchanged at 47.758 mm³ because when locked the rib sits mid-run,
+0.088° from neither flank; the widening only trims the ends of the
+circumferential run, which nothing bears on.
+
+### 2. `check.sh` reported `ok` on a design whose welfare asserts were firing
+
+`openscad --export-format echo` writes `ERROR: Assertion ... failed` into the
+export file and **exits 0**. `scripts/check.sh` read the file back (fixed in
+#43) but only grepped for `WARNING` and its `FATAL_WARN` set, so `ERROR` was
+never matched. `bore_d = 50` — 20 mm under the welfare floor — printed
+`ok    designs/nuggs/nuggs.scad` and exited 0.
+
+`gate.sh` always caught it (a real render surfaces the assert and exits 1), so
+CI was never blind. The *fast local check a developer actually runs* was.
+Since PM.md makes asserts the enforcement mechanism for the non-negotiables,
+an unenforced assert is the whole safety net.
+
+**Fixed** in `scripts/check.sh`: `FATAL_ERR="ERROR|Assertion.*failed"`, tested
+before the WARNING branch. Verified with the issue's own repro — `bore_d = 50`
+now gives `FAIL designs/nuggs/nuggs.scad (ERROR/failed assert — OpenSCAD still
+exited 0)` and exit 1, on both `nuggs.scad` and `nuggs-coupon.scad`; `bore_d`
+restored to 80 and the file diffed back to byte-identical afterwards.
+
+This is infra, so it re-gates every design: `gate.sh --slice` was run with no
+arguments over all four designs, not just nuggs.
+
+### 3. The inward port on `bulkhead_in` — investigated, then removed
+
+Measured on the round-3 part:
+
+- **14 150 mm³** (18.0 g of solid PETG) of coupling port projecting to
+  **z = −13**, i.e. 13 mm *into the enclosure*, at bedding height, reaching
+  r = 48.4 mm. Six square sector tips, six groove mouths, three proud rib tabs.
+- and, not in the issue and worse: **2 869 mm³ in six lumps standing 6.0 mm
+  proud of the flange's own clamping face**, on the wall side. The inner
+  flange could not sit flat against the enclosure wall at all. It would have
+  stood off on six points and rocked, and torquing 6 × M4 against that either
+  bows the flange or cracks a thin PP bin wall.
+
+**Nothing mates with it.** In the documented Bin Bridge the straight couples
+to `bulkhead_out`, on the far side of the wall. `assembled()` never
+instantiates `bulkhead_in` at all. The README has described this part as
+"inner flange + full-bore spigot through an 89 mm wall hole" since round 1 —
+the product page never knew the port was there.
+
+**And nothing ever could mate with it.** The only thing it could serve is an
+in-enclosure module, and PM.md lists "any in-cage configuration" under **Out
+of scope → Never**, with a sourced reason (Hauzenberger et al. 2006 — a tunnel
+that eats floor or substrate is a net welfare loss). So the "it's for future
+modules" branch of the issue's question is closed by the charter, not by
+opinion.
+
+That makes it vestigial geometry that failed **N6** in the one place the
+animal actually lives, and broke the clamp in the one place it has a job.
+**Removed.** `bulkhead_in` is now flange + full-bore spigot, spanning
+z = 0..29 instead of −13..29, 45 340 mm³ instead of 62 679, watertight, one
+body. The enclosure-side bore mouth keeps an edge break (`bore_lead`), which
+only ever *widens* the bore, so N1 is untouched.
+
+Two side effects worth knowing:
+
+- Bed contact goes from six sector tips to the whole flange annulus —
+  ~8 100 mm² of first layer instead of standing on the port.
+- N6 is now satisfied by the reference part, so it does **not** need
+  restating. If a later round ever wants an in-enclosure module, that is a
+  charter change first (the Never line), and N6 second.
+
+This is a real geometry change to a printable part and was re-verified end to
+end: render, printcheck, test-slice, and the full mate test.
+
+### 4. `NUGGS_REV` was embossed on nothing
+
+Declared at line 12, referenced nowhere, and the file contained no `text()` at
+all — while NOTES.md claimed the length limit "is embossed on the part" as the
+mitigation for the only composition hazard the design admits.
+
+**Fixed by engraving it**, under two rules:
+
+- **Engraved, never proud.** A raised character is exactly the
+  chew-initiation edge N6 forbids. Recessed `mark_d = 0.6` mm into a 2.4 mm
+  wall leaves 1.8 mm — still ≥ 3 perimeters, and asserted as such.
+- **Only on a face that looks at the room.** The straight's outer wall runs
+  between the two enclosures; `bulkhead_out`'s flange rim is outside the wall.
+  Neither is reachable from the bore or from inside the cage. **`bulkhead_in`
+  is deliberately left unmarked** — every face it has is either inside the
+  enclosure with the animal or buried in the wall hole. `NUGGS_REV`'s comment
+  now says that rather than claiming "every module".
+
+The straight carries two lines, `NUGGS R1` and `ONE STRAIGHT PER RUN`;
+`bulkhead_out`'s 4 mm rim carries the revision only. Text is cut **one
+character at a time, each on its own tangent plane** — the rule spans 91.2 mm
+of arc (123.2° at r = 42.4) and one flat cut across that has a sagitta of
+22.2 mm, nine times the wall. Per character it is 0.068 mm.
+
+`mark_straight()` is a no-op when the tube has no clear wall between its two
+port zones, which is why the 25 mm coupon stub is unmarked and stays a fit
+coupon rather than becoming a text test.
+
+### 5. The README didn't contain the sentence this file said it did
+
+It does now, as a block quote at the head of "Assembly & use" — with the
+arithmetic (230 mm for one straight, 420 mm for two, 360 mm budget) and the
+reason it is dangerous, which is that two straights *will* mate and feel
+right, because every NUGGS face mates with every other. It is also in the
+defect table at the top and in the new "Markings" section.
+
+This was the fifth stale-claim defect in this design and the fourth caught by
+review rather than by a check. The mate-test harness was fixed by *deriving*
+its numbers; prose can't do that. `port_tol` now has a regression pin for the
+same reason — the argument that keeps winning here is "make the check read the
+value back out of the geometry", and it should be applied to the next claim
+too, not just the last one.
+
 ## Open items — next round
 
 - **Bed contact is improved but not proven.** The warning is cleared and
@@ -289,8 +470,28 @@ trade is not worth making before a real print says it is needed.
   advance a ranked backlog item. `openscad-nightly` is not installed in this
   environment, so CI's manifold mesh cannot be reproduced locally — that is
   the first thing to fix if anyone picks this up.
+
+  **Round 4 narrowed the search for free.** Removing `nuggs_port()` from
+  `bulkhead_in` took that part from 84/100 *with* degenerate faces to
+  **100/100 with none**. The slivers are inside `nuggs_port()`, not in the
+  tube, the flange or the bore cut. Both suspect radii (`ro`, `o_in`) are
+  port radii, which agrees.
+- **`port_tol` has never been printed, and round 4 changed what it means.**
+  The knob is 23% looser circumferentially than the geometry that was
+  reasoned about in rounds 1–3 (0.300 mm/side realised, where 0.2317 was
+  realised before). Nobody has felt either. If the first printed coupon is
+  loose, that is the number to look at first — and the fix is now a real
+  ±0.05 mm step in every direction at once, which it was not before.
 - Bulkhead spigot/counterbore fit is drawn but not dimensioned against a
-  real wall-thickness range.
+  real wall-thickness range. Round 4 removed a hard blocker on ever
+  measuring it: the inner flange could not sit flat against the wall at all
+  while the port's sectors stood 6 mm proud of its clamping face.
+- **`assembled()` is not the Bin Bridge.** It renders bulkhead_out →
+  straight → bulkhead_out, so `bulkhead_in` — the part round 4 changed most —
+  appears in no review preview at all, and the wall crossing the design
+  exists to make is not shown. Noticed while investigating #56/3; not fixed,
+  because preview cameras are frozen once a reviewer has seen them and this
+  wants a new shot rather than a reframed one.
 - No `previews/cameras.conf`, no `shots.conf`, no product shot yet.
 - The mate test is not gated. `ci.parts` gates parts; nothing in this repo
   gates a *fit*, so a future change could silently un-fix the coupling and

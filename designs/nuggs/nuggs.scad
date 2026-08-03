@@ -8,7 +8,9 @@
 part = "assembled";  // [assembled, straight, bulkhead_in, bulkhead_out, coupon, cutaway]
 
 /* [The NUGGS standard - change these and nothing you already printed fits] */
-// Embossed on every module; bump only on a breaking port change
+// Engraved on every module whose marked face is out of the animal's reach
+// (straight, bulkhead_out - see the "Revision mark" section). Bump only on a
+// breaking port change.
 NUGGS_REV = 1;
 // Internal bore (mm) - the headline number. Asserted >= min_bore_mm
 bore_d = 80.0;
@@ -83,6 +85,17 @@ bottom_chamfer = 0.8;
 // House angle for every chamfer and cone (deg). Not 45 - see NOTES.md
 chamfer_ang = 50;
 
+/* [Revision mark] */
+// Cap height of the engraved mark (mm). 0 leaves every part unmarked.
+mark_h = 5.0;
+// Engrave depth (mm). Recessed, never proud - a raised character is exactly
+// the chew-initiation edge PM.md N6 forbids. Asserted to leave 3 perimeters.
+mark_d = 0.6;
+// Per-character advance along the marked surface (mm). Fixed pitch, not the
+// font's own metrics - OpenSCAD cannot report them, and each character has to
+// be placed on its own tangent anyway. Wide enough that O/N/W do not touch.
+mark_adv = 4.8;
+
 /* [Quality] */
 // Iterating: $fa=6/$fs=1.5. Production: $fa=2/$fs=0.5.
 $fa = 3;
@@ -129,6 +142,9 @@ pitch/2 - lug_deg, not pitch - lug_deg. The looser form lets the part render \
 and gate cleanly while being physically impossible to twist shut.");
 assert(rib_h < lug_r / 2 - 0.4,
        "RIB: too deep for the coupling ring's radial budget.");
+assert(mark_d <= wall - 3 * nozzle,
+       "MARK DEPTH: the revision engraving must leave >= 3 perimeters of tube \
+shell behind it. Reduce mark_d or thicken wall.");
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -191,23 +207,62 @@ z_seat  = port_proj;              // where the MATE's tips land on our collar
 rib_in  = i_out - rib_h;          // how far the rib reaches into the mate's band
 g_floor = i_out - rib_h - port_tol;   // groove floor: clears the rib by port_tol
 
+// port_tol is a clearance in MILLIMETRES everywhere it appears. Rib and groove
+// flanks are radial planes, so a fixed *angle* is a gap that grows with radius:
+// feeding port_tol straight into rotate() and into a sector's angular width —
+// which this file did until issue #56 — realised 0.2317 mm/side at r = 44.25
+// instead of 0.300, and made the circumferential clearance scale with bore_d.
+// Deriving the angle per radius keeps the one-knob property the standard
+// claims, instead of a second, hidden, bore-dependent knob.
+function tol_deg(r) = port_tol / r * 180 / PI;
+// rib_in is the TIGHTEST radius at which a rib flank faces a groove flank, so
+// sizing there gives >= port_tol everywhere across the engagement band
+// rib_in..i_out rather than only on average.
+tol_a    = tol_deg(rib_in);
+slot_deg = rib_deg + 2 * tol_a;   // axial entry slot: the rib + port_tol a side
+run_deg  = lug_deg + 2 * tol_a;   // circumferential run, same clearance a side
+
+// Regression pin for the above (issue #56, finding 1). It reads the realised
+// clearance back OUT of the angular widths the geometry actually uses and
+// converts it to millimetres at the engagement radii — so writing a degree
+// where a millimetre belongs fails the render instead of quietly tightening
+// the joint by 23%. It is deliberately stated in mm, because mm is what the
+// coupon measures and what the docs promise.
+circ_clr     = (slot_deg - rib_deg) / 2 * PI / 180 * rib_in;   // tight end, mm
+circ_clr_max = (run_deg - lug_deg) / 2 * PI / 180 * i_out;     // loose end, mm
+assert(abs(circ_clr - port_tol) < 1e-6,
+       "PORT_TOL (circumferential): the gap between a rib flank and its groove \
+flank must BE port_tol in millimetres at the rib radius. Derive the bayonet's \
+angular widths with tol_deg(r); never set them from port_tol directly - that \
+silently spends a millimetre as if it were a degree.");
+assert(circ_clr_max <= port_tol * 1.05,
+       "PORT_TOL (circumferential): the loose end of the engagement band is \
+more than 5% over port_tol, so the angle is being derived at the wrong radius. \
+Derive it at rib_in, the tightest radius where the flanks face each other.");
+echo(str("nuggs: port_tol = ", port_tol, " mm -> circumferential clearance ",
+         circ_clr, "..", circ_clr_max, " mm/side over r = ", rib_in, "..",
+         i_out, " (flank angle ", tol_a, " deg)"));
+
 // Bayonet groove cut into one inner sector's outer face:
 //   * a narrow axial entry slot (rib_deg wide) running from our tip to the
 //     seat — this is the only way in, and it is deliberately much narrower
 //     than the sector so there is solid material left to twist under;
 //   * a full-width circumferential run at the seat, so the rib retains in
 //     EITHER twist direction and no handedness has to be got right.
-// Cut oversize by port_tol on every surface — the one fit knob.
+// Cut oversize by port_tol on every surface — the one fit knob. `t` is the
+// axial and radial clearance and is millimetres; `tol_a` is the SAME
+// clearance expressed as the angle that delivers it at the rib radius. Do not
+// collapse the two back into one symbol (issue #56).
 module bayonet_groove(a0) {
     t = port_tol;
-    rotate([0, 0, a0 - t])                                   // axial entry slot
+    rotate([0, 0, a0 - tol_a])                               // axial entry slot
         sector([[g_floor, z_tip - eps], [i_out + eps, z_tip - eps],
                 [i_out + eps, z_seat + t], [g_floor, z_seat + t]],
-               rib_deg + 2 * t);
-    rotate([0, 0, a0 - t])                                   // circumferential run
+               slot_deg);
+    rotate([0, 0, a0 - tol_a])                               // circumferential run
         sector([[g_floor, z_seat - rib_w - t], [i_out + eps, z_seat - rib_w - t],
                 [i_out + eps, z_seat + t], [g_floor, z_seat + t]],
-               lug_deg + 2 * t);
+               run_deg);
 }
 
 // One port face. The tube face sits at z = 0 and the mate's face butts it
@@ -254,6 +309,64 @@ module nuggs_port() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Revision mark
+//
+// NUGGS_REV has to be legible on a printed part or it is not a standard, just
+// a number in a file — and the one composition hazard this design admits
+// (chaining two straights past the TVT budget) is a rule only the part itself
+// can carry to whoever is holding it. Both were claimed and neither existed
+// until issue #56 finding 4.
+//
+// Two rules govern where it may go:
+//   * ENGRAVED, never proud. A raised character is a chew-initiation edge,
+//     which PM.md N6 forbids outright.
+//   * Only on a face that looks at the ROOM. The straight's outer tube wall
+//     runs between the two enclosures and the bulkhead_out flange rim sits
+//     outside the wall, so neither is reachable from the bore or from inside
+//     the cage. bulkhead_in gets no mark at all: every face it has is either
+//     inside the enclosure with the animal or buried in the wall hole.
+//
+// Cut one character at a time, each on its own tangent plane. The rule spans
+// 91.2 mm of arc (123.2 deg at r = 42.4), and one flat cut across that has a
+// sagitta of 22.2 mm — nine times the wall. Per character it is 0.068 mm.
+// ---------------------------------------------------------------------------
+function mark_rev()  = str("NUGGS R", NUGGS_REV);
+function mark_rule() = "ONE STRAIGHT PER RUN";
+
+// Text wrapped around the outside of a cylinder of radius `r`, centred on
+// angle `a0` at height `z`, reading left to right seen from outside. Returns
+// the cutting solid — always subtract it, never union it.
+module wrap_text(s, r, z, a0 = 0, h = mark_h, depth = mark_d, adv = mark_adv) {
+    step = adv / r * 180 / PI;                 // arc advance -> degrees
+    for (i = [0 : len(s) - 1])
+        rotate([0, 0, a0 + (i - (len(s) - 1) / 2) * step])
+            translate([r - depth, 0, z])
+                rotate([90, 0, 90])            // text plane -> tangent plane
+                    linear_extrude(depth + eps)
+                        text(s[i], size = h, halign = "center",
+                             valign = "center");
+}
+
+// Revision + composition rule on the straight's outer wall, at mid-length.
+// Only when there is clear tube between the two port zones: a 25 mm coupon
+// stub is port zone end to end, and the coupon must stay a fit coupon.
+module mark_straight(l) {
+    if (mark_h > 0 && l - 2 * z_top >= 4 * mark_h) {
+        wrap_text(mark_rev(),  ro, l / 2 + mark_h * 0.8);
+        wrap_text(mark_rule(), ro, l / 2 - mark_h * 0.8);
+    }
+}
+
+// Revision on the outer flange rim — 4 mm of face, so it carries the
+// revision only. The rule belongs on the straight, which is the part the
+// rule is about.
+module mark_flange_rim() {
+    if (mark_h > 0)
+        wrap_text(mark_rev(), bh_flange_d / 2, bh_flange_t / 2,
+                  h = mark_h * 0.6, adv = mark_adv * 0.6);
+}
+
 // Internal edge break at a bore face: swallows elephant's foot so no lip is
 // ever presented to a claw or a loaded cheek pouch.
 module bore_lead(z, dir = 1) {
@@ -277,6 +390,7 @@ module nuggs_straight(l = straight_len) {
         translate([0, 0, -port_proj - 2]) cylinder(r = ri, h = l + 2 * port_proj + 4);
         translate([0, 0, -port_proj]) bore_lead(0.001, 1);
         translate([0, 0, l + port_proj]) mirror([0, 0, 1]) bore_lead(0.001, 1);
+        mark_straight(l);
     }
 }
 
@@ -292,8 +406,18 @@ module clamp_flange(t) {
     }
 }
 
-// Inner half: flange inside the enclosure, full-bore spigot through the wall,
-// and one genderless port facing into the enclosure.
+// Inner half: flange inside the enclosure and a full-bore spigot through the
+// wall. Deliberately NO coupling port.
+//
+// It carried one until issue #56 finding 3: `mirror([0,0,1]) nuggs_port()`
+// put 14 150 mm3 of sector tips, groove mouths and proud rib tabs 13 mm INTO
+// the enclosure, at bedding height, reaching r = 48.4. Nothing mates with it —
+// in the Bin Bridge the straight couples to bulkhead_out on the far side of
+// the wall, `assembled()` never instantiates this part, and the README has
+// always described it as "inner flange + full-bore spigot". It could only ever
+// have served an in-enclosure module, and PM.md puts any in-cage configuration
+// in Never scope. So it was unreachable geometry that failed N6 in the one
+// place the animal actually lives. Removed; reasoning in NOTES.md.
 module nuggs_bulkhead_in() {
     difference() {
         union() {
@@ -301,12 +425,14 @@ module nuggs_bulkhead_in() {
             // spigot passes through the enclosure wall, bore never necked
             translate([0, 0, bh_flange_t])
                 tube(bh_spigot_len, ri, ri + bh_spigot_wall);
-            // port faces back out of the flange
-            mirror([0, 0, 1]) nuggs_port();
         }
-        translate([0, 0, -port_proj - eps])
-            cylinder(r = ri, h = port_proj + bh_flange_t + bh_spigot_len + 2 * eps);
-        mirror([0, 0, 1]) bore_lead(0.001, 1);
+        translate([0, 0, -eps])
+            cylinder(r = ri, h = bh_flange_t + bh_spigot_len + 2 * eps);
+        // Edge break on the enclosure-side bore mouth. With the port gone this
+        // face IS the mouth the animal enters, so it is the one that must never
+        // present a lip to a claw or a loaded pouch (N6). It only ever widens
+        // the bore, so N1 is untouched.
+        bore_lead(-0.001, 1);
     }
 }
 
@@ -328,6 +454,8 @@ module nuggs_bulkhead_out() {
         translate([0, 0, -eps])
             cylinder(r = ri, h = 2 * port_proj + collar_t + 2 * eps);
         translate([0, 0, 2 * port_proj + collar_t]) mirror([0, 0, 1]) bore_lead(0.001, 1);
+        // Revision on the flange rim: outside the enclosure wall, in the room.
+        mark_flange_rim();
     }
 }
 
