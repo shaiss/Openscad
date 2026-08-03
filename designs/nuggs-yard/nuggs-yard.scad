@@ -74,6 +74,10 @@ wall = 1.6;
 // Horizontal inset of the bed-edge chamfer (mm); it rises cham_v = 1.3x this
 bottom_chamfer = 0.8;
 
+// How far a cavity sweep overruns the shell at a free face (mm). Exists so no
+// port face is a coplanar face pair -- see sweep_straight. Not a fit knob.
+cav_over = 0.6;
+
 /* [Quality] */
 // Iterating: 32. Production: 96+.
 $fn = 96;
@@ -121,6 +125,17 @@ assert(refuge_len <= 2 * body_len_mm,
 assert(wall >= 1.2,
        str("wall ", wall, " mm is under 3 perimeters at a 0.4 mm nozzle."));
 
+// wye_ang sits in a trig denominator below (sin in wedge_tip_x, tan in
+// wye_end_wedge), so it has to be bounded before it is used, not after: at 0
+// the division is by zero and at 90 tan is infinite, which would sail through
+// the crotch assert rather than trip it. The practical envelope is narrower
+// than the mathematical one anyway — under 15° the branch is nearly parallel
+// to the main run and the part grows without bound, over 75° it is a tee with
+// no acute crotch to protect.
+assert(wye_ang >= 15 && wye_ang <= 75,
+       str("wye_ang ", wye_ang, " deg is outside 15-75. Below/above that the ",
+           "crotch derivation divides by ~0 or returns an infinite wedge."));
+
 // Where the branch's near edge crosses the main trough's edge, and how thick
 // the crotch wedge has grown by the time the main run ends.
 wedge_tip_x = wye_junction + (inner_w / 2) *
@@ -133,6 +148,15 @@ assert(wye_end_wedge >= 8,
 
 assert(wye_junction > joint_lap + wall && wye_junction < wye_len,
        "wye_junction must sit between the -X port skirt and the +X port.");
+
+// A circuit swaps one straight for the refuge, so the two must be the same
+// face-to-face length or the loop does not close -- the same requirement
+// wye_len carries. Asserted rather than assumed: circuit() used to pass its
+// own run length into refuge(), which silently ignored refuge_len and would
+// have let the assembled preview disagree with the part you actually print.
+assert(refuge_len == straight_len,
+       str("refuge_len ", refuge_len, " must equal straight_len ", straight_len,
+           ": a circuit substitutes the refuge for one straight."));
 
 assert(joint_h <= side_h,
        "Joint skirt must not stand proud of the sidewall (chew edge, Y5).");
@@ -203,8 +227,28 @@ module refuge_cavity_2d() {
 // z = 0. rotate([90,0,90]) maps profile-X to Y and profile-Y to Z.
 // ---------------------------------------------------------------------------
 
+// A cavity profile (1 or 3) is swept PAST both ends of the shell rather than
+// flush with them.
+//
+// The cavity already had to run above the shell so the open top isn't a pair
+// of coincident faces; the sweep ends need the same treatment and originally
+// didn't get it. Flush ends made every port face a coplanar face pair. CGAL
+// resolves those exactly and reported watertight; CI's Manifold backend did
+// not, and returned edges shared by more than two triangles on the wye
+// (75/100 NOT PRINTABLE, 614 triangles against CGAL's 540).
+//
+// It surfaced on the wye alone because a flush end is only *exactly*
+// coincident when the end face is axis-aligned. The branch is rotated 45°, so
+// its vertices land on irrationals and the two faces coincide only to within
+// floating point — which is worse for a boolean than coinciding exactly. The
+// non-manifold edges clustered at the branch's far-end +Y corner, every one
+// inside the floor-fillet band. Overrunning the ends removes the coincidence
+// for every module instead of special-casing the one that failed.
+function cavity_profile(p) = (p == 1 || p == 3);
+
 module sweep_straight(len, profile_2d = 0) {
-    rotate([90, 0, 90]) linear_extrude(len)
+    o = cavity_profile(profile_2d) ? cav_over : 0;
+    translate([-o, 0, 0]) rotate([90, 0, 90]) linear_extrude(len + 2 * o)
         if (profile_2d == 0) channel_shell_2d();
         else if (profile_2d == 1) channel_cavity_2d();
         else if (profile_2d == 2) refuge_shell_2d();
@@ -216,7 +260,10 @@ module sweep_straight(len, profile_2d = 0) {
 // which is why a 90-deg turn here is one part at 100/100, unlike the 45-deg
 // ceiling that applies to a bend in a vertically-printed bore (issue #34).
 module sweep_curve(ang, r, profile_2d = 0) {
-    rotate_extrude(angle = ang) translate([r, 0])
+    // same end overrun as sweep_straight, expressed as the angle that
+    // subtends cav_over at the centreline radius
+    d = cavity_profile(profile_2d) ? cav_over * 180 / (PI * r) : 0;
+    rotate([0, 0, -d]) rotate_extrude(angle = ang + 2 * d) translate([r, 0])
         if (profile_2d == 0) channel_shell_2d();
         else channel_cavity_2d();
 }
@@ -297,8 +344,22 @@ module curve(ang = 90, r = curve_r) {
     difference() {
         union() {
             sweep_curve(ang, r, 0);
-            // start face sits at (r,0,0) with the body sweeping toward +Y
-            port_skirt([r, 0, 0], 90);
+            // The start face sits at (r,0,0) with the body sweeping toward +Y,
+            // so the port frame's -X (its "into the body" direction) must map
+            // to +Y — i.e. rotate by -90, matching chain_curve's derivation.
+            // At +90 the lap is inverted, and it does not merely look wrong:
+            // the rooted half — which carries no clearance because it is meant
+            // to fuse into our OWN wall — lands in the band the neighbour's
+            // wall has to occupy, filling the joint_tol gap with solid. A
+            // curve then interferes with whatever it joins by a full wall
+            // thickness and the run cannot be assembled.
+            //
+            // Nothing in the render says so: it is one watertight body at
+            // 100/100 either way. It was caught by sampling the tolerance band
+            // for material (inverted: occupied; correct: clear), which is the
+            // only check here that looks at the joint as a FIT rather than as
+            // a mesh.
+            port_skirt([r, 0, 0], -90);
         }
         sweep_curve(ang, r, 1);
     }
@@ -357,9 +418,12 @@ module chain_curve(ang = 90, r = curve_r) {
 // module's skirted (-X) end meets the previous module's bare end.
 module circuit(i = 0, run = straight_len) {
     if (i < 4) {
-        // one side of the loop is the covered refuge: the hide is ON the
-        // route, so he passes through it rather than detouring to it
-        if (i == 3) refuge(run); else straight(run);
+        // One side of the loop is the covered refuge: the hide is ON the
+        // route, so he passes through it rather than detouring to it.
+        // refuge() is called on its own length, not the circuit's, so the
+        // assembled preview can never disagree with the standalone part --
+        // the assert above is what keeps the loop closed.
+        if (i == 3) refuge(); else straight(run);
         translate([run, 0, 0]) {
             chain_curve(90, curve_r);
             translate([curve_r, curve_r, 0]) rotate([0, 0, 90])

@@ -54,12 +54,12 @@ floor, prints flat on the bed, and needs **no supports**.
 
 | Part | Size (mm) | Filament | Time |
 |---|---|---|---|
-| `straight` | 172 × 89 × 49 | 62 g | 5h 14m |
-| `curve90` | 124 × 134 × 49 | 50 g | 4h 18m |
-| `curve45` | 97 × 98 × 49 | 28 g | 2h 27m |
-| `wye` | 183 × 166 × 49 | 76 g | 6h 40m |
-| `refuge` (covered) | 172 × 89 × 89 | 92 g | 7h 18m |
-| `nuggs-yard-coupon` | 57 × 209 × 49 | 40 g | 3h 39m |
+| `straight` | 172.0 × 88.6 × 48.6 | 62.11 g | 5h 14m |
+| `curve90` | 124.3 × 133.6 × 48.6 | 49.49 g | 4h 18m |
+| `curve45` | 97.1 × 98.0 × 48.6 | 26.65 g | 2h 27m |
+| `wye` | 183.3 × 165.6 × 48.6 | 76.28 g | 6h 40m |
+| `refuge` (covered) | 172.0 × 88.6 × 89.3 | 91.89 g | 7h 18m |
+| `nuggs-yard-coupon` | 57.0 × 208.8 × 48.6 | 40.40 g | 3h 39m |
 
 Masses and times are the gate's own PrusaSlicer test-slice at 0.2 mm /
 0.4 nozzle, **PLA at 1.24 g/cm³**. PETG is about 2.4% heavier.
@@ -81,13 +81,16 @@ Pick one to suit your spool. **Print the coupon (40 g) before any of them.**
 
 | Build | Parts | Filament | Footprint |
 |---|---|---|---|
-| **Oval + branch** ⭐ | 4 × `curve90`, 1 × `wye`, 1 × `refuge` | **369 g** | ~406 × 246 mm |
-| Oval circuit | 4 × `curve90`, 1 × `straight`, 1 × `refuge` | 355 g | ~406 × 246 mm |
-| Square circuit | 4 × `curve90`, 3 × `straight`, 1 × `refuge` | 479 g | ~409 × 409 mm |
-| Open S-run (no circuit) | 2 × `curve90`, 2 × `straight` | 225 g | fits anything |
+| **Oval + branch** ⭐ | 4 × `curve90`, 1 × `wye`, 1 × `refuge` | **366 g** | ~406 × 246 mm |
+| Oval circuit | 4 × `curve90`, 1 × `straight`, 1 × `refuge` | 352 g | ~406 × 246 mm |
+| Square circuit | 4 × `curve90`, 3 × `straight`, 1 × `refuge` | 476 g | ~409 × 409 mm |
+| Open S-run (no circuit) | 2 × `curve90`, 2 × `straight` | 223 g | fits anything |
+
+Totals are summed from the gate's unrounded figures and then rounded once, so
+adding up the rounded per-part masses above can land a gram out.
 
 The starred build is the recommendation: it has the loop, the branch and the
-hide, and lands at **409 g including the coupon**.
+hide, and lands at **407 g including the coupon**.
 
 **Shorter run, more stops.** The evidence base for hamster welfare
 (Hauzenberger et al. 2006) puts substrate depth and foraging — not tunnel
@@ -106,13 +109,13 @@ costs 0 g of filament and does more than another metre of channel.
 - **Infill:** 20%
 - **Supports:** **none — for any part.** The steepest downward-facing
   surface in the whole kit is the refuge's 45° gable.
-- **Orientation:** exactly as each part renders — flat on the bed. printcheck
+- **Orientation:** exactly as each part renders — flat on the bed; printcheck
   reports "current orientation is as good as any axis-aligned alternative"
   for all six.
 - **Brim:** not needed. Every module has a full flat footprint (unlike the
   `nuggs` straight, which stands 160 mm tall on a 2.4 mm ring and does).
-- **Plate:** a `straight` is 89 mm wide, so three fit side by side on a
-  256 mm bed.
+- **Plate:** a `straight` is 88.6 mm wide, so **two** fit side by side on a
+  256 mm bed (three would need 266 mm). A 350 mm-class bed takes three.
 
 **Cleaning:** hand wash, ≤ 50 °C, unscented mild dish soap, dry fully. Never
 a dishwasher — the heated dry cycle exceeds even PETG, and a deformed
@@ -123,7 +126,8 @@ covered segment is a *narrowed* one.
 | Parameter | Default | What it does |
 |---|---|---|
 | `joint_tol` | 0.30 mm | **The one fit knob.** Clearance between a skirt and the wall it laps. Tune on the coupon in ±0.05 steps |
-| `inner_w` | 80 mm | Internal floor width. Asserted ≥ 80 |
+| `inner_w` | 80 mm | Internal floor width. Asserted ≥ `min_run_width` |
+| `min_run_width` | 80 mm | Welfare floor for the open run's width, and what `inner_w` is asserted against. Lower it and the guard moves with it |
 | `side_h` | 47 mm | Sidewall height. **Set by the refuge, not the open run** — it is the smallest value at which a covered segment still clears the 70 mm bore floor. At 45 mm the refuge measures 69.1 mm and is non-compliant |
 | `min_covered_bore` | 70 mm | Welfare floor for any covered segment. Never lower it |
 | `body_len_mm` | 180 mm | Your animal's head-and-body length; caps `refuge_len` at 2× it |

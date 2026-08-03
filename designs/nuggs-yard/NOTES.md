@@ -60,12 +60,15 @@ the animal's body rather than about the tube:
 | 2026-08-03 | Horizontal **90° curves are one part**, not two 45s | #34's "45° is the printable ceiling" applies to a bend that tilts a bore out of the build direction. A channel turning in plan never leaves the print plane — measured 100/100 at 90°. This halved the curve count |
 | 2026-08-03 | Lap-skirt joint, gendered (skirt end + bare end) | Cheap, prints flat, nothing enters the walking surface, and because the skirts never pass under the neighbour's floor a module **lifts straight out** of an assembled run for cleaning. Genderless was `nuggs`'s big win but needs a bayonet, which an open cross-section cannot carry. Backlogged as B3 |
 | 2026-08-03 | Wye crotch fixed by **moving the junction**, not by a boolean patch | Two attempted booleans (a plan-footprint opening, then a cavity closing) either did nothing or created a worse feather edge (printcheck 0.00 mm walls). The wedge thickness is analytic; putting the junction back so it has room to thicken is the actual cure, and `wye_end_wedge` asserts it |
+| 2026-08-03 | Cavities overrun the shell at every free face, not just the top | A flush port face is a coplanar face pair. CGAL tolerates it, Manifold does not, and the asymmetry only shows on a rotated (non-axis-aligned) end. Overrunning everywhere is cheaper than reasoning about which faces are axis-aligned |
+| 2026-08-03 | `wye_ang` bounded 15–75° | It sits in a trig denominator: 0° divides by zero, 90° makes `tan` infinite and the crotch assert pass vacuously. Raised in review on PR #76 |
 | 2026-08-03 | Bed chamfer rises 1.3× its inset instead of a true 45° | A 45° chamfer sits exactly on printcheck's overhang threshold and books the whole strip as unsupported (335 mm², 8 points) for a surface that prints fine |
 
 ## Defects found and fixed this session
 
-Recorded because each one was silent, and three of the four were only caught
-by a check rather than by reading the code.
+Recorded because each one was silent, and five of the six were only caught
+by a check rather than by reading the code. Two of them — 4 and 6 — passed
+every gate in the repo while being wrong.
 
 1. **Joint skirt was a separate body.** The two halves of the lap were
    reversed, putting the rooted half outside the module. OpenSCAD said
@@ -89,6 +92,79 @@ by a check rather than by reading the code.
    doc (or an assert) claiming something the model does not do — and it is
    why the measurement below is mandatory rather than optional.
 
+5. **Non-manifold wye under CI's Manifold backend, watertight under CGAL.**
+   ⚠️ The one a local gate could not catch. Cavity sweeps ran flush with the
+   shell at the port faces, making every port a coplanar face pair. CGAL
+   resolved them exactly and reported watertight 100/100; CI renders with
+   `openscad-nightly --backend=manifold`, which returned **edges shared by
+   more than two triangles — 75/100 NOT PRINTABLE**, 614 triangles against
+   CGAL's 540.
+
+   Only the wye failed, and the reason is worth keeping: a flush end is
+   *exactly* coincident only when the end face is axis-aligned. The branch is
+   rotated 45°, so its vertices land on irrationals and the two faces coincide
+   only to within floating point — which a boolean handles worse than exact
+   coincidence. All 13 non-manifold clusters sat at the branch's far-end +Y
+   corner, computed as `(50 + 0.7071(130−41.6), 0.7071·171.6)` =
+   **(112.5, 121.3)**, and every reported z (3–13) fell inside the floor-fillet
+   band `wall … wall+fillet_r` = 1.6–13.6 mm.
+
+   Fixed by sweeping cavities `cav_over` past the shell at every free face
+   (`cav_over = 0.6`), which removes the coincidence for **every** module
+   rather than special-casing the one that failed. Same lesson as the open
+   top, which already ran the cavity above the shell for exactly this reason —
+   it just was not applied along the sweep axis.
+
+   **This backend gap is now a known hole in local preflight**: `gate.sh`
+   here runs stock CGAL 2021.01, CI's render gate runs the Manifold dev
+   snapshot, and a mesh can be watertight under one and not the other. The
+   nightly could not be installed in this session (the OBS repo is blocked by
+   network policy), so the fix was reasoned from the CI log's non-manifold
+   coordinates and verified under CGAL only — CI is the real check. Backlogged
+   as B7.
+
+6. **The curve's joint lap was inverted, and it filled the tolerance gap.**
+   ⚠️ Raised by a review bot on PR #76, which called it a "disconnected
+   shell" — it is not; the part is one watertight body at 100/100 either way.
+   The real fault is worse. `curve()` placed its skirt with `port_skirt(...,
+   90)` while the port frame needs `-90` (the same rotation `chain_curve`
+   derives), so the lap ran backwards: the **rooted** half — which carries no
+   clearance, because it is meant to fuse into our own wall — landed in the
+   band the neighbour's wall must occupy, and the overlapping half sat inside
+   the curve where it laps nothing.
+
+   Consequence: a curve would interfere with every module it joins by a full
+   wall thickness, and a run containing one could not be assembled. Every
+   mesh-level check in the repo passed it — watertight, one body, 100/100,
+   correct bounding box. Caught only by **sampling the tolerance band for
+   material**, below.
+
+## Checking the joint as a FIT, not as a mesh (required after any joint change)
+
+printcheck judges a mesh. It cannot see that a clearance has been filled in,
+which is how defect 6 survived every gate. Sample the joint band directly:
+
+```bash
+./scripts/gate.sh nuggs-yard        # exports build/nuggs-yard-curve90.stl
+python3 - <<'PY_'
+import trimesh, numpy as np
+m = trimesh.load('build/nuggs-yard-curve90.stl')
+ow, r, tol, jt = 83.2, 80, 0.30, 2.4
+outer = r + ow/2
+for desc, p, want in [
+    ("overlap half laps the neighbour", [outer+tol+jt/2, -6, 10], True),
+    ("tolerance gap stays CLEAR",       [outer+tol/2,    -6, 10], False),
+    ("rooted half bites into shell",    [outer-0.4,       6, 10], True),
+]:
+    got = bool(m.contains(np.array([p]))[0])
+    print(("ok   " if got == want else "FAIL "), desc, "inside=", got)
+PY_
+```
+
+The middle case is the one that matters: **material in the tolerance band
+means the joint cannot close.** This is the same gap `lib/*-mates.conf`
+exists to cover for libraries, and this design has no equivalent — see B8.
+
 ## Measuring the bore floor on the mesh (required, not optional)
 
 The assert is arithmetic and can be wrong. Re-measure on the exported STL
@@ -96,23 +172,41 @@ after any change to `side_h`, `wall`, `inner_w` or the roof:
 
 ```bash
 ./scripts/gate.sh nuggs-yard          # exports build/nuggs-yard-refuge.stl
-python3 - <<'PY'
-import trimesh
+python3 - <<'PY_'
+import sys, trimesh
 from shapely.geometry import Polygon
 m = trimesh.load('build/nuggs-yard-refuge.stl')
+FLOOR, seen = 70.0, []
 for x in (15, 40, 70, 100, 130, 155):
     sec = m.section(plane_origin=[x,0,0], plane_normal=[1,0,0])
+    if sec is None:
+        sys.exit(f"FAIL x={x}: no cross-section")
     p2, _ = sec.to_planar()
-    for poly in p2.polygons_full:
-        for ring in poly.interiors:
-            g = Polygon(ring); lo, hi = 0.0, 100.0
-            for _ in range(60):
-                mid = (lo+hi)/2
-                if g.buffer(-mid).is_empty: hi = mid
-                else: lo = mid
-            print(f"x={x:4} inscribed = {2*lo:.2f} mm")
-PY
+    rings = [r for poly in p2.polygons_full for r in poly.interiors]
+    if not rings:
+        sys.exit(f"FAIL x={x}: no enclosed void — is this part actually covered?")
+    for ring in rings:
+        g = Polygon(ring); lo, hi = 0.0, 100.0
+        for _ in range(60):
+            mid = (lo+hi)/2
+            if g.buffer(-mid).is_empty: hi = mid
+            else: lo = mid
+        seen.append(2*lo)
+        print(f"x={x:4} inscribed = {2*lo:.2f} mm")
+if min(seen) < FLOOR:
+    sys.exit(f"FAIL: minimum {min(seen):.2f} mm is under the {FLOOR} mm floor")
+print(f"ok  {len(seen)} stations, min {min(seen):.2f} mm >= {FLOOR}")
+PY_
 ```
+
+It **exits non-zero** on a station below the floor, on a station with no
+enclosed void, and on a missing section — a check that only prints is how
+defect 4 stayed invisible, so this one has to fail closed to be worth running.
+
+Verified against a negative control, because a check that cannot fail proves
+nothing: rendered at the old `side_h = 45` (with `min_covered_bore` lowered to
+get past the assert) it reports `FAIL: minimum 69.09 mm is under the 70.0 mm
+floor` and exits 1.
 
 Needs `networkx` alongside trimesh/shapely (`pip install networkx`).
 **Every slice must read ≥ 70.00 mm.** Current: 70.75 mm at every station.
@@ -168,3 +262,5 @@ Do not print a 92 g wye before this stub mates properly.
 | B4 | Ramp module | Only ≤ 15° (Y3), which buys very little height over a printable length. Needs its own evidence before it exists |
 | B5 | Measure the real playpen and publish a fitted layout | Currently the README gives generic BOMs and a footprint |
 | B6 | A layout/topology check | Y6 (no dead ends) is a property of the *assembly*, and nothing in the repo can gate it. Same class of gap as `nuggs` B1c |
+| B8 | A mates-style fit check for the joint | Defect 6 filled the clearance and passed every mesh gate. `lib/*-mates.conf` covers exactly this for libraries; designs have no equivalent, so the check above is a manual procedure that nothing enforces |
+| B7 | Make the backend gap visible locally | A part can be watertight under CGAL and non-manifold under CI's Manifold backend — defect 5 above, and it cost a red CI run. Either preflight should render with the nightly, or the repo should say plainly that a green local gate does not cover it |
