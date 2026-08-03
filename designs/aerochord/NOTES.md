@@ -81,10 +81,13 @@ print pins down.
 The repo gate proves the mesh is watertight, printable, and sliceable. It says
 **nothing** about sound. Specifically:
 
-1. **Pitch is nominal.** The stopped-pipe formula omits the end correction at
-   the window (~0.3–0.6 × bore radius), the flue/plenum coupling, and the fact
-   that a fipple's effective length isn't exactly labium-to-cap. Expect the
-   real pitch to differ; correct it with `tune` after one print.
+1. **Pitch is nominal.** `end_corr` models the window's open-end correction
+   only *approximately* — a single lumped constant (`window_corr`), not a
+   per-voice, frequency-dependent value — and the model still omits the
+   flue/plenum coupling, the conical cap's departure from a flat stopped end,
+   and temperature. Expect the real pitch to differ; correct it with `tune`
+   after one print (and `window_corr` if the intervals, not just the overall
+   pitch, are off).
 2. **Voicing is not guaranteed by geometry.** Whether a fipple *speaks* at all
    depends on flue geometry, jet velocity, and cut-up in ways a mesh can't
    confirm. The dimensions here follow documented tin-whistle/recorder practice
