@@ -149,8 +149,9 @@ the configurator below. And **static is not free of usage**: there is no
 per-request function compute, but every visit still spends Edge Requests
 and Fast Data Transfer against the plan's monthly allowance, and on Hobby
 exhausting it pauses the project rather than billing overage. Our preview
-assets are 3.8 MB across 22 files today, which is small, but the GIFs and
-product shots are the part that would grow.
+assets were 3.8 MB across 22 files when this was measured (2026-08-02),
+which is small — but the GIFs and product shots are the part that would
+grow.
 
 **Tier 1 — the browser configurator (static assets, visitor's compute).**
 The actual prize. Every design here is parametric with Customizer sections
@@ -190,6 +191,18 @@ to blob storage, with the function receiving only the storage key —
 oversized request body. Worth building as a public service, but earning
 nothing for CI — CI just
 `pip install -e tools/printcheck` in 11 s and calls it locally.
+
+**Anything public here needs abuse controls designed in, not added after.**
+Both this endpoint and the Tier 3 service below take a file from a stranger
+and spend metered storage and compute on it, which makes an unbounded one a
+standing invitation. Settle these before writing the handler, not once a bill
+arrives: whether uploads are authenticated at all (Vercel's own guidance is
+that the upload-token route must authenticate the caller unless anonymous
+upload is a deliberate choice); a maximum accepted file size, enforced when
+the token is issued rather than after the bytes land; how long blobs are kept
+and what deletes them; a request rate limit and a concurrency cap per caller;
+and an execution timeout, since `printcheck` is ~1 s on our meshes but a
+hostile mesh is not our meshes.
 
 **Tier 3 — a hosted slice/render service.** Hosting `prusa-slicer` or full
 `openscad-nightly` means a container image with the toolchain baked in —
