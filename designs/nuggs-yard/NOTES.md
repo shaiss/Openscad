@@ -1,0 +1,170 @@
+# nuggs-yard — engineering log
+
+Product page: `README.md`. Design request and the measurements behind it:
+[issue #73](https://github.com/shaiss/print-bench/issues/73). Sibling design
+(the enclosed wall-crossing tunnel, and the source of the welfare limits):
+[`designs/nuggs`](../nuggs/).
+
+## Goal
+
+An open-top run for an adult Syrian hamster's **playpen** — free-roam time
+outside the cage. The ask was "loops and twists, turns, branches, all the
+stuff to keep him busy". It is a floor-standing kit of modules the owner
+lays out themselves, not a fixed object.
+
+This is *not* a change to `nuggs` and not a derivative of it: no shared
+geometry, no include, no `derives.conf`. `nuggs` is an enclosed bore that
+crosses an enclosure wall; this is an open trough that sits on a pen floor.
+They share an animal and a research dossier, nothing else.
+
+## Given / assumed measurements
+
+| Value | Status | Note |
+|---|---|---|
+| Filament budget 250–500 g | **given** (2026-08-03) | Sizes the whole kit; drove the module dimensions more than anything else |
+| Animal fits the default 80 mm width | **given** (2026-08-03) | Owner confirmed rather than measured; `body_len_mm` stays at Merck's 180 mm upper figure |
+| Bore floor 70 mm for covered segments | inherited from `nuggs` N1 | DTSchB pouch-full entrance minimum |
+| Covered length ≤ 2 × body length | inherited from `nuggs` N2 | TVT Merkblatt 62 |
+| Max incline 15°, no vertical runs | inherited from `nuggs` N4 | v1 is entirely flat, so this is satisfied by construction |
+| Playpen dimensions | **still unknown** | Not blocking: the kit is modular and the budget bounds the layout. The preview circuit is 409 × 409 mm |
+| PLA vs PETG | **assumed PLA** | The gate slices at 1.24 g/cm³, so every gram below is PLA. PETG is ~2.4% heavier and wants `joint_tol` re-tuned |
+| Pen floor surface | unknown | Y8 (stability) is currently met by a wide flat footprint, not by feet |
+
+## Why open-topped — the load-bearing decision
+
+`nuggs`'s charter forbids exactly what was asked for here (loops, branches,
+long runs). Rather than argue with it, each limit was tested against the
+failure mode it exists to prevent. **Four of seven dissolve when the roof
+comes off, three do not**, and the three that survive are the three about
+the animal's body rather than about the tube:
+
+| Limit | Survives? | Why |
+|---|---|---|
+| N2 enclosed length ≤ 360 mm | No, for open channel | The limit exists because an animal cannot reverse in a long tube and cannot be reached. He steps out anywhere; so does a hand. **Applies in full to any covered segment** (Y2) |
+| N3 no dead air / dead ends | No | Nothing encloses air. A closed circuit has no terminus at all |
+| N5 opens by hand in one action | No | There is nothing to open |
+| N1 70 mm bore floor | **Yes** | Becomes Y1 wherever a roof exists |
+| N4 no vertical, ≤ 15° incline | **Yes** | Y3. Syrians climb well but have almost no depth perception, so they fall |
+| N6 no protrusions / chew edges | **Yes** | Y5 |
+| N7 hand wash ≤ 50 °C | **Yes** | Y7 |
+
+## Key decisions
+
+| Date | Decision | Reason |
+|---|---|---|
+| 2026-08-03 | Open-top channel, not enclosed tube | Dissolves N2/N3/N5, which is the only way the requested loops and branches can be welfare-compliant at all |
+| 2026-08-03 | "Loop" means a **closed circuit**, never a helix or vertical loop | A circuit is the only topology with zero dead ends, so Y6 holds by construction. A vertical loop is refused under Y3 |
+| 2026-08-03 | **Flat floor, not a round bore** | A round tube floor makes the animal walk the bottom of an arc. Flat is better footing, and it is also what lets every module print flat-on-bed with no support |
+| 2026-08-03 | `side_h = 47`, and it is set by the **refuge**, not the open run | The open channel would be happy at 30 mm and 16% cheaper. 47 is the minimum that lets a gable-roofed covered segment clear the 70 mm bore floor. The open run pays for the refuge's legality |
+| 2026-08-03 | **Gable roof, not an arch** on the refuge | Both 45° slopes are self-supporting; an arch's crown is a horizontal overhang |
+| 2026-08-03 | Horizontal **90° curves are one part**, not two 45s | #34's "45° is the printable ceiling" applies to a bend that tilts a bore out of the build direction. A channel turning in plan never leaves the print plane — measured 100/100 at 90°. This halved the curve count |
+| 2026-08-03 | Lap-skirt joint, gendered (skirt end + bare end) | Cheap, prints flat, nothing enters the walking surface, and because the skirts never pass under the neighbour's floor a module **lifts straight out** of an assembled run for cleaning. Genderless was `nuggs`'s big win but needs a bayonet, which an open cross-section cannot carry. Backlogged as B3 |
+| 2026-08-03 | Wye crotch fixed by **moving the junction**, not by a boolean patch | Two attempted booleans (a plan-footprint opening, then a cavity closing) either did nothing or created a worse feather edge (printcheck 0.00 mm walls). The wedge thickness is analytic; putting the junction back so it has room to thicken is the actual cure, and `wye_end_wedge` asserts it |
+| 2026-08-03 | Bed chamfer rises 1.3× its inset instead of a true 45° | A 45° chamfer sits exactly on printcheck's overhang threshold and books the whole strip as unsupported (335 mm², 8 points) for a surface that prints fine |
+
+## Defects found and fixed this session
+
+Recorded because each one was silent, and three of the four were only caught
+by a check rather than by reading the code.
+
+1. **Joint skirt was a separate body.** The two halves of the lap were
+   reversed, putting the rooted half outside the module. OpenSCAD said
+   nothing; it surfaced as `bodies: 2` in printcheck. A skirt that is not
+   attached simply falls off the plate.
+2. **Skirt merely touched the shell.** After fixing the order, the skirt met
+   the sidewall face-to-face — coincident faces stay separate volumes through
+   CGAL (`bodies: 3`). Fixed by biting `wall/2` into the sidewall.
+3. **Overlapping boxes broke watertightness.** Interpenetrating cubes shared
+   a coplanar top face → naked edges, non-watertight, 59/100. Fixed by
+   building the skirt as one stepped extruded profile with no internal faces.
+4. **The bore-floor assert was wrong, and passed.** ⚠️ The most serious one.
+   `covered_bore` was computed as `2*(inner_w/2 + side_h)/(1+√2)` = 70.42 mm
+   and the assert passed — but the trough **floor sits at z = wall**, not
+   z = 0, so the real figure is `2*(peak_i − wall)/(1+√2)` = 69.09 mm. The
+   exported mesh measured **69.09**, i.e. the design was 0.9 mm under the
+   welfare floor while reporting itself compliant. Fixed the formula and
+   raised `side_h` 45 → 47; the mesh now measures **70.75**.
+
+   This is exactly the failure mode `nuggs` backlog item B1c describes — a
+   doc (or an assert) claiming something the model does not do — and it is
+   why the measurement below is mandatory rather than optional.
+
+## Measuring the bore floor on the mesh (required, not optional)
+
+The assert is arithmetic and can be wrong. Re-measure on the exported STL
+after any change to `side_h`, `wall`, `inner_w` or the roof:
+
+```bash
+./scripts/gate.sh nuggs-yard          # exports build/nuggs-yard-refuge.stl
+python3 - <<'PY'
+import trimesh
+from shapely.geometry import Polygon
+m = trimesh.load('build/nuggs-yard-refuge.stl')
+for x in (15, 40, 70, 100, 130, 155):
+    sec = m.section(plane_origin=[x,0,0], plane_normal=[1,0,0])
+    p2, _ = sec.to_planar()
+    for poly in p2.polygons_full:
+        for ring in poly.interiors:
+            g = Polygon(ring); lo, hi = 0.0, 100.0
+            for _ in range(60):
+                mid = (lo+hi)/2
+                if g.buffer(-mid).is_empty: hi = mid
+                else: lo = mid
+            print(f"x={x:4} inscribed = {2*lo:.2f} mm")
+PY
+```
+
+Needs `networkx` alongside trimesh/shapely (`pip install networkx`).
+**Every slice must read ≥ 70.00 mm.** Current: 70.75 mm at every station.
+
+Only the refuge is measured because it is the only covered part — an open
+channel has no enclosed void and the script correctly reports none.
+
+## Guards, and that they fire
+
+All six refuse what they exist to refuse (verified 2026-08-03 by rendering
+each deliberately-broken value):
+
+| Guard | Broken with | Fires |
+|---|---|---|
+| Y1 bore floor | `side_h=40` | ✓ |
+| Y2 covered length | `refuge_len=400` | ✓ |
+| Y4 run width | `inner_w=70` | ✓ |
+| wall ≥ 3 perimeters | `wall=1.0` | ✓ |
+| wye crotch sliver | `wye_junction=100` | ✓ (reports 3.43 mm, matching the analytic prediction) |
+| skirt proud of sidewall | `joint_h=60` | ✓ |
+
+## Print this first — the coupon
+
+`nuggs-yard-coupon.scad` prints two 45 mm stubs (40 g, ~3h40). Slide the
+skirted end of one onto the bare end of the other.
+
+- **Too loose / rocks:** drop `joint_tol` 0.05 at a time.
+- **Will not seat, or the skirt splays:** raise it 0.05 at a time.
+- Start at **0.30**. It is one number and it is the only fit in the design.
+
+Do not print a 92 g wye before this stub mates properly.
+
+## Print settings this design assumes
+
+- **Orientation:** every module flat on the bed, exactly as it renders.
+  printcheck reports "current orientation is as good as any axis-aligned
+  alternative" for all six.
+- **Supports:** none, anywhere. The steepest downward surface is the roof
+  gable at 45°.
+- **Material:** PLA assumed (all masses are PLA at 1.24 g/cm³). PETG is
+  welfare-preferable for the same Tg reason as `nuggs` and is ~2.4% heavier.
+- **Layer height:** 0.2 mm, 0.4 nozzle, 1.6 mm wall = 4 perimeters.
+- **Brim:** not required. Unlike the `nuggs` straight — which stands 160 mm
+  tall on a 2.4 mm ring — every module here has a full flat footprint.
+
+## Open items / backlog
+
+| # | Item | Why |
+|---|---|---|
+| **B1** | **Print the coupon and tune `joint_tol`** | Top. The joint is geometry-only; 0.30 is a guess |
+| B2 | Forage / sand stop module | The argument in #73 is that stops, not run length, are the actual enrichment — a widened open pad off the circuit. Meanwhile a ceramic dish beside the run costs 0 g and does the job |
+| B3 | Genderless joint | Today's lap is gendered, so all modules must face the same way round a circuit. Workable, documented, but `nuggs`'s "one knob, no orphan ends" argument still stands |
+| B4 | Ramp module | Only ≤ 15° (Y3), which buys very little height over a printable length. Needs its own evidence before it exists |
+| B5 | Measure the real playpen and publish a fitted layout | Currently the README gives generic BOMs and a footprint |
+| B6 | A layout/topology check | Y6 (no dead ends) is a property of the *assembly*, and nothing in the repo can gate it. Same class of gap as `nuggs` B1c |
