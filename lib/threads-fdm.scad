@@ -133,6 +133,31 @@ module thread_helix(d_major, depth, pitch, starts, length, w_add = 0,
         "thread profile does not fit the lead: 0.25*pitch + w_add + 2*depth = ",
         w_root, " must be < pitch*starts = ", lead,
         ". Raise pitch or starts, or cut depth."));
+    // The bound above is turn-to-turn WITHIN one start. At starts >= 2 the ribs
+    // must also clear EACH OTHER, and that is a tighter bound: rotating the
+    // helix by 360/starts is the same as translating it axially by
+    // lead/starts == pitch, so adjacent starts sit `pitch` apart, not `lead`
+    // apart. At w_root >= pitch consecutive ribs interpenetrate and fuse into
+    // one solid — the export stays watertight and exits 0, it is simply no
+    // longer a multi-start thread. Measured on thread_helix(28, 1.2, 2, 2, 9)
+    // (w_root 2.9, pitch 2, lead 4, so the lead bound above passes): printcheck
+    // reports ONE body, against two at the capsule's own numbers (w_root 3.4,
+    // pitch 4). Strict <, for the same reason as the lead bound — at equality
+    // the flanks coincide.
+    //
+    // This also makes the advice above safe: "Raise pitch or starts" can now
+    // only land a caller on a named error, never on the silent fusion.
+    //
+    // Conservative by up to 2*depth*_sink/(depth + _sink) — the slice of the
+    // profile below the core surface is buried in the caller's core cylinder,
+    // so ribs overlapping only there are invisible in a neck or a bore. But
+    // thread_helix is public API and the demo's item 1 calls it bare, where
+    // that overlap is real geometry; one rule covers both uses.
+    assert(starts < 2 || w_root < pitch, str(
+        "multi-start ribs do not clear each other: 0.25*pitch + w_add + 2*depth"
+        , " = ", w_root, " must be < pitch = ", pitch, " at starts = ", starts,
+        " (adjacent starts sit pitch apart, not lead apart). Raise pitch, cut ",
+        "depth, or drop to a single start."));
     prof = [
         [r_min - _sink, -w_root / 2],
         [r_maj,         -w_crest / 2],
@@ -173,6 +198,16 @@ module thread_neck(d_major, depth, pitch, starts, length,
                    chamfer = undef, seg = 48, eps = 0.01) {
     ch    = is_undef(chamfer) ? depth + 0.2 : chamfer;
     d_min = d_major - 2 * depth;
+    // A negative chamfer clears the length > ch bound below and then inverts
+    // the lead-in: the clip cylinder is `length - ch` tall, so the neck comes
+    // out TALLER than the length it documents, while the cone (h = ch + eps)
+    // renders empty. Measured on thread_neck(28, 1.2, 4, 2, 9, chamfer = -2):
+    // STL z extent 11.0 mm against a documented 9, exit 0, no warning.
+    // ch == 0 stays legal — that is how a caller asks for no lead-in at all.
+    assert(ch >= 0, str(
+        "thread neck chamfer must not be negative: ", ch, " would build a neck ",
+        length - ch, " tall against a documented length of ", length,
+        ". Use chamfer = 0 for no lead-in."));
     assert(length > ch, "thread neck length must exceed its lead-in chamfer.");
     intersection() {
         union() {
@@ -206,7 +241,14 @@ module thread_neck(d_major, depth, pitch, starts, length,
 // 4555 mm^3 of interference spanning the whole neck core; add the bore and the
 // intersection is empty at tol. threads-fdm-demo.scad item 3 is the worked
 // example.)
-//   over    extra bore length past `length` (headroom above the neck)
+//   over    extra THREADED length past `length` — not plain bore. It is passed
+//           straight through as the helix length, so what it adds is more
+//           groove, not headroom. Measured on
+//           thread_bore_cut(28, 1.2, 4, 2, 9, 0.3, over = 6): the cutter spans
+//           z -4 .. 15, i.e. helical rib for the whole 6 mm above the neck's
+//           z 9, not a smooth counterbore. (The -4 is the documented `ext`
+//           runout below z = 0, one pitch deep.) For actual headroom, cut a
+//           plain cylinder above the thread instead.
 //   w_add   axial widening override; defaults to flank_add(tol). Exposed so a
 //           design can tune flank clearance independently of the radial fit —
 //           pre-extraction the capsule had this as a top-level variable and
