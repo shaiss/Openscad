@@ -601,6 +601,30 @@ Hole assert: `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)` → 89 ≥
 
 **Methods caveat to carry forward verbatim:** every external source in this plan was reached through WebSearch result summaries under an organisational egress block that returned 403 on CONNECT for effectively every research host. No page was read end to end. Before this becomes a published product page, the load-bearing figures — the DTSchB 7 cm entrance minimum, TVT Merkblatt 62's 2×-body-length limit and its exact wording, the PLOS One verdict, and the 20 mm full-pouch width — should be read in the primary text from an unrestricted network.
 
+> **Correction to the reading list above, 2026-08-03 (§11).** The caveat itself
+> stays verbatim — it is the record of what round 1 did and did not do, and it
+> is still true, because the 2026-08-03 pass hit the same 403 on CONNECT and
+> also read no page end to end. But one entry in its list points at the wrong
+> document, and acting on the list as written would send a reader to verify a
+> sentence that does not appear to be there. **The 2×-body-length limit is
+> attributed here to TVT Merkblatt 62; the evidence says it belongs to the
+> Deutscher Tierschutzbund position paper *Tierschutzwidriges Zubehör*,** and no
+> search returned a length limit attributed to TVT at all — MB 62's own
+> objections are qualitative (ventilation, condensation, cleanability, no
+> optical retreat). So the item to verify is:
+>
+> - **DTSchB *Tierschutzwidriges Zubehör*** — the 2× limit, its exact wording,
+>   whether it is conjunctive with ventilation (it appears to be), and above all
+>   **whether it is scoped per tube or per system**. That last question is the
+>   hinge of the per-run re-scoping and is marked LOW confidence in §11.6: it is
+>   inferred from plural German in a search summary, nothing stronger.
+> - TVT Merkblatt 62 still wants reading, but for its qualitative objections,
+>   **not** for a number.
+>
+> Until the DTSchB PDF is read, the per-run interpretation is the repo owner's
+> ruling applied to the best available reading of the source — not something the
+> source has been confirmed to say.
+
 ---
 
 ## 9. Acceptance criteria
