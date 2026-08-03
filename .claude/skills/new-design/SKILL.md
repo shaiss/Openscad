@@ -73,25 +73,30 @@ they like rather than one of the packs already here.
   describe what each shot shows in `previews/CAMERAS.md`; cameras are
   fixed once a reviewer has seen them — new region, new camera entry.
 - Animated previews are opt-in: add **`animations.conf`** (see the format
-  note in CLAUDE.md) and render with `./scripts/animate.sh <name>` — the
-  readme-gate then requires each manifest entry's GIF to be committed and
-  embedded in README.md.
+  note in CLAUDE.md) and embed each entry's GIF in README.md. CI renders
+  and commits the GIF; the manifest and the embed are yours.
 - Product shots are **expected, not optional**: `templates/README.md`
   embeds `previews/product-hero.png` the same way it embeds the contact
-  sheet, so a scaffolded README fails the readme-gate on a missing image
-  until you add **`shots.conf`** and render with
-  `./scripts/product-shot.sh <name>` (see `/product-shots`). That is
-  deliberate — every finished design leads its README with one. Rendering
-  needs the `bpy` module locally; CI only checks the committed PNG.
+  sheet, so write **`shots.conf`** and keep the embed (see
+  `/product-shots`). Every finished design leads its README with one.
+
+In all three cases you declare the shot and CI produces it — the manifest
+is the deliverable, the image is derived. Run a generator yourself only to
+look at the result; `product-shot.sh` additionally needs `bpy`
+(`.claude/hooks/session-start.sh --with-bpy`), which is not installed by
+default precisely because you no longer need it to ship a design.
 
 ## 3. First render before first commit
 
 ```bash
 ./scripts/render.sh <name>       # STL + contact sheet must succeed
 ./scripts/gate.sh --slice <name> # printcheck + PrusaSlicer test-slice must exit 0
-./scripts/product-shot.sh <name> # the hero shot the README embeds (needs bpy)
 ./scripts/readme-gate.sh <name>  # product page must pass
 ```
+
+The readme-gate will fail on a `shots.conf` entry whose PNG isn't there
+yet. That is expected before the first push — CI renders it and commits it
+back. Don't install bpy just to clear that message.
 
 The product shot comes before the readme gate on purpose: the template
 embeds `previews/product-hero.png`, so the gate fails on a missing image

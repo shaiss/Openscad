@@ -143,6 +143,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
     `shots.conf`, path-traced from the design's own STL export
   - `lifestyle-shot.sh` — tier-2 AI lifestyle shots from `lifestyle.conf`
     via the Z.AI GLM-Image API (cosmetic, geometry-approximate, disclosed)
+  - `product-page.sh` — drafts a design's product-page README with the
+    Claude API when `readme-gate.sh` rejects the one in the tree, and
+    reverts its own draft if the gate rejects that too
   - `gallery.sh` — regenerates the design gallery above
   - `site.sh` — builds the static product site into `build/site`
   - `style-lift.sh` — lift a design style out of a reference mesh into

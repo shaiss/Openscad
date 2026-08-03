@@ -21,6 +21,12 @@ name: CI
 # tests, and Render designs, gate STLs, test-slice. Adding a top-level
 # directory without adding it to the classifier below makes every PR that
 # touches only that directory permanently unmergeable.
+#
+# That is also why the `regen` job is ungated and why the four jobs that
+# `needs:` it carry `if: !cancelled()`: a skipped `regen` would skip them
+# too, and two of them (Detect changed paths' downstream syntax check, and
+# the gate) are required contexts. regen always runs and decides internally
+# whether it has any work.
 on:
   push:
     branches: [main]
@@ -241,6 +247,242 @@ jobs:
             echo "gate_designs=$designs"
           } >> "$GITHUB_OUTPUT"
 
+  regen:
+    # Everything in the tree that is DERIVED from a design rather than
+    # authored: preview PNGs (previews/cameras.conf), animation GIFs
+    # (animations.conf), studio product shots (shots.conf), the README
+    # gallery, and — when a product page is missing or too thin to pass its
+    # gate — an AI-drafted README.md.
+    #
+    # These used to be run by hand and committed. Every gate on them is
+    # presence-only *because* a human committed them, which is exactly the
+    # hole issue #69 describes: a geometry change staled three
+    # desiccant-capsule previews and readme-gate passed them clean, still
+    # showing a thread profile the design no longer had. Regenerating here
+    # closes that at the root — the committed image cannot depict older
+    # geometry than the source beside it, because one run produces both.
+    #
+    # Ungated on purpose. The job always RUNS (skipping only its own
+    # expensive installs when the classifier says no design moved), because
+    # four jobs `needs:` it and a job skipped via `if:` would skip those
+    # too — and three of them are required contexts (see the CAUTION at the
+    # top of this file).
+    #
+    # Cost note: an infra change sets gate_designs=ALL, so a lib/ or
+    # scripts/ edit re-renders every design's shots, Cycles included. That
+    # is deliberate — such a change can move any design's geometry, which is
+    # precisely when a stale image is most misleading — and it runs in
+    # parallel with render-gate, which is the longer pole either way.
+    name: Regenerate previews and product pages
+    needs: changes
+    runs-on: ubuntu-latest
+    permissions:
+      # The one job in this workflow that writes. Note that a push made with
+      # GITHUB_TOKEN does NOT trigger a new workflow run: that stops this job
+      # from re-triggering itself forever, and it is also why the jobs that
+      # judge these artifacts check out `sha` below rather than trusting the
+      # ref the run started on — nothing else will come along and re-check it.
+      contents: write
+    outputs:
+      # The commit this job pushed, or "" when it pushed nothing. Downstream
+      # jobs pass it straight to actions/checkout's `ref`, where the empty
+      # string means "the default ref for this event" — so an idle run keeps
+      # the normal PR merge-ref checkout, and only a run that actually
+      # committed redirects them onto the updated head.
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The branch itself, not the PR merge ref: a merge ref is not a
+          # branch and cannot be pushed back to. persist-credentials stays
+          # on (the default) because this job needs them for that push.
+          ref: >-
+            ${{ github.event_name == 'pull_request'
+                && github.event.pull_request.head.ref
+                || github.ref_name }}
+          repository: >-
+            ${{ github.event_name == 'pull_request'
+                && github.event.pull_request.head.repo.full_name
+                || github.repository }}
+
+      - name: Decide what needs regenerating
+        id: plan
+        env:
+          GATE: ${{ needs.changes.outputs.gate }}
+          GATE_DESIGNS: ${{ needs.changes.outputs.gate_designs }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -euo pipefail
+          designs=""
+          if [ "$GATE" = "true" ]; then
+            if [ "$GATE_DESIGNS" = "ALL" ]; then
+              for d in designs/*/; do
+                n=${d#designs/}; n=${n%/}
+                [ -f "designs/$n/$n.scad" ] && designs="$designs $n"
+              done
+            else
+              designs="$GATE_DESIGNS"
+            fi
+          fi
+          # Normalize to a single-space-separated list: gate_designs arrives
+          # space-separated and the ALL branch above builds one with a leading
+          # space, and the emptiness test below has to see "" for "nothing".
+          # shellcheck disable=SC2086  # splitting the name list is the point
+          set -- $designs
+          designs="$*"
+          # Which toolchains this run actually needs. bpy is a ~1 GB wheel and
+          # Cycles is minutes per shot, so it is installed only when some
+          # target design ships a shots.conf — not on every design change.
+          shots=false
+          for n in $designs; do
+            [ -f "designs/$n/shots.conf" ] && shots=true
+          done
+          # OpenSCAD is needed for any regeneration at all: previews and GIFs
+          # render through it, and gallery.sh renders a missing contact sheet.
+          render=false
+          [ -n "$designs" ] && render=true
+          # A fork PR's GITHUB_TOKEN is read-only, so there is nothing to push
+          # back to. The commit step turns that into a clear failure with the
+          # file list rather than a permissions error nobody can act on.
+          can_push=true
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] \
+             && [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+            can_push=false
+          fi
+          {
+            echo "designs=$designs"
+            echo "shots=$shots"
+            echo "render=$render"
+            echo "can_push=$can_push"
+          } >> "$GITHUB_OUTPUT"
+          echo "regenerating: ${designs:-(nothing — no design moved)}"
+
+      - name: Install xvfb and ImageMagick (cached)
+        if: steps.plan.outputs.render == 'true'
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          # gifsicle is optional to animate.sh (palette shrink) but keeps GIFs
+          # inside the size budget readme-gate enforces.
+          packages: xvfb imagemagick gifsicle
+          # cache key; bump to pull fresh package versions (see scad-check)
+          version: "2026-08"
+
+      - name: Install OpenSCAD nightly (OBS repo)
+        if: steps.plan.outputs.render == 'true'
+        # Same engine as render-gate, so a preview is rendered by the build
+        # that gates the STL sitting next to it.
+        run: |
+          echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
+            | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
+          curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
+          sudo apt-get update
+          sudo apt-get install -y openscad-nightly
+          openscad-nightly --version
+
+      - name: Install bpy (Blender as a Python module)
+        if: steps.plan.outputs.shots == 'true'
+        uses: actions/setup-python@v6
+        with:
+          # 3.11 exactly: bpy 4.5 publishes wheels for 3.11 only, which is the
+          # same constraint .claude/hooks/session-start.sh documents. The
+          # runner's default 3.12 finds no wheel and the install fails.
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install bpy
+        if: steps.plan.outputs.shots == 'true'
+        run: |
+          python3 -m pip install -q 'bpy~=4.5.0'
+          python3 -c 'import bpy; print("bpy", bpy.app.version_string)'
+
+      - name: Regenerate previews, animations, product shots and the gallery
+        if: steps.plan.outputs.render == 'true'
+        env:
+          OPENSCAD_BIN: openscad-nightly
+          OPENSCAD_ARGS: --backend=manifold
+          DESIGNS: ${{ steps.plan.outputs.designs }}
+          SHOTS: ${{ steps.plan.outputs.shots }}
+        run: |
+          set -euo pipefail
+          for n in $DESIGNS; do
+            # Each generator errors out when its manifest is absent, so ask
+            # first — a design with no frozen cameras is not a failure.
+            [ -f "designs/$n/previews/cameras.conf" ] && ./scripts/render.sh "$n" --previews
+            [ -f "designs/$n/animations.conf" ]       && ./scripts/animate.sh "$n"
+            if [ "$SHOTS" = "true" ] && [ -f "designs/$n/shots.conf" ]; then
+              ./scripts/product-shot.sh "$n"
+            fi
+          done
+          # Last, and unconditional within this step: the gallery is ordered by
+          # the lineage resolver and scrapes each design's NOTES.md and contact
+          # sheet, so it has to be rebuilt after the sheets above are current.
+          ./scripts/gallery.sh
+
+      - name: Draft product pages that do not pass their gate (Claude API)
+        if: steps.plan.outputs.designs != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DESIGNS: ${{ steps.plan.outputs.designs }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "::notice::ANTHROPIC_API_KEY is not set — skipping product-page drafting"
+            exit 0
+          fi
+          for n in $DESIGNS; do
+            # product-page.sh no-ops when the page already passes, and restores
+            # the previous README when a draft fails the gate. A failure here
+            # is deliberately not fatal: "Design product pages" is the job that
+            # judges the page and will report the real problem first-hand,
+            # rather than this job reporting it second-hand and masking it.
+            ./scripts/product-page.sh "$n" \
+              || echo "::warning::could not draft a product page for ${n} — see the 'Design product pages' job"
+          done
+
+      - name: Commit and push what changed
+        id: commit
+        env:
+          CAN_PUSH: ${{ steps.plan.outputs.can_push }}
+          BRANCH: >-
+            ${{ github.event_name == 'pull_request'
+                && github.event.pull_request.head.ref
+                || github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Precise adds: only the two places a generator writes. `git add -A`
+          # over the whole tree would sweep in anything else a step left behind.
+          git add -A designs README.md
+          if git diff --cached --quiet; then
+            echo "nothing regenerated — the committed artifacts already match their sources"
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "regenerated:"
+          git diff --cached --name-only | sed 's/^/  /'
+          if [ "$CAN_PUSH" != "true" ]; then
+            echo "::error::Committed artifacts are stale and CI cannot push to a fork. Regenerate the files listed above locally (./scripts/render.sh <name> --previews, ./scripts/animate.sh, ./scripts/product-shot.sh, ./scripts/gallery.sh) and commit them, or re-open this PR from a branch in this repository."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "CI: regenerate previews and product pages"
+          git push origin "HEAD:${BRANCH}"
+          sha="$(git rev-parse HEAD)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Regenerated artifacts"
+            echo
+            echo "Committed as \`${sha}\` on \`${BRANCH}\`:"
+            echo
+            git show --pretty=format: --name-only HEAD | while IFS= read -r f; do
+              [ -n "$f" ] && printf -- "- \`%s\`\n" "$f"
+            done
+            echo
+            echo "A product page drafted by \`scripts/product-page.sh\` carries an"
+            echo "\`AI-drafted\` marker comment — read it before merging and delete the marker."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   lint:
     name: Lint scripts and workflows
     runs-on: ubuntu-latest
@@ -390,12 +632,21 @@ jobs:
   design-docs:
     # Deliberately not gated behind `changes`: it needs no installs, runs in
     # seconds, and always reporting keeps it usable as a required check.
+    #
+    # It does wait on `regen`, because regen is what makes the artifacts this
+    # job checks current — judging the pre-regen tree would fail on exactly
+    # the staleness regen just fixed. `!cancelled()` keeps it reporting even
+    # when regen fails, so a regen problem shows up as a red regen rather
+    # than as a check that never reports.
     name: Design product pages
+    needs: regen
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          ref: ${{ needs.regen.outputs.sha }}
       - name: Every design ships a product-page README
         run: ./scripts/readme-gate.sh
       - name: Lifestyle-shot disclosure guards still fire
@@ -411,13 +662,19 @@ jobs:
     # product page: the build fails on any local reference that does not
     # resolve. Ungated for the same reason design-docs is — one small npm
     # install, seconds to run, and always reporting keeps it usable as a
-    # required check.
+    # required check. It waits on `regen` for the same reason design-docs
+    # does: the site renders the product pages and previews regen produces,
+    # and a link check against the pre-regen tree would fail on artifacts
+    # that exist by the time the run ends.
     name: Static site builds
+    needs: regen
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          ref: ${{ needs.regen.outputs.sha }}
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -445,13 +702,18 @@ jobs:
 
   scad-check:
     name: OpenSCAD syntax/geometry check
-    needs: changes
-    if: needs.changes.outputs.scad == 'true'
+    # Waits on regen because check.sh runs docs-check.sh, which asserts the
+    # README gallery is not stale — and regenerating that gallery is now
+    # regen's job. Checking the pre-regen tree would fail on a gallery the
+    # same run is about to fix.
+    needs: [changes, regen]
+    if: ${{ !cancelled() && needs.changes.outputs.scad == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          ref: ${{ needs.regen.outputs.sha }}
       - name: Install OpenSCAD (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
@@ -468,13 +730,14 @@ jobs:
   # catches nightly-only regressions before they surprise the gate.
   scad-check-nightly:
     name: OpenSCAD syntax/geometry check (nightly, manifold)
-    needs: changes
-    if: needs.changes.outputs.scad == 'true'
+    needs: [changes, regen]
+    if: ${{ !cancelled() && needs.changes.outputs.scad == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          ref: ${{ needs.regen.outputs.sha }}
       - name: Install xvfb (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:

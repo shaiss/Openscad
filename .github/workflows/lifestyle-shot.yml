@@ -1,7 +1,10 @@
 name: Lifestyle shot (tier-2, AI)
 
-# Manually generate a tier-2 AI-restyled lifestyle shot for a design and open a
-# DRAFT PR with it for a human to approve. The image is cosmetic and
+# Generate a tier-2 AI-restyled lifestyle shot for a design and open a
+# DRAFT PR with it for a human to approve. Fires automatically when a
+# designs/*/lifestyle.conf lands on the default branch — writing the manifest
+# is the request — and can also be dispatched by hand to re-roll a shot or
+# override the size. The image is cosmetic and
 # geometrically approximate (GLM-Image is text-to-image), so it never merges
 # itself — a person reviews the generation and the disclosure before it lands.
 # See scripts/lifestyle-shot.sh and #66.
@@ -14,9 +17,22 @@ name: Lifestyle shot (tier-2, AI)
 #      default. Without it the final `gh pr create` is denied even with the
 #      pull-requests: write permission below, and the run fails AFTER spending
 #      an API call (the branch is still pushed; open the PR from it manually).
-# Dispatch this from the default branch so the generated branch forks cleanly.
+# Without ZAI_KEY an auto-triggered run skips with a notice rather than failing —
+# the shot is supplemental, so its absence must not redden every design change.
+# A manual dispatch still fails loudly: someone pressed the button and is owed
+# a reason. Dispatch from the default branch so the generated branch forks cleanly.
 
 on:
+  # Auto: writing or editing a design's lifestyle.conf IS the request for a
+  # shot, so landing one on the default branch generates it. Scoped to that
+  # one path — the draft PR this workflow opens only touches README.md and
+  # previews/, so merging it cannot re-trigger the workflow.
+  push:
+    branches: [main]
+    paths:
+      - 'designs/*/lifestyle.conf'
+  # Manual: regenerate an existing shot (a text-to-image result is not
+  # reproducible, so re-rolling is a normal thing to want) or override the size.
   workflow_dispatch:
     inputs:
       design:
@@ -32,13 +48,67 @@ permissions:
   contents: write
   pull-requests: write
 
-concurrency:
-  group: lifestyle-shot-${{ github.event.inputs.design }}
-  cancel-in-progress: false
-
 jobs:
+  detect:
+    name: Resolve which designs to render
+    runs-on: ubuntu-latest
+    outputs:
+      designs: ${{ steps.pick.outputs.designs }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          # Full history: a push can carry many commits, and the range below
+          # has to reach whichever one touched the manifest.
+          fetch-depth: 0
+      - name: List the designs whose lifestyle.conf this run is about
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_DESIGN: ${{ github.event.inputs.design }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          names=""
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            names="$INPUT_DESIGN"
+          else
+            # A force-push or a first push leaves github.event.before pointing
+            # at nothing; fall back to this commit's own diff rather than
+            # failing the run on a range git can't resolve.
+            range="${BEFORE}..${GITHUB_SHA}"
+            if ! git rev-parse --quiet --verify "${BEFORE}^{commit}" >/dev/null 2>&1; then
+              range="${GITHUB_SHA}^..${GITHUB_SHA}"
+            fi
+            while IFS= read -r f; do
+              case "$f" in
+                designs/*/lifestyle.conf)
+                  n=${f#designs/}; n=${n%%/*}
+                  # A deleted manifest still shows up in the diff; only render
+                  # designs whose manifest exists at this commit.
+                  [ -f "designs/$n/lifestyle.conf" ] && names="$names $n" ;;
+              esac
+            done < <(git diff --name-only "$range")
+          fi
+          # shellcheck disable=SC2086  # splitting the name list is the point
+          set -- $names
+          json="$(printf '%s\n' "$@" \
+            | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().split()))')"
+          echo "designs=$json" >> "$GITHUB_OUTPUT"
+          echo "designs: $json"
+
   generate:
     name: Generate and open a draft PR
+    needs: detect
+    if: needs.detect.outputs.designs != '[]'
+    strategy:
+      # One PR per design, and one failure does not cancel the others.
+      fail-fast: false
+      matrix:
+        design: ${{ fromJSON(needs.detect.outputs.designs) }}
+    concurrency:
+      group: lifestyle-shot-${{ matrix.design }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 20   # backstop: a stalled API call can't hold the runner
     steps:
@@ -57,19 +127,29 @@ jobs:
       - name: Generate the lifestyle shot and embed its disclosure
         env:
           ZAI_KEY: ${{ secrets.ZAI_KEY }}
-          DESIGN: ${{ github.event.inputs.design }}
+          DESIGN: ${{ matrix.design }}
           ZAI_SIZE: ${{ github.event.inputs.size }}
         run: |
           set -euo pipefail
           if [ -z "${ZAI_KEY:-}" ]; then
-            echo "::error::ZAI_KEY secret is not set for this repository"
-            exit 1
+            if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+              # Someone pressed the button and expects a shot: say why not.
+              echo "::error::ZAI_KEY secret is not set for this repository"
+              exit 1
+            fi
+            # Auto-triggered. The shot is supplemental and cosmetic, so a repo
+            # without the key should not get a red X on every design change —
+            # tier 1 is the deliverable and it is gated elsewhere.
+            echo "::notice::ZAI_KEY is not set — skipping the tier-2 lifestyle shot for ${DESIGN}"
+            echo "SKIPPED=1" >> "$GITHUB_ENV"
+            exit 0
           fi
           ./scripts/lifestyle-shot.sh "$DESIGN"
 
       - name: Prove the disclosure gate passes
+        if: env.SKIPPED != '1'
         env:
-          DESIGN: ${{ github.event.inputs.design }}
+          DESIGN: ${{ matrix.design }}
         # The generated PR is opened with GITHUB_TOKEN, so it will NOT trigger
         # the normal CI. Run the product-page gate here so the disclosure
         # (AI-styled scene label + "geometry is approximate" caption) is
@@ -77,9 +157,10 @@ jobs:
         run: ./scripts/readme-gate.sh "$DESIGN"
 
       - name: Open a draft PR with the generated shot
+        if: env.SKIPPED != '1'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DESIGN: ${{ github.event.inputs.design }}
+          DESIGN: ${{ matrix.design }}
           RUN_ID: ${{ github.run_id }}
           BASE: ${{ github.event.repository.default_branch }}
           REPO: ${{ github.repository }}
