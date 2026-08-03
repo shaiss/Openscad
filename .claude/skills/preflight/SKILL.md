@@ -69,6 +69,31 @@ Missing tools (openscad, prusa-slicer, printcheck, stylelift) mean the SessionSt
 hook hasn't run — run `.claude/hooks/session-start.sh` first, don't skip
 the gate.
 
+## 3. Two failures here that CI fixes for you
+
+CI's `regen` job regenerates derived artifacts and commits them *before*
+the jobs that judge them run. So two local failures are expected, not
+blockers, and pushing is the fix:
+
+- **`readme-gate.sh`: a `shots.conf` / `animations.conf` entry whose image
+  isn't rendered yet.** CI renders and commits it. Only chase this locally
+  if you want to look at the framing first (`/product-shots`).
+- **`readme-gate.sh`: a product page that is missing or too thin.** CI
+  drafts one with `product-page.sh` — but *only* when `ANTHROPIC_API_KEY`
+  is set, and only if the draft then passes the gate (it restores the
+  original otherwise). So unlike the images, this one is not guaranteed:
+  if the key isn't configured, "Design product pages" is a real failure
+  and the page is yours to write.
+- **`check.sh`: "README gallery is stale".** CI runs `gallery.sh` and
+  commits the result. `./scripts/gallery.sh` clears it locally if the noise
+  bothers you.
+
+Everything else in the list above is still yours to fix before pushing —
+CI regenerates images and prose scaffolding, never geometry, never a gate
+verdict. And the exception to both bullets: a PR from a **fork** cannot be
+pushed to, so CI fails those instead of fixing them. On a fork branch,
+treat both as real.
+
 ## 3. Verdict
 
 Report a one-line verdict first: **"CI would pass"** or **"CI would fail:

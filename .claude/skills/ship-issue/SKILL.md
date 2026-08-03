@@ -131,18 +131,21 @@ both directions:
 - **Consequence of the fix ⇒ in scope, ship it.** A `lib/` geometry change
   moves every design that includes it. Find them rather than guessing — grep
   for the `use`/`include` of the file you changed (and for a `styles/` token
-  change, every `designs/*/style.conf` naming it) — then regenerate *every*
-  committed artifact those designs derive from source, not just the one you
-  remembered:
-  - `./scripts/render.sh <name> --previews` — the frozen review shots
-  - `./scripts/animate.sh <name>` — any `animations.conf` GIFs
-  - `./scripts/product-shot.sh <name>` — any `shots.conf` product shots
+  change, every `designs/*/style.conf` naming it) — and update what those
+  designs assert in **prose**, which is the half CI cannot regenerate:
   - the design's NOTES.md derivation, which is now arithmetic about a shape
-    that changed, and `./scripts/gallery.sh` if a contact sheet moved
+    that changed
+  - any number the product page quotes — a clearance, a footprint, a fit
 
-  Cameras are **frozen**: re-render them, never reframe one to make a diff
-  look better. Leaving any of these stale ships a repo that contradicts
-  itself — and the product page is the one a stranger sees first.
+  The images are not your problem any more. CI's `regen` job re-renders the
+  frozen shots, the `animations.conf` GIFs, the `shots.conf` product shots
+  and the gallery for every design in the blast radius, and commits them to
+  the branch. Run the generators locally only to *look* at what changed
+  before you push. Cameras stay **frozen** either way: a manifest entry is
+  never reframed to make a diff look better — add a new line instead.
+
+  Stale prose still ships a repo that contradicts itself, and the product
+  page is the one a stranger sees first.
 - **Defect you noticed on the way ⇒ out of scope, file it.** Open a new
   issue with the reproduction you already have, link it from the PR, move
   on. This is the single most common creep: the fix is done, the file is

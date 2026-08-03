@@ -1,17 +1,32 @@
 #!/bin/bash
 # SessionStart hook: install the OpenSCAD toolchain in Claude Code on the web.
 # The repo needs: openscad (renderer), xvfb (headless display), imagemagick
-# (montage, for multi-view preview sheets), bpy (Blender as a Python module —
-# studio product shots via ./scripts/product-shot.sh), prusa-slicer +
-# printcheck (so
+# (montage, for multi-view preview sheets), prusa-slicer + printcheck (so
 # ./scripts/gate.sh --slice — the exact gate CI runs — works locally before
 # a push). Idempotent — exits fast when everything is already present
 # (e.g. cached container state).
+#
+# bpy (Blender as a Python module, behind ./scripts/product-shot.sh) is NOT
+# installed by default any more. CI's `regen` job renders and commits the
+# product shots now, so a session no longer needs a ~1 GB wheel to produce a
+# deliverable — it needed one to produce an artifact CI could have made.
+# Pass --with-bpy (or set INSTALL_BPY=1) when you want to preview a shot
+# locally before pushing; nothing in the repo's gates requires it. On a local
+# machine that means `--force --with-bpy`: without --force the guard below
+# exits before installing anything, so --with-bpy on its own is a no-op there.
 set -euo pipefail
 
-# --force: install even outside Claude Code on the web (manual invocation);
-# without it the hook is a silent no-op on local machines.
-if [ "${1:-}" != "--force" ] && [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
+WITH_BPY="${INSTALL_BPY:-0}"
+FORCED=0
+for arg in "$@"; do
+  case "$arg" in
+    # --force: install even outside Claude Code on the web (manual
+    # invocation); without it the hook is a silent no-op on local machines.
+    --force)    FORCED=1 ;;
+    --with-bpy) WITH_BPY=1 ;;
+  esac
+done
+if [ "$FORCED" != 1 ] && [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
@@ -27,7 +42,7 @@ has_bpy() {
 if command -v openscad >/dev/null 2>&1 \
   && command -v xvfb-run >/dev/null 2>&1 \
   && command -v montage >/dev/null 2>&1 \
-  && has_bpy \
+  && { [ "$WITH_BPY" != 1 ] || has_bpy; } \
   && command -v prusa-slicer >/dev/null 2>&1 \
   && command -v printcheck >/dev/null 2>&1 \
   && command -v stylelift >/dev/null 2>&1 \
@@ -59,7 +74,7 @@ $SUDO apt-get install -y -qq openscad xvfb imagemagick prusa-slicer
 # another gives a "successful" install that cannot be imported. The check below
 # is the same python3 that scripts/product-shot.sh runs, so a mismatch fails
 # here rather than mid-render.
-if ! has_bpy; then
+if [ "$WITH_BPY" = 1 ] && ! has_bpy; then
   python3 -m pip install -q 'bpy~=4.5.0'
   if ! python3 -c 'import bpy' >/dev/null 2>&1; then
     echo "error: bpy installed but will not import under $(python3 -V 2>&1)." >&2
