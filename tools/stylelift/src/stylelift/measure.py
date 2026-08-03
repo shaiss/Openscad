@@ -71,6 +71,11 @@ class Config:
     symmetry_samples: int = 1500
     # Faces within this of the build direction count as vertical walls.
     vertical_tol_deg: float = 5.0
+    # A downward surface shallower than this (measured from horizontal) will
+    # not print without support. 45 deg is the FDM convention.
+    overhang_limit_deg: float = 45.0
+    # A face this close to the lowest point counts as sitting on the bed.
+    bed_tol_mm: float = 0.01
 
 
 def load_mesh(path: str | Path) -> trimesh.Trimesh:
@@ -652,7 +657,11 @@ def _orientation(mesh: trimesh.Trimesh, cfg: Config) -> dict:
     sloped = ~(vertical | up | down)
     slopes = []
     if sloped.any():
-        # dominant slope angles, measured from horizontal, area-weighted
+        # dominant slope angles, area-weighted. NOTE: measured from the build
+        # direction (vertical), not from the bed — a 45 deg chamfer and a 45
+        # deg roof both read 45, but a shallow 20 deg roof reads 70. Kept as-is
+        # because the field is published; unsupported_share below is the one
+        # that speaks in printing terms.
         angle = np.abs(90.0 - tilt[sloped])
         counts, edges = np.histogram(angle, bins=np.arange(0, 91, 2.5),
                                      weights=areas[sloped])
@@ -665,12 +674,34 @@ def _orientation(mesh: trimesh.Trimesh, cfg: Config) -> dict:
                 "angle_deg": round(float(np.average(np.abs(90.0 - tilt[sel]),
                                                     weights=areas[sel])), 2),
                 "share": round(float(areas[sel].sum() / total), 4)})
+    # Share of surface that would need support: facing downward and shallower
+    # than the support-free limit. A scalar, unlike dominant_slopes, so a style
+    # can hold a new part to it — "this family never places a face below 45
+    # degrees" is a design rule, and dominant_slopes is a list a rule cannot
+    # address. Pose-dependent like everything else here (see assumes_z_up):
+    # it describes the part as exported, which for a printable part is the
+    # orientation it prints in.
+    # tilt is measured from +Z, so abs(90 - tilt) is the angle from VERTICAL;
+    # the angle a printer cares about is from the bed, which is its complement.
+    from_horizontal = 90.0 - np.abs(90.0 - tilt)
+    unsupported = (tilt > 90.0) & (from_horizontal < cfg.overhang_limit_deg)
+    # ...except the footprint. A face lying in the bed plane is carried by the
+    # build plate, not by support material, and every part has one; counting it
+    # would make this metric mostly "how wide is your base" and would punish a
+    # flat part for being flat.
+    if unsupported.any():
+        z_min = float(mesh.bounds[0][2])
+        face_z = np.asarray(mesh.triangles)[:, :, 2]
+        on_bed = np.all(np.abs(face_z - z_min) <= cfg.bed_tol_mm, axis=1)
+        unsupported &= ~on_bed
     return {
         "assumes_z_up": True,
         "up_share": round(float(areas[up].sum() / total), 4),
         "down_share": round(float(areas[down].sum() / total), 4),
         "vertical_share": round(float(areas[vertical].sum() / total), 4),
         "sloped_share": round(float(areas[sloped].sum() / total), 4),
+        "unsupported_share": round(float(areas[unsupported].sum() / total), 4),
+        "overhang_limit_deg": cfg.overhang_limit_deg,
         "dominant_slopes": slopes,
     }
 

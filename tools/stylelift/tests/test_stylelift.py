@@ -513,3 +513,69 @@ def test_cli_check_exit_codes(tmp_path, capsys):
 def test_cli_reports_a_missing_file_without_a_traceback(tmp_path, capsys):
     assert main(["measure", str(tmp_path / "nope.stl")]) == 2
     assert "stylelift:" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------
+# orientation.unsupported_share — the share of surface a printer would have to
+# support. Truth comparisons: every expected value below is worked out from the
+# probe's own dimensions, not copied from a previous run.
+
+def test_a_cube_on_the_bed_needs_no_support(tmp_path):
+    """Its one flat downward face is the footprint, which the bed carries."""
+    r = measure(save(tmp_path, trimesh.creation.box(extents=[10, 10, 10]),
+                     "cube.stl"))
+    assert r["orientation"]["unsupported_share"] == pytest.approx(0.0, abs=1e-6)
+    assert r["orientation"]["overhang_limit_deg"] == 45.0
+
+
+def test_a_flat_shoulder_is_measured_as_unsupported(tmp_path):
+    """A 12x12 cap on a 4x4 post overhangs by exactly its shoulder area."""
+    post = trimesh.creation.box(extents=[4, 4, 10])
+    post.apply_translation([0, 0, 5])
+    cap = trimesh.creation.box(extents=[12, 12, 2])
+    cap.apply_translation([0, 0, 11])
+    tee = trimesh.boolean.union([post, cap])
+    shoulder = 12 * 12 - 4 * 4                      # mm^2 of downward ledge
+    r = measure(save(tmp_path, tee, "tee.stl"))
+    assert r["orientation"]["unsupported_share"] == pytest.approx(
+        shoulder / tee.area, abs=0.002)
+
+
+@pytest.mark.parametrize("slope_deg,supported", [(60.0, True), (30.0, False)])
+def test_the_limit_falls_between_a_steep_and_a_shallow_roof(tmp_path, slope_deg,
+                                                            supported):
+    """A roof steeper than 45 deg from the bed prints; a shallower one does not.
+
+    Built as a prism whose downward faces sit at a chosen angle, so the pass and
+    the fail come from the same generator with one number changed.
+    """
+    import math
+    run, rise = 10.0, 10.0 * math.tan(math.radians(slope_deg))
+    # a tent: two downward-facing roof planes at slope_deg from horizontal,
+    # raised clear of the bed so nothing is excluded as footprint
+    profile = [[-run, rise], [0.0, 0.0], [run, rise], [run, rise + 5],
+               [-run, rise + 5]]
+    tent = trimesh.creation.extrude_polygon(
+        __import__("shapely").geometry.Polygon(profile), height=8.0)
+    tent.apply_transform(trimesh.transformations.rotation_matrix(
+        math.radians(90), [1, 0, 0]))
+    tent.apply_translation([0, 0, -tent.bounds[0][2] + 1.0])
+    share = measure(save(tmp_path, tent, "tent.stl"))["orientation"][
+        "unsupported_share"]
+    if supported:
+        assert share == pytest.approx(0.0, abs=1e-6)
+    else:
+        assert share > 0.1
+
+
+def test_unsupported_share_is_addressable_by_a_rule(tmp_path):
+    """dominant_slopes is a list, so a style cannot point a rule at it.
+
+    unsupported_share exists to be that scalar; this fails if it stops being
+    one, which would silently turn any rule using it into NOT COMPARABLE.
+    """
+    from stylelift.spec import dig
+    r = measure(save(tmp_path, trimesh.creation.box(extents=[8, 8, 8]),
+                     "b.stl"))
+    assert isinstance(dig(r, "orientation.unsupported_share"), float)
+    assert dig(r, "orientation.dominant_slopes.0.angle_deg") is None
