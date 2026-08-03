@@ -45,7 +45,21 @@ translate([90, 0, 0]) difference() {
 //    and self-intersect; the assert in thread_helix now says so out loud.)
 translate([135, 0, 0]) thread_neck(16, 0.6, 3, 1, 10);
 
-// 5. The clearance derivation is a function, not a magic number.
+// 5. The accepting half of the chord bound's boundary.
+//
+//    The seg guard does not only refuse — it advises, computing the seg that
+//    would satisfy it as ceil(180 / acos(1 - 2*_max_chord / d_major)). At
+//    d_major 28 that advice is 27. This renders at exactly 27, so if the
+//    advice ever drifts one too high the render aborts here.
+//
+//    Its partner is boundary-seg-26-refused in lib/threads-fdm-guards.conf,
+//    which pins the other side. A guard manifest can only express refusals, so
+//    "27 is accepted" has nowhere to live but a render — and without it, an
+//    off-by-one in the advice would leave every check in the repo green while
+//    the error message named a seg that does not actually work.
+translate([180, 0, 0]) thread_helix(d_major, depth, pitch, starts, neck, seg = 27);
+
+// 6. The clearance derivation is a function, not a magic number.
 //
 //    This echoes the value only. It deliberately does NOT echo the flank gap
 //    that value is supposed to produce, because the arithmetic for that gap is
