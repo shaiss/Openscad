@@ -103,14 +103,16 @@ deliverable — and leave the idea in NOTES.md for a session that has one.
   geometry-true artifacts on the page. What keeps the lifestyle shot honest
   is the *disclosure*, not a fidelity check. Every lifestyle shot ships all
   three:
-  - Committed as `previews/lifestyle-<shot>.png`.
+  - Committed as `previews/lifestyle-<shot>.png`, where `<shot>` is the
+    exact tier-1 manifest name it restyles (so `product-hero` becomes
+    `lifestyle-product-hero.png`).
   - Embedded with alt text that carries the label `AI-styled scene`.
   - **A short visible note directly below the image**, so a reader skimming
     the *rendered* page — not the markdown — sees the warning that alt text
     alone can't give them:
 
     ```markdown
-    ![AI-styled scene: the board on a set dinner table](previews/lifestyle-hero.png)
+    ![AI-styled scene: the board on a set dinner table](previews/lifestyle-product-hero.png)
 
     *AI-generated impression for general illustration only — geometry is
     approximate and may not exactly match the printed part; see the studio
