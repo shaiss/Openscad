@@ -1,0 +1,141 @@
+# aerochord — engineering notes
+
+## Goal
+
+A musical wind instrument that (a) prints in place as **one piece** with no
+supports, (b) does not correspond to any instrument in the historical record,
+and (c) is only really designable/printable with an FDM machine and a computed
+internal geometry. The brief was an explicit stress test of the whole
+co-design pipeline.
+
+## What it is (and why it is new)
+
+**aerochord is a polyphonic fipple vessel: one breath sounds a whole chord.**
+
+A single mouthpiece feeds a shared **plenum**. The plenum splits into `N`
+parallel **windways**, each ending in its own **fipple** (a flue that forms a
+flat air jet and a **labium** edge that splits it). Each fipple voices an
+independent **closed-pipe resonator** — a capped tube whose length is *solved*
+so its pitch is one note of a chosen chord. Blow once and all `N` voices speak
+together.
+
+Why this isn't just "some pipes":
+
+- **Pan pipes / siku** are separate open tubes, blown one at a time across the
+  top, and are monophonic in normal play. aerochord's tubes are internally
+  fipple-voiced (you don't aim your breath) and sound **in parallel** from one
+  plenum.
+- **Harmonicas / accordions / concertinas** make chords, but with free reeds,
+  not edge tones, and they aren't a single hand-held printed vessel.
+- **Pipe-organ ranks** voice many flue pipes in parallel, but they're an
+  installation with a wind chest and separate pipes — not a palm-sized object
+  printed as one supportless piece.
+- **Multi-chamber ocarinas** (double/triple) exist, but the chambers are played
+  **sequentially** with finger holes, or one drones — not a fixed chord struck
+  in a single breath from parallel internal fipples.
+
+The combination — parallel internal fipples + per-voice computed resonators +
+fixed just-intonation chord + single-piece print-in-place — is the novel part.
+The "only AI could design it" claim is narrow and honest: the internal air path
+(one plenum → `N` windways → `N` fipples → `N` tuned bores) is **co-solved** and
+laid out so the whole thing prints without supports, which is not something you
+would lay out by hand.
+
+## Acoustic derivation (nominal — see caveats)
+
+Each voice is treated as a **stopped (closed-end) cylindrical pipe**: the window
+is the acoustic open end, the printed cap is the closed end. For a stopped pipe
+
+    f = c / (4 · L_eff)      ⇒      L_eff = c / (4 · f)
+
+with `c = 343 m/s` at ~20 °C. The design solves `L_eff` per voice from its
+target frequency and places the cap that far above the labium
+(`tube_top(i) = labium_z + reson_len(i)`).
+
+Default chord: **just-intonation major triad**, ratios `[1, 5/4, 3/2]`, root
+`root_freq = 1046.5 Hz` (C6). That gives nominal resonator lengths of ~82 / 66 /
+55 mm and voices near C6 / E6 / G6.
+
+`tune` scales every resonator length together. It exists because the simple
+stopped-pipe model ignores several real effects (see caveats), so the printed
+pitch will be off by a roughly constant factor that one physical calibration
+print pins down.
+
+### Honest caveats (what the gate does NOT prove)
+
+The repo gate proves the mesh is watertight, printable, and sliceable. It says
+**nothing** about sound. Specifically:
+
+1. **Pitch is nominal.** The stopped-pipe formula omits the end correction at
+   the window (~0.3–0.6 × bore radius), the flue/plenum coupling, and the fact
+   that a fipple's effective length isn't exactly labium-to-cap. Expect the
+   real pitch to differ; correct it with `tune` after one print.
+2. **Voicing is not guaranteed by geometry.** Whether a fipple *speaks* at all
+   depends on flue geometry, jet velocity, and cut-up in ways a mesh can't
+   confirm. The dimensions here follow documented tin-whistle/recorder practice
+   (flue ~1 mm, cut-up ≈ ¼ window width), but a physical test print is the only
+   proof. This is why the coupon exists.
+3. **Parallel voices share one plenum.** Three fipples drawing from one pressure
+   reservoir can interact — one may dominate, or they may pull slightly on each
+   other. The plenum is deliberately generous, but airflow balancing across
+   voices is the most likely thing to need real-world tuning.
+
+None of these block the deliverable (a novel, printable object); they're the
+work a *musician* does after the *printer* succeeds, and they're called out on
+the product page too.
+
+## Geometry / print orientation
+
+- Prints **standing on the base bar**, tubes pointing up. This is the FDM-ideal
+  orientation: the resonator bores are vertical holes (self-supporting), the
+  windways are vertical slots (self-supporting), and the closed tops are cones.
+- **No supports.** Self-supporting throughout by construction:
+  - bore roof = 45° cone (`d2 = 0`, clean apex);
+  - plenum roof = a short (~9 mm) flat bridge — chosen over a gable on purpose
+    (see decision log): a thin windway punching a *flat* roof is a clean
+    transverse crossing, whereas grazing a 45° gable tangentially made the
+    CGAL mesh non-manifold;
+  - labium = an extruded wedge steeper than 45°, leaving a `labium_land` (~0.5
+    mm) printable tip instead of a zero-thickness knife;
+  - mouthpiece bore = a teardrop (support-free horizontal hole).
+- **Tall and thin** (default ~106 mm tall on a 22 mm-deep base). PrusaSlicer
+  flags generic "stability"; print with a **brim** and it's fine. Bed contact
+  is a solid base bar, so adhesion is good.
+
+## Gate status (this revision)
+
+- `printcheck`: **84/100**, watertight, single body. Warnings only: ~3% surface
+  overhang (the flat plenum bridge + labium bevels), ~2% thin wall (the
+  unavoidable sliver where a rectangular window meets a round tube — recorders
+  have this too). No criticals.
+- Test-slice (PrusaSlicer, 0.2 mm / 0.4 mm nozzle): succeeds, ~4 h, ~26 g PLA.
+- `gate.sh --slice aerochord`: exit 0.
+
+## Print this first (coupon)
+
+`aerochord-coupon.scad` is the **single root voice**, straight from the
+production modules (`chord_ratios = [1]`), ~1 h print. Print it before
+committing to the full ~4 h chord and check, in this order:
+
+1. **Does it speak?** Blow gently. If nothing, the flue is likely closed or
+   fuzzed — raise `flue_h` in 0.1 mm steps (0.8 → 1.2) and reprint. Make sure
+   the windway printed open (no strings across it).
+2. **Is the tone clean?** Breathy/airy → nudge `cutup` down (sharper labium
+   response); shrieky/overblown → nudge `cutup` up, or blow softer.
+3. **Is the pitch right?** Measure the sounding pitch, then set
+   `tune = (target_freq / measured_freq)` and carry `flue_h`, `cutup`, `tune`
+   into the full instrument. (Higher `tune` → longer tubes → lower pitch.)
+
+The coupon is the hardest voice to get speaking (longest resonator, most air),
+so if it works the full chord's shorter voices should follow.
+
+## Decision log
+
+| Date | Decision | Reason |
+|---|---|---|
+| 2026-08-03 | Vertical print orientation, base on bed | Bores/windways become self-supporting vertical features; only the labium and plenum roof need care |
+| 2026-08-03 | Stopped-pipe resonator model | Simple, closed cap prints cleanly and gives a compact tube per pitch; `tune` absorbs the model error |
+| 2026-08-03 | Flat-roofed plenum, not a gable | A thin windway grazing a 45° gable tangentially produced a non-manifold edge (CGAL, at the gable line); a flat roof the windway crosses transversely is clean. Costs a little overhang (a short bridge), which is only a warning |
+| 2026-08-03 | Labium as extruded wedge + `labium_land` | Eliminated the degenerate/near-zero-thickness faces the rotated-cube bevel produced; land gives a printable ~1-nozzle tip |
+| 2026-08-03 | Teardrop mouthpiece bore (`mouth_d = 6`) | Support-free horizontal hole; small enough that its teardrop point clears the top of the base bar |
+| 2026-08-03 | Default root C6, major triad | A bright, clearly-audible register at a printable tube length; lower roots make taller, floppier prints (documented) |
