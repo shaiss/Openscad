@@ -6,9 +6,11 @@ at any tessellation, in any pose, at any scale.
 """
 
 import json
+import math
 
 import numpy as np
 import pytest
+import shapely
 import trimesh
 
 from make_probe_models import (chamfered_prism, chamfered_slab, drilled_plate,
@@ -25,6 +27,23 @@ def save(tmp_path, mesh, name):
     path = tmp_path / name
     mesh.export(str(path))
     return str(path)
+
+
+def prism(profile, depth, lift=0.0):
+    """Stand a 2D (across, up) profile upright and extrude it `depth` deep.
+
+    Every face is then either vertical, or a plane whose inclination the
+    profile chose, so the expected areas are arithmetic on the profile rather
+    than a number read off a previous run. `lift` raises the result clear of
+    z=0 when a test needs its downward faces counted rather than treated as
+    footprint.
+    """
+    mesh = trimesh.creation.extrude_polygon(shapely.geometry.Polygon(profile),
+                                            height=depth)
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(
+        math.radians(90), [1, 0, 0]))
+    mesh.apply_translation([0, 0, lift - mesh.bounds[0][2]])
+    return mesh
 
 
 def dominant(report):
@@ -529,16 +548,28 @@ def test_a_cube_on_the_bed_needs_no_support(tmp_path):
 
 
 def test_a_flat_shoulder_is_measured_as_unsupported(tmp_path):
-    """A 12x12 cap on a 4x4 post overhangs by exactly its shoulder area."""
-    post = trimesh.creation.box(extents=[4, 4, 10])
-    post.apply_translation([0, 0, 5])
-    cap = trimesh.creation.box(extents=[12, 12, 2])
-    cap.apply_translation([0, 0, 11])
-    tee = trimesh.boolean.union([post, cap])
-    shoulder = 12 * 12 - 4 * 4                      # mm^2 of downward ledge
+    """A T-prism overhangs by exactly the two shoulders its cap hangs over.
+
+    Extruded from a T profile rather than unioned from two boxes: a boolean
+    needs manifold3d or blender, which the test environment deliberately does
+    not carry (see examples/make_probe_models.py). The expected share is
+    derived from the profile, not from a previous run.
+    """
+    post_w, cap_w, post_h, cap_h, depth = 4.0, 12.0, 10.0, 2.0, 8.0
+    profile = [(-post_w / 2, 0.0), (post_w / 2, 0.0),
+               (post_w / 2, post_h), (cap_w / 2, post_h),
+               (cap_w / 2, post_h + cap_h), (-cap_w / 2, post_h + cap_h),
+               (-cap_w / 2, post_h), (-post_w / 2, post_h)]
+    tee = prism(profile, depth)
+    shoulder = (cap_w - post_w) * depth             # two ledges under the cap
+    # total from the profile, not from the mesh: a prism's surface is its
+    # perimeter swept plus its two ends
+    poly = shapely.geometry.Polygon(profile)
+    total = poly.length * depth + 2 * poly.area
+    assert tee.area == pytest.approx(total, rel=1e-6)
     r = measure(save(tmp_path, tee, "tee.stl"))
     assert r["orientation"]["unsupported_share"] == pytest.approx(
-        shoulder / tee.area, abs=0.002)
+        shoulder / total, abs=1e-4)
 
 
 @pytest.mark.parametrize("slope_deg,supported", [(60.0, True), (30.0, False)])
@@ -549,17 +580,11 @@ def test_the_limit_falls_between_a_steep_and_a_shallow_roof(tmp_path, slope_deg,
     Built as a prism whose downward faces sit at a chosen angle, so the pass and
     the fail come from the same generator with one number changed.
     """
-    import math
     run, rise = 10.0, 10.0 * math.tan(math.radians(slope_deg))
     # a tent: two downward-facing roof planes at slope_deg from horizontal,
     # raised clear of the bed so nothing is excluded as footprint
-    profile = [[-run, rise], [0.0, 0.0], [run, rise], [run, rise + 5],
-               [-run, rise + 5]]
-    tent = trimesh.creation.extrude_polygon(
-        __import__("shapely").geometry.Polygon(profile), height=8.0)
-    tent.apply_transform(trimesh.transformations.rotation_matrix(
-        math.radians(90), [1, 0, 0]))
-    tent.apply_translation([0, 0, -tent.bounds[0][2] + 1.0])
+    tent = prism([(-run, rise), (0.0, 0.0), (run, rise),
+                  (run, rise + 5.0), (-run, rise + 5.0)], 8.0, lift=1.0)
     share = measure(save(tmp_path, tent, "tent.stl"))["orientation"][
         "unsupported_share"]
     if supported:
