@@ -188,14 +188,33 @@ module thread_helix(d_major, depth, pitch, starts, length, w_add = 0,
     // The skirt carries no thread — the caller's core swallows it — so giving
     // it the flank's slope would only widen w_root and trip the multi-start
     // bound above, which is exactly what issue #37's fix A did.
-    prof = [
-        [r_min - _sink, -w_root / 2],
-        [r_min,         -w_root / 2],
-        [r_maj,         -w_crest / 2],
-        [r_maj,          w_crest / 2],
-        [r_min,          w_root / 2],
-        [r_min - _sink,  w_root / 2]
-    ];
+    //
+    // At depth == 0 there is no flank to slope: r_min == r_maj and
+    // w_root == w_crest, so the two skirt corners would land exactly on the
+    // two crest corners and the profile would carry duplicate vertices. That
+    // is the documented slip-fit case (`-D thread_depth=0`), not a corner
+    // nobody reaches. CGAL does collapse the zero-area faces — measured, the
+    // capsule's mesh at depth 0 is hash-identical before and after this
+    // change — but a degenerate polygon is not a thing to hand a geometry
+    // kernel on purpose, and CI also renders under the manifold backend,
+    // which is a different kernel with no such guarantee. So the degenerate
+    // pair is never constructed: at depth 0 the profile is the plain
+    // rectangle it collapses to anyway.
+    prof = depth > 0
+        ? [
+            [r_min - _sink, -w_root / 2],
+            [r_min,         -w_root / 2],
+            [r_maj,         -w_crest / 2],
+            [r_maj,          w_crest / 2],
+            [r_min,          w_root / 2],
+            [r_min - _sink,  w_root / 2]
+          ]
+        : [
+            [r_min - _sink, -w_root / 2],
+            [r_maj,         -w_crest / 2],
+            [r_maj,          w_crest / 2],
+            [r_min - _sink,  w_root / 2]
+          ];
     k     = len(prof);
     turns = (length + 2 * lead) / lead;
     N     = ceil(seg * turns);
