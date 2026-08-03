@@ -129,7 +129,7 @@ column as an upper bound):
 
 ## What is actually worth hosting (ranked)
 
-The Vercel project `openscad` already exists under `shaiss-projects`, and
+The Vercel project `print-bench` already exists under `shaiss-projects`, and
 it is **already git-connected to this repo** — opening the PR that added
 this document produced a preview deployment automatically. What's missing
 is not wiring but content: `live: false`, and `openscad-tau.vercel.app`
