@@ -81,11 +81,32 @@ for conf in lib/*-mates.conf; do
     line="$(trim "$line")"
     [[ -z "$line" || "$line" == \#* ]] && continue
 
+    # Both separators are required before the fields are split. With only one,
+    # `${rest%%|*}` and `${rest#*|}` both return the same text, so a line like
+    # `mycase | empty` yields expect=empty AND stmt=empty — a valid-looking
+    # expectation attached to `empty` as OpenSCAD source. That renders nothing
+    # and gets reported as "did not render", which points at the statement
+    # instead of at the typo. A harness whose whole job is to not lie about
+    # what it measured should not start by mis-parsing its own input.
+    if [[ "$line" != *"|"*"|"* ]]; then
+      echo "FAIL  ${lib}: malformed case, needs two '|' separators"
+      echo "      expected: <name> | empty|interfering | <statement>"
+      echo "      got:      ${line}"
+      fail=1
+      continue
+    fi
+
     name="$(trim "${line%%|*}")"
     rest="${line#*|}"
     expect="$(trim "${rest%%|*}")"
     stmt="$(trim "${rest#*|}")"
 
+    if [[ -z "$name" || -z "$stmt" ]]; then
+      echo "FAIL  ${lib}: malformed case, name and statement must both be non-empty"
+      echo "      got:      ${line}"
+      fail=1
+      continue
+    fi
     if [[ "$expect" != "empty" && "$expect" != "interfering" ]]; then
       echo "FAIL  ${lib}/${name}: expectation must be 'empty' or 'interfering', got '${expect}'"
       fail=1
@@ -107,6 +128,14 @@ for conf in lib/*-mates.conf; do
     case "$expect:$facets" in
       empty:0)
         echo "ok    ${lib}/${name} mates cleanly (0 facets of interference)" ;;
+      empty:unreadable)
+        # Ahead of empty:* on purpose. An STL that will not parse is a harness
+        # or render fault, and reporting it as interference would send a reader
+        # hunting a geometry bug that the measurement never actually saw.
+        echo "FAIL  ${lib}/${name}: interference solid did not parse as a binary STL"
+        echo "      This is a harness/render fault, NOT evidence that the pair"
+        echo "      overlaps — the check never got a mesh to measure."
+        fail=1 ;;
       empty:*)
         echo "FAIL  ${lib}/${name}: the pair INTERFERES — ${facets} facets of overlap"
         echo "      The male part does not go into the female part at its declared"
