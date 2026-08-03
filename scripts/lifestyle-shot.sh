@@ -159,31 +159,50 @@ except Exception:
       fi
       authority="${value#https://}"
       authority="${authority%%[/?#]*}"   # drop path / query / fragment
-      authority="${authority##*@}"       # drop userinfo (take after the last @)
+      authority="${authority##*@}"       # drop userinfo (segment after last @)
       if [[ "$authority" == \[* ]]; then
         host="${authority%%\]*}]"        # bracketed IPv6 literal, keep [ ... ]
+        rest="${authority#*\]}"; port="${rest#:}"; [[ "$port" == "$rest" ]] && port=443
       else
-        host="${authority%%:*}"          # drop :port
+        host="${authority%%:*}"
+        port="${authority##*:}"; [[ "$port" == "$authority" ]] && port=443
       fi
-      if ! python3 - "$host" <<'PY'
+      # Resolve + validate ONCE and capture the vetted IP, so curl connects to
+      # that exact address via --resolve rather than doing its own second DNS
+      # lookup — which a short-TTL rebind could swing to an internal host
+      # between the check and the fetch (TOCTOU). A literal IP host has no DNS
+      # lookup to rebind, so it's fetched directly once vetted.
+      vet="$(python3 - "$host" <<'PY'
 import sys, socket, ipaddress
 host = sys.argv[1].strip("[]")
 try:
+    ipaddress.ip_address(host); literal = True
+except ValueError:
+    literal = False
+try:
     addrs = {ai[4][0] for ai in socket.getaddrinfo(host, None)}
 except Exception as e:
-    sys.stderr.write("refusing image URL: cannot resolve host %r (%s)\n" % (host, e))
-    sys.exit(1)
+    sys.stderr.write("refusing image URL: cannot resolve host %r (%s)\n" % (host, e)); sys.exit(1)
+vetted = ""
 for a in addrs:
     ip = ipaddress.ip_address(a)
     if (not ip.is_global) or ip.is_private or ip.is_loopback or ip.is_link_local \
        or ip.is_reserved or ip.is_multicast:
-        sys.stderr.write("refusing image URL: host %r resolves to non-public %s\n" % (host, a))
-        sys.exit(1)
+        sys.stderr.write("refusing image URL: host %r resolves to non-public %s\n" % (host, a)); sys.exit(1)
+    vetted = vetted or a
+if not vetted:
+    sys.stderr.write("refusing image URL: host %r has no addresses\n" % host); sys.exit(1)
+print("literal" if literal else "name")
+print(vetted)
 PY
-      then
-        exit 1
+)" || exit 1
+      vetted_ip="${vet##*$'\n'}"
+      if [[ "${vet%%$'\n'*}" == "name" ]]; then
+        resolve_host="${host#[}"; resolve_host="${resolve_host%]}"
+        curl -fsSL --resolve "${resolve_host}:${port}:${vetted_ip}" "$value" -o "$tmp/gen.img"
+      else
+        curl -fsSL "$value" -o "$tmp/gen.img"
       fi
-      curl -fsSL "$value" -o "$tmp/gen.img"
     else
       printf '%s' "$value" | base64 -d >"$tmp/gen.img"
     fi
