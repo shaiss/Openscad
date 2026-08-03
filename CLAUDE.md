@@ -22,7 +22,13 @@ Anything **derived** from a design is CI's job, not yours. The `regen` job in `.
 
 That is not only a convenience. Every gate on these artifacts is presence-only, precisely because a human used to commit them: `readme-gate.sh` checks a preview exists, is embedded and is under budget, never that it depicts current geometry. Issue #69 is that hole — three `desiccant-capsule` previews still showed a thread profile the design no longer had, and CI passed them clean. Regenerating in the same run that gates the source closes it: a committed image cannot be older than the source beside it.
 
-Two consequences worth knowing. A push made by CI does not re-trigger CI, so the regenerated commit is verified by the jobs in the run that created it (they check out that commit) rather than by a fresh run. And CI cannot push to a fork, so a PR from a fork fails the `regen` job with the list of files to regenerate by hand instead of silently skipping them.
+Three consequences worth knowing.
+
+The commit-back is pushed with the **`REGEN_TOKEN`** secret (a fine-grained PAT with `contents: write`), not `GITHUB_TOKEN`. A `GITHUB_TOKEN` push triggers no workflow, and check runs attach to the commit a run started on — so committing back with it would move the PR head onto a commit carrying none of the required contexts, with nothing left to add them, and the PR could never merge. The PAT push does trigger a run, so the checks land on the commit that actually ships. Without the secret `regen` still regenerates and commits, but fails the job with an explanation rather than stranding the PR silently.
+
+That re-trigger means a regenerating PR runs CI twice. The second run is the verification pass, and a **loop guard** bounds it there: `regen` recognises its own commit at `HEAD` and refuses to push a second time. Without that, a generator that isn't byte-stable across runners — Cycles picks its CPU kernel by instruction set — would push, re-trigger, and push again forever. If the second pass does produce different bytes, it warns that the generator is non-reproducible instead of chasing it.
+
+And CI cannot push to a fork, so a PR from a fork fails the `regen` job with the list of files to regenerate by hand instead of silently skipping them.
 
 Set `OPENSCADPATH="$PWD/lib:$PWD"` (the scripts do this automatically): `lib/` resolves library includes, and the repo root resolves `include <styles/<name>/style.scad>`. Available libraries:
 

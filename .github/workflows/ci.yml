@@ -277,12 +277,13 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     permissions:
-      # The one job in this workflow that writes. Note that a push made with
-      # GITHUB_TOKEN does NOT trigger a new workflow run: that stops this job
-      # from re-triggering itself forever, and it is also why the jobs that
-      # judge these artifacts check out `sha` below rather than trusting the
-      # ref the run started on — nothing else will come along and re-check it.
+      # The one job in this workflow that writes.
       contents: write
+    env:
+      # One definition, used to write the commit AND to recognise it on the
+      # next run (see the loop guard in the commit step). Drift between the
+      # two would silently disarm that guard.
+      REGEN_SUBJECT: "CI: regenerate previews and product pages"
     outputs:
       # The commit this job pushed, or "" when it pushed nothing. Downstream
       # jobs pass it straight to actions/checkout's `ref`, where the empty
@@ -304,6 +305,20 @@ jobs:
             ${{ github.event_name == 'pull_request'
                 && github.event.pull_request.head.repo.full_name
                 || github.repository }}
+          # REGEN_TOKEN (a fine-grained PAT with contents:write) rather than
+          # GITHUB_TOKEN, because of a rule with teeth: a push made with
+          # GITHUB_TOKEN does not trigger any workflow. Check runs attach to
+          # the commit the run started on, so committing back with it moves
+          # the PR head to a commit carrying NONE of the required contexts,
+          # and nothing will ever come along to add them — the PR is then
+          # permanently unmergeable, the exact trap the CAUTION at the top of
+          # this file describes. A PAT push does trigger a run, so the
+          # required checks land on the commit that actually ships.
+          #
+          # Falls back to GITHUB_TOKEN when the secret is absent so a fork or
+          # a not-yet-configured repo still regenerates; the commit step says
+          # loudly what that costs.
+          token: ${{ secrets.REGEN_TOKEN || github.token }}
 
       - name: Decide what needs regenerating
         id: plan
@@ -311,6 +326,7 @@ jobs:
           GATE: ${{ needs.changes.outputs.gate }}
           GATE_DESIGNS: ${{ needs.changes.outputs.gate_designs }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HAVE_PAT: ${{ secrets.REGEN_TOKEN != '' }}
         run: |
           set -euo pipefail
           designs=""
@@ -349,11 +365,31 @@ jobs:
              && [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
             can_push=false
           fi
+          # LOOP GUARD. Pushing with a PAT re-triggers this workflow, so a
+          # regeneration that is not byte-stable would push, re-trigger,
+          # push again, forever. It is not a hypothetical: tools/photoshot
+          # documents that Cycles selects an SSE4.2 or AVX2 kernel by what
+          # the host CPU supports and that their rounding differs, and
+          # nothing pins a run to one runner model.
+          #
+          # So allow at most ONE regen commit per chain: if HEAD is already
+          # one of ours, this is the verification pass. It still regenerates
+          # and the gates still judge the result — it just refuses to push
+          # again, which bounds the cycle at two runs no matter how unstable
+          # the renderer is.
+          already=false
+          if [ "$(git log -1 --format=%s)" = "$REGEN_SUBJECT" ] \
+             && [ "$(git log -1 --format=%ae)" = "41898282+github-actions[bot]@users.noreply.github.com" ]; then
+            already=true
+            echo "::notice::HEAD is already a regen commit — this pass verifies it and will not push again"
+          fi
           {
             echo "designs=$designs"
             echo "shots=$shots"
             echo "render=$render"
             echo "can_push=$can_push"
+            echo "already=$already"
+            echo "have_pat=$HAVE_PAT"
           } >> "$GITHUB_OUTPUT"
           echo "regenerating: ${designs:-(nothing — no design moved)}"
 
@@ -455,6 +491,8 @@ jobs:
         id: commit
         env:
           CAN_PUSH: ${{ steps.plan.outputs.can_push }}
+          ALREADY: ${{ steps.plan.outputs.already }}
+          HAVE_PAT: ${{ steps.plan.outputs.have_pat }}
           BRANCH: >-
             ${{ github.event_name == 'pull_request'
                 && github.event.pull_request.head.ref
@@ -471,16 +509,35 @@ jobs:
           fi
           echo "regenerated:"
           git diff --cached --name-only | sed 's/^/  /'
+          if [ "$ALREADY" = "true" ]; then
+            # Second pass, and the output STILL differs from what the first
+            # pass committed. The sources didn't move, so this is the
+            # renderer disagreeing with itself across runners — real, but not
+            # something to fix by pushing again. Report it and stop: the
+            # committed artifacts are the first pass's, which the gates in
+            # this very run have judged.
+            echo "::warning::Regenerating produced a different result than the regen commit already on this branch, with no source change in between. That means a generator is not reproducible across runners — the files above differ only by rendering noise. Committed artifacts are left as they are; the loop guard stops here rather than pushing again."
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            git reset >/dev/null
+            exit 0
+          fi
           if [ "$CAN_PUSH" != "true" ]; then
             echo "::error::Committed artifacts are stale and CI cannot push to a fork. Regenerate the files listed above locally (./scripts/render.sh <name> --previews, ./scripts/animate.sh, ./scripts/product-shot.sh, ./scripts/gallery.sh) and commit them, or re-open this PR from a branch in this repository."
             exit 1
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "CI: regenerate previews and product pages"
+          git commit -m "$REGEN_SUBJECT"
           git push origin "HEAD:${BRANCH}"
           sha="$(git rev-parse HEAD)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [ "$HAVE_PAT" != "true" ]; then
+            # Without a PAT this push cannot trigger a run, so the required
+            # contexts stay on the commit we just replaced and the PR becomes
+            # unmergeable with no failing check to explain why. Say so where
+            # someone will see it, rather than leaving them to work it out.
+            echo "::error::Regenerated artifacts were committed as ${sha}, but the REGEN_TOKEN secret is not set, so this push used GITHUB_TOKEN and will NOT trigger a run. The required status checks are still attached to the previous commit and this PR cannot merge until something re-runs CI on ${sha} (push any commit, or re-run this workflow). Fix permanently by adding REGEN_TOKEN — a fine-grained PAT with contents:write on this repository."
+          fi
           {
             echo "### Regenerated artifacts"
             echo
