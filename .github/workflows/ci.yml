@@ -354,6 +354,36 @@ jobs:
       - name: Every design ships a product-page README
         run: ./scripts/readme-gate.sh
 
+  site-build:
+    # The same generator Vercel runs (vercel.json pins it), so this catches a
+    # broken deploy on the PR instead of after merge. It also link-checks every
+    # product page: the build fails on any local reference that does not
+    # resolve. Ungated for the same reason design-docs is — one small npm
+    # install, seconds to run, and always reporting keeps it usable as a
+    # required check.
+    name: Static site builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Install site dependencies
+        run: npm --prefix site ci
+      - name: Build the site (fails on any broken local reference)
+        run: node site/build.mjs --out build/site
+      - name: Upload the built site
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: site
+          path: build/site
+          if-no-files-found: error
+
   scad-check:
     name: OpenSCAD syntax/geometry check
     needs: changes

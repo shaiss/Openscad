@@ -123,12 +123,16 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `product-shot.sh` — real-world-looking studio product shots from
     `shots.conf`, path-traced from the design's own STL export
   - `gallery.sh` — regenerates the design gallery above
+  - `site.sh` — builds the static product site into `build/site`
   - `style-lift.sh` — lift a design style out of a reference mesh into
     `styles/<name>/`
   - `style-check.sh` — gate the style packs and any design that declares one
   - `lint-scad.sh` — report-only [sca2d](https://gitlab.com/bath_open_instrumentation_group/sca2d) static analysis
   - `preview-budget.sh` — sourced helper defining the GIF and product-shot
     size budgets
+- `site/` — the static product site built from the designs, styles and
+  previews already committed here, and deployed on Vercel — see its
+  [README](site/README.md)
 - `styles/` — design languages lifted from reference models: the spec, the
   tokens a design builds from, and the rules CI checks parts against
 - `templates/` — starting points for a new design and its product page

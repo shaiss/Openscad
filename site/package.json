@@ -1,0 +1,12 @@
+{
+  "name": "print-bench-site",
+  "private": true,
+  "type": "module",
+  "description": "Static product site generator for the designs in this repo",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "marked": "^16.4.0"
+  }
+}
