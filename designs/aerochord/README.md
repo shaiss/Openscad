@@ -9,7 +9,7 @@ piece, standing up, with no supports** — the intricate internal air path only
 works because it was solved to be printable. For anyone who wants an
 instrument that is impossible to buy and faintly impossible to explain.
 
-![Product shot](previews/product-hero.png)
+![aerochord printed in amber-orange PLA (satin finish) — three graduated fipple pipes rising from a base bar, with the mouthpiece tube at the front](previews/product-hero.png)
 
 The three graduated pipes are the three voices of the default major triad — the
 tallest is the lowest note. The windows (mouths) sit at the front base of each
@@ -81,7 +81,7 @@ sections. The ones most worth touching:
 |---|---|---|
 | `chord_ratios` | `[1, 5/4, 3/2]` | The chord, as just-intonation ratios. `[1, 6/5, 3/2]` = minor; add `2` for a root+octave; more entries = more voices |
 | `root_freq` | `1046.5` Hz (C6) | Pitch of the lowest voice. Lower = taller, floppier pipes; higher = shorter, sturdier |
-| `tune` | `1.0` | Scales every pipe length together to correct measured pitch. `tune = target/measured` after a test print. >1 lowers pitch |
+| `tune` | `1.0` | Scales every pipe length together to correct measured pitch. Set `tune = measured/target` after a test print (pitch ∝ 1/`tune`, so >1 lengthens tubes and lowers pitch) |
 | `flue_h` | `1.0` mm | Windway air-gap — the critical FDM feature. Raise in 0.1 mm steps if a voice won't speak. Guarded ≥ 0.8 |
 | `cutup` | `4.5` mm | Flue-to-labium distance; the fipple's tone control. Breathy → lower it; shrill → raise it |
 | `bore_d` | `10` mm | Pipe bore diameter — louder/lower-impedance when wider |

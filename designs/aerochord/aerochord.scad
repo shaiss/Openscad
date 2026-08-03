@@ -79,8 +79,9 @@ base_end = 5;
 bottom_chamfer = 0.8;
 
 /* [Quality] */
-// Iterating: 48. Production render: 96+.
-$fn = 48;
+// Production smoothness (visible cylinders want >= 64). Drop to ~48 only for
+// quick iteration; the default render is what CI gates and what you slice.
+$fn = 96;
 
 // ---------------------------------------------------------------------------
 // Derived geometry (mm)
@@ -98,11 +99,20 @@ window_bot_z = block_top + 1.2;        // flue exit, just above the block
 labium_z     = window_bot_z + cutup;   // resonator open end (window top edge)
 
 // Per-voice resonator length from the stopped-pipe relation f = c/(4*Leff):
-// the open window is one end, the closed cap the other, so the effective
-// length runs from the labium up to the cap.
+// the open window is one end, the closed cap the other. The physical air column
+// actually runs from the labium up to the cone APEX (r_bore above the cap
+// base), plus the open-end correction at the window. That extra length is the
+// SAME for every voice (identical fipple, identical cone), so leaving it in
+// would add a constant to each column — and a constant offset distorts the
+// chord RATIOS (a global `tune` multiplier can't undo an additive error). So
+// we subtract a lumped end correction, `end_corr`, from the cap base, keeping
+// each effective column proportional to 1/f. `end_corr ~ r_bore` (open-end
+// correction + conical cap) is a good first estimate; a physical print refines
+// it if the intervals sound off.
+end_corr = r_bore;
 function freq(i)      = root_freq * chord_ratios[i];
 function reson_len(i) = tune * c_sound / (4 * freq(i));
-function tube_top(i)  = labium_z + reson_len(i);    // z of the cap base
+function tube_top(i)  = labium_z + reson_len(i) - end_corr;  // cap base; apex ~= target length
 function tube_y(i)    = i * pitch;                  // voice centre along Y
 
 cap_h    = r_out;                       // 45deg conical closed top
@@ -130,6 +140,14 @@ assert(labium_land >= 0.3,
 assert(voices >= 1, "need at least one voice");
 assert(flue_h < r_bore, "flue slot must be thinner than the bore radius");
 assert(cutup > flue_h, "cut-up must exceed the flue height for a working fipple");
+// Guard the acoustic inputs: these are all `-D`-overridable (see README), and a
+// zero/negative value would divide by zero or make negative cylinder heights.
+assert(root_freq > 0, "root_freq must be positive");
+assert(c_sound > 0, "c_sound must be positive");
+assert(tune > 0, "tune must be positive");
+assert(min(chord_ratios) > 0, "every chord ratio must be positive");
+assert(min([for (i = [0:voices-1]) reson_len(i)]) > end_corr + cutup,
+       "root_freq too high for this bore: a resonator is shorter than its end correction — lower root_freq or bore_d");
 
 // ---------------------------------------------------------------------------
 // Solid body
@@ -154,11 +172,19 @@ module base_bar() {
 
 // External beak: a clean horizontal mouthpiece nub at the -Y end you put your
 // lips to. Anchored in the base end wall; the short cantilever bridges in air.
+// The bore through it is a teardrop whose POINT rises 0.8*mouth_d above the bore
+// centre — well past the plain circular radius — so a nub sized only as
+// `mouth_d + 2*wall` centred on the bore would let the point pierce its roof and
+// open a ~0.2 mm slit along the top (an air leak). Size and centre the nub from
+// the teardrop's true top/bottom extent so a full `wall` surrounds the point.
 module beak_solid() {
-    d = mouth_d + 2 * wall;
+    td_top = mouth_z + 0.8 * mouth_d + wall;   // wall above the teardrop point
+    td_bot = mouth_z - mouth_d / 2   - wall;   // wall below the circular bore
+    d      = td_top - td_bot;
+    cz     = (td_top + td_bot) / 2;            // nub axis, offset up from the bore
     hull() {
-        translate([0, y_lo,              mouth_z]) rotate([-90, 0, 0]) cylinder(d = d, h = eps);
-        translate([0, y_lo - mouth_proj, mouth_z]) rotate([-90, 0, 0]) cylinder(d = d, h = eps);
+        translate([0, y_lo,              cz]) rotate([-90, 0, 0]) cylinder(d = d, h = eps);
+        translate([0, y_lo - mouth_proj, cz]) rotate([-90, 0, 0]) cylinder(d = d, h = eps);
     }
 }
 

@@ -1,2 +1,5 @@
-# aerochord targets a 256 mm bed (Bambu X1/P1, Prusa CORE One).
---build-volume 256x256x256
+# aerochord is small; this just guards against a parameter override blowing
+# past a common bed. Gate against the INTERSECTION of a Bambu X1/P1
+# (256x256x256) and a Prusa CORE One (250x220x270) so the model can't silently
+# exceed either printer's envelope.
+--build-volume 250x220x256

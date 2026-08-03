@@ -49,8 +49,14 @@ is the acoustic open end, the printed cap is the closed end. For a stopped pipe
     f = c / (4 · L_eff)      ⇒      L_eff = c / (4 · f)
 
 with `c = 343 m/s` at ~20 °C. The design solves `L_eff` per voice from its
-target frequency and places the cap that far above the labium
-(`tube_top(i) = labium_z + reson_len(i)`).
+target frequency, then places the cap base a lumped **end correction**
+(`end_corr`, ≈ bore radius) *below* that so the physical air column — labium to
+cone apex, plus the window's open-end correction — matches `L_eff`
+(`tube_top(i) = labium_z + reson_len(i) − end_corr`). This matters for the
+chord: the cone and fipple add the *same* length to every voice, and a constant
+offset distorts the interval **ratios**; subtracting it keeps each column
+proportional to `1/f`. A global `tune` (a multiplier) cannot fix an additive
+error, which is why the offset is removed geometrically rather than tuned out.
 
 Default chord: **just-intonation major triad**, ratios `[1, 5/4, 3/2]`, root
 `root_freq = 1046.5 Hz` (C6). That gives nominal resonator lengths of ~82 / 66 /
@@ -104,14 +110,16 @@ the product page too.
 
 ## Gate status (this revision)
 
-- `printcheck`: **84/100**, watertight, single body. Warnings only: ~3% surface
-  overhang (the flat plenum bridge + labium bevels), ~2% thin wall (the
-  unavoidable sliver where a rectangular window meets a round tube — recorders
-  have this too). No criticals.
-- Test-slice (PrusaSlicer, 0.2 mm / 0.4 mm nozzle): succeeds, ~4 h, ~26 g PLA.
+- `printcheck`: **92/100**, watertight, single body. One warning only: ~3%
+  surface overhang (the flat plenum bridge + the labium bevels). No criticals.
+  (At the production `$fn = 96` the window/round-tube tangency no longer samples
+  below 0.8 mm; the labium tip is a deliberate ~0.5 mm land — sharp on purpose,
+  as on any recorder — and does not read as a thin wall at this resolution.)
+- Test-slice (PrusaSlicer, 0.2 mm layer / 0.4 mm nozzle): succeeds, ~3 h 50 m,
+  ~25 g PLA. The coupon: ~1 h 40 m, ~11 g.
 - `gate.sh --slice aerochord`: exit 0.
 
-## Print this first (coupon)
+## Print this first
 
 `aerochord-coupon.scad` is the **single root voice**, straight from the
 production modules (`chord_ratios = [1]`), ~1 h print. Print it before
@@ -123,8 +131,10 @@ committing to the full ~4 h chord and check, in this order:
 2. **Is the tone clean?** Breathy/airy → nudge `cutup` down (sharper labium
    response); shrieky/overblown → nudge `cutup` up, or blow softer.
 3. **Is the pitch right?** Measure the sounding pitch, then set
-   `tune = (target_freq / measured_freq)` and carry `flue_h`, `cutup`, `tune`
-   into the full instrument. (Higher `tune` → longer tubes → lower pitch.)
+   `tune = (measured_freq / target_freq)` and carry `flue_h`, `cutup`, `tune`
+   into the full instrument. Pitch is inversely proportional to `tune` (longer
+   tubes → lower pitch), so a print that sounds *sharp* (measured > target)
+   needs `tune > 1` to lengthen the tubes.
 
 The coupon is the hardest voice to get speaking (longest resonator, most air),
 so if it works the full chord's shorter voices should follow.
