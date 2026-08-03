@@ -514,7 +514,12 @@ this one.
   2. a **port discharging into a ventilated enclosure** (an open end);
   3. a **turnaround node** — clear internal width **≥ `body_len_mm`**.
 - **Limit: `2 × body_len_mm` per run** (360 mm at the default). If a run is
-  **not** hand-releasable in one action, the limit drops to **300 mm**.
+  **not** hand-releasable in one action, the limit is
+  **`min(2 × body_len_mm, 300 mm)`** — not "drops to 300", which is only a drop
+  above `body_len_mm = 150`. Below that the 2× bound is already the stricter of
+  the two and the 300 mm hand-reach figure never binds. The assert message
+  states it the same way; both were corrected together after the "drops to"
+  phrasing was found to contradict itself on any small animal (PR #78 review).
 - **NOT breaks, and this is the part that must be prominent in every
   message that mentions the rule:** a **bend** is not a break; a
   **junction at bore diameter** is not a break; a **coupling** is not a
