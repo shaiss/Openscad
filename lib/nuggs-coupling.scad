@@ -82,20 +82,26 @@
 // radius and lands short of it by the chord sagitta, by a different amount per
 // radius and per swept angle. The two halves of this fit are split at ONE
 // radius (r_mid +/- port_tol/2), which means the clearance there is a function
-// of how finely the caller happened to tessellate. Measured, before the pin, on
-// the insertion clocking of a round-to-round pair — the position that must be
-// free — the interference solid came out at:
+// of how finely the caller happened to tessellate.
 //
-//   $fn =  48  ->  11.51  mm3        $fn =  96  ->   0.0003 mm3
-//   $fn =  56  ->  13.06  mm3        $fn = 120  ->   0      mm3
-//   $fn =  64  ->   0.548 mm3        $fn = 128  ->   0.0126 mm3
+// Measured on the pre-extraction geometry (designs/nuggs's nuggs_port on a
+// plain 30 mm neck), at the INSERTION clocking with the pair pulled 0.01 mm
+// apart — the position that must be free — the interference solid came out at:
 //
-// Non-monotone, localised to the shell split, and entirely the caller's doing.
+//   $fn =  48  ->  0.1754 mm3        $fn =  96  ->  empty
+//   $fn =  56  ->  0.0717 mm3        $fn = 120  ->  empty
+//   $fn =  64  ->  0.0260 mm3        $fn = 128  ->  empty
+//
+// The same dependence, stated on the port alone rather than on a fit, is
+// larger: one bare port face measures 19840.72 mm3 at $fn = 16, 20781.11 at 48,
+// 20830.18 at 96 and 20838.26 at 128 — a 5.0% swing on nothing but a quality
+// preset. Under the pin it is 20837.636278394 mm3 at every one of them.
+//
 // "One genderless interlock shared by every module" is literally false if the
-// fit moves when a second consumer sets a different quality preset — and worse,
-// scripts/mate-check.sh renders at $fn = 96, which is exactly where those
-// slivers live, so a naively written mates.conf would fail on a rounding
-// artifact and teach the next person to add a fudge factor.
+// fit moves when a second consumer sets a different quality preset. And the
+// harness that is supposed to catch that cannot: scripts/mate-check.sh renders
+// at a hardcoded $fn = 96, so an unpinned library would have been proved at
+// exactly one resolution and shipped to callers using any other.
 //
 // So the fit gets its own resolution and the caller keeps theirs for the rest
 // of the part. The values are designs/nuggs's own $fa/$fs at the time of
@@ -300,15 +306,20 @@ function nuggs_cfg(
         "NUGGS RIB DEPTH: the rib tip radius ", rib_in, " has fallen to or",
         " inside the tube OD ", ro, ". rib_h is deeper than the whole inner",
         " band; there is no groove floor left to cut."))
-    // MEASURED silent failure: at rib_h = 2.5 (which the design's old
-    // `rib_h < lug_r/2 - 0.4` assert allowed) the web is -0.10 mm, the entry
-    // slot cuts clean through the projecting inner sector, and the export is
-    // still watertight and ONE body — 39764.8 mm3 against 41784.5. Nothing in
-    // check.sh, gate.sh, printcheck or a mate test notices. This guard replaces
-    // that one: it is strictly tighter at the shipped nozzle and it bounds the
-    // thing that actually breaks. It runs BEFORE the circumferential pins below
-    // so that a too-deep rib is reported as the structural failure it is, not
-    // as a tolerance-derivation failure it merely also trips.
+    // MEASURED silent failure. designs/nuggs guarded this region with
+    // `rib_h < lug_r/2 - 0.4`, which bounds nothing that matters: at rib_h =
+    // 2.15 — legal there — the web comes out at 0.25 mm, under a single 0.4 mm
+    // extrusion width, and the 25 mm straight renders with no diagnostic at
+    // all, exports watertight and ONE body (3944 facets, 40187.2 mm3 against
+    // the baseline's 41784.6) and gates: printcheck scores it 76/100
+    // PRINTABLE WITH CAVEATS against the baseline's 84, with the thin wall as a
+    // WARNING, and warnings do not fail the gate. So this guard replaces that
+    // one — it is stated at the printable-feature floor, which is the thing
+    // that actually breaks. It runs BEFORE the circumferential pins below so a
+    // too-deep rib is reported as the structural failure it is: in designs/nuggs
+    // the only thing that stopped rib_h from going further was the loose-end
+    // pin firing, and it announced "the angle is being derived at the wrong
+    // radius", which was a misdiagnosis of a rib that was simply too deep.
     assert(web >= 2 * nozzle, str(
         "NUGGS WEB: the projecting inner sector is left ", web,
         " mm thick between its groove floor and its bore-side face (lug_r*split",
