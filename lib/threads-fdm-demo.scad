@@ -47,16 +47,21 @@ translate([135, 0, 0]) thread_neck(16, 0.6, 3, 1, 10);
 
 // 5. The accepting half of the chord bound's boundary.
 //
-//    The seg guard does not only refuse — it advises, computing the seg that
-//    would satisfy it as ceil(180 / acos(1 - 2*_max_chord / d_major)). At
-//    d_major 28 that advice is 27. This renders at exactly 27, so if the
-//    advice ever drifts one too high the render aborts here.
+//    This renders at exactly seg = 27, the smallest value the chord bound
+//    accepts at d_major 28. It proves one thing, precisely: the CONDITION
+//    admits 27. It says nothing about the advice the error message carries —
+//    that string is built only when the assert fires, so ceil(180 / acos(...))
+//    is never evaluated on this path.
 //
 //    Its partner is boundary-seg-26-refused in lib/threads-fdm-guards.conf,
-//    which pins the other side. A guard manifest can only express refusals, so
-//    "27 is accepted" has nowhere to live but a render — and without it, an
-//    off-by-one in the advice would leave every check in the repo green while
-//    the error message named a seg that does not actually work.
+//    which carries the other two thirds: the condition refuses 26, and the
+//    message names 27. Split this way because a guard manifest can only
+//    express refusals, so "27 is accepted" has nowhere to live but a render.
+//
+//    Only together do the two say the advice is exact — refuses 26, accepts
+//    27, names 27. Drop this render and a condition that tightened past its
+//    own advice would still pass every check in the repo, leaving the message
+//    recommending a seg that no longer works.
 translate([180, 0, 0]) thread_helix(d_major, depth, pitch, starts, neck, seg = 27);
 
 // 6. The clearance derivation is a function, not a magic number.
