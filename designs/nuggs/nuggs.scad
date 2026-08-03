@@ -8,7 +8,9 @@
 part = "assembled";  // [assembled, straight, bulkhead_in, bulkhead_out, coupon, cutaway]
 
 /* [The NUGGS standard - change these and nothing you already printed fits] */
-// Embossed on every module; bump only on a breaking port change
+// Engraved on every module whose marked face is out of the animal's reach
+// (straight, bulkhead_out - see the "Revision mark" section). Bump only on a
+// breaking port change.
 NUGGS_REV = 1;
 // Internal bore (mm) - the headline number. Asserted >= min_bore_mm
 bore_d = 80.0;
@@ -83,6 +85,17 @@ bottom_chamfer = 0.8;
 // House angle for every chamfer and cone (deg). Not 45 - see NOTES.md
 chamfer_ang = 50;
 
+/* [Revision mark] */
+// Cap height of the engraved mark (mm). 0 leaves every part unmarked.
+mark_h = 5.0;
+// Engrave depth (mm). Recessed, never proud - a raised character is exactly
+// the chew-initiation edge PM.md N6 forbids. Asserted to leave 3 perimeters.
+mark_d = 0.6;
+// Per-character advance along the marked surface (mm). Fixed pitch, not the
+// font's own metrics - OpenSCAD cannot report them, and each character has to
+// be placed on its own tangent anyway. Wide enough that O/N/W do not touch.
+mark_adv = 4.8;
+
 /* [Quality] */
 // Iterating: $fa=6/$fs=1.5. Production: $fa=2/$fs=0.5.
 $fa = 3;
@@ -129,6 +142,9 @@ pitch/2 - lug_deg, not pitch - lug_deg. The looser form lets the part render \
 and gate cleanly while being physically impossible to twist shut.");
 assert(rib_h < lug_r / 2 - 0.4,
        "RIB: too deep for the coupling ring's radial budget.");
+assert(mark_d <= wall - 3 * nozzle,
+       "MARK DEPTH: the revision engraving must leave >= 3 perimeters of tube \
+shell behind it. Reduce mark_d or thicken wall.");
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -293,6 +309,64 @@ module nuggs_port() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Revision mark
+//
+// NUGGS_REV has to be legible on a printed part or it is not a standard, just
+// a number in a file — and the one composition hazard this design admits
+// (chaining two straights past the TVT budget) is a rule only the part itself
+// can carry to whoever is holding it. Both were claimed and neither existed
+// until issue #56 finding 4.
+//
+// Two rules govern where it may go:
+//   * ENGRAVED, never proud. A raised character is a chew-initiation edge,
+//     which PM.md N6 forbids outright.
+//   * Only on a face that looks at the ROOM. The straight's outer tube wall
+//     runs between the two enclosures and the bulkhead_out flange rim sits
+//     outside the wall, so neither is reachable from the bore or from inside
+//     the cage. bulkhead_in gets no mark at all: every face it has is either
+//     inside the enclosure with the animal or buried in the wall hole.
+//
+// Cut one character at a time, each on its own tangent plane. The rule spans
+// 91.2 mm of arc (123.2 deg at r = 42.4), and one flat cut across that has a
+// sagitta of 22.2 mm — nine times the wall. Per character it is 0.068 mm.
+// ---------------------------------------------------------------------------
+function mark_rev()  = str("NUGGS R", NUGGS_REV);
+function mark_rule() = "ONE STRAIGHT PER RUN";
+
+// Text wrapped around the outside of a cylinder of radius `r`, centred on
+// angle `a0` at height `z`, reading left to right seen from outside. Returns
+// the cutting solid — always subtract it, never union it.
+module wrap_text(s, r, z, a0 = 0, h = mark_h, depth = mark_d, adv = mark_adv) {
+    step = adv / r * 180 / PI;                 // arc advance -> degrees
+    for (i = [0 : len(s) - 1])
+        rotate([0, 0, a0 + (i - (len(s) - 1) / 2) * step])
+            translate([r - depth, 0, z])
+                rotate([90, 0, 90])            // text plane -> tangent plane
+                    linear_extrude(depth + eps)
+                        text(s[i], size = h, halign = "center",
+                             valign = "center");
+}
+
+// Revision + composition rule on the straight's outer wall, at mid-length.
+// Only when there is clear tube between the two port zones: a 25 mm coupon
+// stub is port zone end to end, and the coupon must stay a fit coupon.
+module mark_straight(l) {
+    if (mark_h > 0 && l - 2 * z_top >= 4 * mark_h) {
+        wrap_text(mark_rev(),  ro, l / 2 + mark_h * 0.8);
+        wrap_text(mark_rule(), ro, l / 2 - mark_h * 0.8);
+    }
+}
+
+// Revision on the outer flange rim — 4 mm of face, so it carries the
+// revision only. The rule belongs on the straight, which is the part the
+// rule is about.
+module mark_flange_rim() {
+    if (mark_h > 0)
+        wrap_text(mark_rev(), bh_flange_d / 2, bh_flange_t / 2,
+                  h = mark_h * 0.6, adv = mark_adv * 0.6);
+}
+
 // Internal edge break at a bore face: swallows elephant's foot so no lip is
 // ever presented to a claw or a loaded cheek pouch.
 module bore_lead(z, dir = 1) {
@@ -316,6 +390,7 @@ module nuggs_straight(l = straight_len) {
         translate([0, 0, -port_proj - 2]) cylinder(r = ri, h = l + 2 * port_proj + 4);
         translate([0, 0, -port_proj]) bore_lead(0.001, 1);
         translate([0, 0, l + port_proj]) mirror([0, 0, 1]) bore_lead(0.001, 1);
+        mark_straight(l);
     }
 }
 
@@ -367,6 +442,8 @@ module nuggs_bulkhead_out() {
         translate([0, 0, -eps])
             cylinder(r = ri, h = 2 * port_proj + collar_t + 2 * eps);
         translate([0, 0, 2 * port_proj + collar_t]) mirror([0, 0, 1]) bore_lead(0.001, 1);
+        // Revision on the flange rim: outside the enclosure wall, in the room.
+        mark_flange_rim();
     }
 }
 
