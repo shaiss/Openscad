@@ -191,23 +191,62 @@ z_seat  = port_proj;              // where the MATE's tips land on our collar
 rib_in  = i_out - rib_h;          // how far the rib reaches into the mate's band
 g_floor = i_out - rib_h - port_tol;   // groove floor: clears the rib by port_tol
 
+// port_tol is a clearance in MILLIMETRES everywhere it appears. Rib and groove
+// flanks are radial planes, so a fixed *angle* is a gap that grows with radius:
+// feeding port_tol straight into rotate() and into a sector's angular width —
+// which this file did until issue #56 — realised 0.2317 mm/side at r = 44.25
+// instead of 0.300, and made the circumferential clearance scale with bore_d.
+// Deriving the angle per radius keeps the one-knob property the standard
+// claims, instead of a second, hidden, bore-dependent knob.
+function tol_deg(r) = port_tol / r * 180 / PI;
+// rib_in is the TIGHTEST radius at which a rib flank faces a groove flank, so
+// sizing there gives >= port_tol everywhere across the engagement band
+// rib_in..i_out rather than only on average.
+tol_a    = tol_deg(rib_in);
+slot_deg = rib_deg + 2 * tol_a;   // axial entry slot: the rib + port_tol a side
+run_deg  = lug_deg + 2 * tol_a;   // circumferential run, same clearance a side
+
+// Regression pin for the above (issue #56, finding 1). It reads the realised
+// clearance back OUT of the angular widths the geometry actually uses and
+// converts it to millimetres at the engagement radii — so writing a degree
+// where a millimetre belongs fails the render instead of quietly tightening
+// the joint by 23%. It is deliberately stated in mm, because mm is what the
+// coupon measures and what the docs promise.
+circ_clr     = (slot_deg - rib_deg) / 2 * PI / 180 * rib_in;   // tight end, mm
+circ_clr_max = (run_deg - lug_deg) / 2 * PI / 180 * i_out;     // loose end, mm
+assert(abs(circ_clr - port_tol) < 1e-6,
+       "PORT_TOL (circumferential): the gap between a rib flank and its groove \
+flank must BE port_tol in millimetres at the rib radius. Derive the bayonet's \
+angular widths with tol_deg(r); never set them from port_tol directly - that \
+silently spends a millimetre as if it were a degree.");
+assert(circ_clr_max <= port_tol * 1.05,
+       "PORT_TOL (circumferential): the loose end of the engagement band is \
+more than 5% over port_tol, so the angle is being derived at the wrong radius. \
+Derive it at rib_in, the tightest radius where the flanks face each other.");
+echo(str("nuggs: port_tol = ", port_tol, " mm -> circumferential clearance ",
+         circ_clr, "..", circ_clr_max, " mm/side over r = ", rib_in, "..",
+         i_out, " (flank angle ", tol_a, " deg)"));
+
 // Bayonet groove cut into one inner sector's outer face:
 //   * a narrow axial entry slot (rib_deg wide) running from our tip to the
 //     seat — this is the only way in, and it is deliberately much narrower
 //     than the sector so there is solid material left to twist under;
 //   * a full-width circumferential run at the seat, so the rib retains in
 //     EITHER twist direction and no handedness has to be got right.
-// Cut oversize by port_tol on every surface — the one fit knob.
+// Cut oversize by port_tol on every surface — the one fit knob. `t` is the
+// axial and radial clearance and is millimetres; `tol_a` is the SAME
+// clearance expressed as the angle that delivers it at the rib radius. Do not
+// collapse the two back into one symbol (issue #56).
 module bayonet_groove(a0) {
     t = port_tol;
-    rotate([0, 0, a0 - t])                                   // axial entry slot
+    rotate([0, 0, a0 - tol_a])                               // axial entry slot
         sector([[g_floor, z_tip - eps], [i_out + eps, z_tip - eps],
                 [i_out + eps, z_seat + t], [g_floor, z_seat + t]],
-               rib_deg + 2 * t);
-    rotate([0, 0, a0 - t])                                   // circumferential run
+               slot_deg);
+    rotate([0, 0, a0 - tol_a])                               // circumferential run
         sector([[g_floor, z_seat - rib_w - t], [i_out + eps, z_seat - rib_w - t],
                 [i_out + eps, z_seat + t], [g_floor, z_seat + t]],
-               lug_deg + 2 * t);
+               run_deg);
 }
 
 // One port face. The tube face sits at z = 0 and the mate's face butts it
