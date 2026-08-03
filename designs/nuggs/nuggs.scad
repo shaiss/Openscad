@@ -198,10 +198,14 @@ assert(run_len <= run_limit, str(
     " mm bore, so he leaves by whichever end is nearer and worst-case",
     " unassisted reverse travel is HALF the run; ", run_limit,
     " mm bounds that at one body length. No source measures how far a hamster",
-    " will reverse. The limit drops to 300 mm for a run that is not",
-    " hand-releasable in one action; every NUGGS joint is (PM.md N5), so this",
-    " run gets the full 2x. Shorten straight_len, break the run with a node or",
-    " an open module, or measure a longer animal."));
+    " will reverse. A run that is NOT hand-releasable in one action is capped",
+    " at min(", run_limit, ", 300) = ", min(run_limit, 300), " mm instead —",
+    " the 300 is an adult hand's reach into an ", bore_d, " mm bore, ~150 mm",
+    " from each end, and it is a separate bound rather than a smaller one (at",
+    " body_len_mm below 150 the 2x limit is already the stricter of the two).",
+    " Every NUGGS joint IS hand-releasable (PM.md N5), so this run gets the",
+    " full 2x. Shorten straight_len, break the run with a node or an open",
+    " module, or measure a longer animal."));
 
 assert(wall_hole_d >= bore_d + 2 * bh_spigot_wall + 1.0,
        "WALL HOLE: the hole must clear the full-bore spigot - the bore is never \

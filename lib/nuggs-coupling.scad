@@ -356,12 +356,19 @@ function nuggs_cfg(
         "NUGGS SLOT: the entry slot is ", slot_deg, " deg wide against a ",
         lug_deg, " deg sector — it consumes the sector it is cut into and",
         " there is nothing left for the mate's rib to twist under."))
-    assert(bite + t2 <= lug_r * split, str(
+    // The budget is the OUTER band, r_out - r_mid = lug_r * (1 - split) — not
+    // lug_r * split, which is the INNER band and is only the same number at the
+    // default split = 0.5. Written with the wrong limb this guard let a rib
+    // stand proud of r_out at any asymmetric split while still reporting the
+    // correct radius in its own message (PR #78 review).
+    assert(bite + t2 <= lug_r * (1 - split), str(
         "NUGGS RIB OD: the rib's fusing overlap puts its outer face at ",
         r_mid + t2 + bite, ", past the coupling ring OD ", r_out,
         ". Nothing mates out there, and a proud rib breaks the snag-free outer",
         " surface. Cut bite or widen lug_r."))
-    assert(collar_bite + t2 < lug_r * split, str(
+    // Same outer-band budget as NUGGS RIB OD above, and strict: the collar must
+    // stop SHORT of r_out, never land on it.
+    assert(collar_bite + t2 < lug_r * (1 - split), str(
         "NUGGS COLLAR OD: the backing collar reaches ", r_mid + t2 + collar_bite,
         ", at or past the outer sectors' OD ", r_out, ". It must stop SHORT of",
         " r_out so it never shares a cylindrical surface with the sectors it",

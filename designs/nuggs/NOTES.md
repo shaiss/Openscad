@@ -640,6 +640,101 @@ perpendicular to the local axis, so max |n_z| = sin(tilt), and sin 45° is
 exactly printcheck's threshold). A 90° turn is two modules. That is a real
 cost and it is paid deliberately.
 
+## Round 6 — extraction verified, and a proof that was worth nothing
+
+### 6.1 The two-way boolean difference is VACUOUS on this design
+
+Both the library and the migration were signed off partly on "8/8 two-way
+boolean differences empty — no file written, exit 0". That proof is worthless
+here, and anyone reaching for it again on a NUGGS part should stop.
+
+Importing a nuggs mesh into CGAL's Nef kernel throws an assertion violation
+(`SNC_FM_decorator.h:418`), thrown by the port's known coplanar / zero-area
+facets — the same degenerate shells tracked as B1b. OpenSCAD catches it, prints
+`Current top level object is empty`, writes no file, and **exits 0**. So the
+difference reports EMPTY for every pair involving `straight`, `bulkhead_out` or
+`coupon` whether or not the two meshes differ. It is a check that cannot fail,
+which is the same class of defect as a guard that cannot fire — and this repo
+built `guards.conf` precisely because that class is invisible.
+
+**What actually proves it**, and what replaced it: canonical triangle-set
+equality at `mark_h = 0`. Rendered both ways, `straight` gives 4924 facets and
+volume 126962.093155 mm³ from the pre-extraction source and 126962.093155 mm³
+through the library — identical hash, not merely equal volume. `bulkhead_in`
+and `coupon` likewise. That is a stronger statement than any boolean difference
+and it does not route through the kernel that crashes.
+
+### 6.2 So the extraction IS mesh-neutral, and the shipped delta is the engraving
+
+The extraction changes nothing. The whole of the shipped-part delta is the
+engraved text, which changed because the rule it carries changed:
+
+| Part | Volume delta | Where |
+|---|---|---|
+| `straight` | −67.9 mm³ (−0.05%) | (37, 0, 79) mm — outer tube wall at mid-length |
+| `bulkhead_out` | −5.9 mm³ (−0.01%) | (64, ±, 2) mm — flange rim |
+| `bulkhead_in` | 0.00% | carries no mark, deliberately |
+
+Confirmed three independent ways: the `mark_h = 0` equality above, canonical
+hashing, and CI's own argus-diff, which localised every changed region to the
+mark positions at ~0.67 mm max deviation — i.e. the engraving depth. Slice mass
+moved 149.55 → 149.48 g on the straight, which is the same fact in grams.
+
+The old mark read `NUGGS R1` / `ONE STRAIGHT PER RUN`. Under a per-run rule that
+sentence is no longer the constraint, so the part now carries `NUGGS PORT R1`,
+`MAX RUN 360MM` and `COUPLINGS DONT RESET` — both rule lines derived from
+`body_len_mm`, so they cannot drift from the assert.
+
+### 6.3 A guard written against the wrong limb
+
+`NUGGS RIB OD` and `NUGGS COLLAR OD` bounded their overlap by `lug_r * split`.
+The budget is the OUTER band, `r_out - r_mid = lug_r * (1 - split)`. At the
+default `split = 0.5` the two expressions are the same number, so every guard
+case in the manifest passed either way and nothing in the repo could see it. At
+`split = 0.75` the outer band is 1.5 mm rather than 4.5, and a rib with
+`bite = 2.0` stood proud of `r_out` while the guard waved it through — with its
+own message correctly reporting the offending radius. Fixed, and pinned by two
+new manifest cases at an asymmetric split. Raised by Qodo on PR #78.
+
+Worth noting how it survived: `web = lug_r * split` a few lines above is
+correct, because the web genuinely is in the inner band. Two adjacent
+expressions, same shape, different limb — and only one of them wrong.
+
+### 6.4 Doc claims that had drifted from the model
+
+All found by the verification pass or by review bots, all the same failure this
+file has now recorded six times: prose asserting something the model does not do.
+
+- README stated the old engraved string in four places after the model changed it.
+- The Bin Bridge run appeared as 238 mm in the docs and 230 mm in the model. 230
+  is what both the pre- and post-migration source compute; 238 traced back to a
+  single arithmetic slip in `docs/nuggs-research.md` §9, which wrote `port_len`
+  (a name that does not exist) where `port_proj` belongs. Docs now match the model.
+- `NUGGS_REV` was renamed `NUGGS_PORT_REV`; the research dossier's spec tables
+  still used the old name and described the mark as *embossed*, which is the
+  chew-initiation edge N6 forbids. It is engraved. Dated NOTES and decision-log
+  entries keep the old name deliberately — they were true when written.
+- The run-length assert offered 300 mm as a "drop" for a non-releasable run.
+  Below `body_len_mm = 150` that is a rise, so the message contradicted itself
+  on any small animal. Now stated as `min(2 x body_len, 300)`.
+
+### 6.5 Still open
+
+- **Nightly/manifold is unverified locally** — `openscad-nightly` is not in this
+  container, so every local number here is 2021.01/CGAL. It matters more than
+  usual: the mate cases judge on "the kernel agrees an exact fit exports zero
+  facets", and the four zero-area triangles per port are exactly what a
+  different kernel is most likely to tessellate differently. CI runs it and is
+  green, which is the only evidence there is.
+- **`bulkhead_in`'s printcheck score is export-format dependent** — 100/100 as
+  ASCII (what `gate.sh` writes), 92/100 as binary, where printcheck finds 16
+  zero-area triangles. Identical geometry, not a regression, same root cause as
+  B1b. Anyone comparing a local binary export against the gate's number will
+  think the part regressed.
+- **B1b itself is now load-bearing**, not cosmetic. Those degenerate facets are
+  what crash the Nef import in 6.1, so they no longer merely make diffs noisy —
+  they disable a whole class of verification.
+
 ## Open items — next round
 
 - **Bed contact is improved but not proven.** The warning is cleared and

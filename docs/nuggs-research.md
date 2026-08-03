@@ -329,7 +329,7 @@ Each port face is identical. Working outward from the bore:
 
 ### 3.7 Versioning
 
-`NUGGS_REV = 1`, embossed on every module's outer surface. Changing `bore_d`, `wall`, `port_len`, `n_lug`, `lug_deg`, `lug_h` or `lug_engage` invalidates every part already printed. Publish the port spec as a one-page table under the repo's licence — permissive, no NC clause, following Gridfinity's pattern (which, note, only went MIT in April 2023; its CC-BY-NC-SA precursor is exactly the fragmentation to avoid).
+`NUGGS_PORT_REV = 1` (renamed from `NUGGS_REV` when the port became `lib/nuggs-coupling.scad`), **engraved, never embossed** — a proud character is the chew-initiation edge N6 forbids — and only on faces the animal can never reach, so `bulkhead_in` deliberately carries no mark at all. Changing `bore_d`, `wall`, `port_proj`, `n_lug`, `lug_deg`, `lug_r` or `split` invalidates every part already printed. Publish the port spec as a one-page table under the repo's licence — permissive, no NC clause, following Gridfinity's pattern (which, note, only went MIT in April 2023; its CC-BY-NC-SA precursor is exactly the fragmentation to avoid).
 
 ---
 
@@ -360,14 +360,14 @@ enclosed run**, and the Bin Bridge is one run:
 
 | Contribution to the Bin Bridge's single enclosed run | mm |
 |---|---|
-| bulkhead throat (spigot 25 + port 14) × 2 | 78 |
+| bulkhead throat (spigot 25 + port_proj 10) × 2 | 70 |
 | straight (default) | 160 |
-| **enclosed run** | **238** |
+| **enclosed run** | **230** |
 | **limit (2 × 180 mm), per run** | **360** ✓ |
 
-Maximum straight that still complies: 360 − 78 = **282 mm**. Maximum straight that fits the bed: **240 mm**. **The bed is stricter than the welfare limit, so a single-straight run cannot violate it by accident.** Two straights chained (320 + 78 = 398 mm) *would* — so `straight_len` defaults to 160, the README states "one straight per run," and the limit is engraved on the part. OpenSCAD cannot assert what a user assembles; this is a documented limitation, not a solved one.
+Maximum straight that still complies: 360 − 70 = **290 mm**. Maximum straight that fits the bed: **240 mm**. **The bed is stricter than the welfare limit, so a single-straight run cannot violate it by accident.** Two straights chained (320 + 70 = 390 mm) *would* — so `straight_len` defaults to 160, the README states "one straight per run," and the limit is engraved on the part. OpenSCAD cannot assert what a user assembles; this is a documented limitation, not a solved one.
 
-**The v1 arithmetic is unchanged by the re-scoping** — 238 mm passes under
+**The v1 arithmetic is unchanged by the re-scoping** — 230 mm passes under
 both the old rule and the new one. The re-scoping was not made to rescue a
 failing design; it was made because the old rule was mis-attributed and
 mis-scoped. What it changes is the *future*: under a per-run rule a
@@ -457,7 +457,7 @@ Customizer sections in repo house style; units and purpose on every line; `/* [H
 
 | Name | Default | Unit | Purpose |
 |---|---|---|---|
-| `NUGGS_REV` | `1` | — | Embossed on every module; bump only on a breaking port change |
+| `NUGGS_PORT_REV` | `1` | — | Engraved (never embossed) on every module that has a face the animal cannot reach; `bulkhead_in` has none. Bump only on a breaking port change |
 | `bore_d` | `80.0` | mm | Internal bore. The headline number. Asserted `>= min_bore_mm` |
 | `wall` | `2.4` | mm | Tube shell. Asserted `>= 3*nozzle` |
 | `port_len` | `14.0` | mm | Axial length of the lug/flange zone at each end |
@@ -506,7 +506,7 @@ Customizer sections in repo house style; units and purpose on every line; `/* [H
 | `max_incline_deg` | `15` | ° | `assert(max_incline_deg <= 15)`. On a 160 mm straight, max end-to-end height difference = 160·sin 15° = 41.4 mm |
 | `max_drop_mm` | `150` | mm | No unbroken free-fall above this. 0 by construction in v1 |
 
-Enclosed-**run** assert (⚠️ labelled "TVT assert" in the first pass; the source is DTSchB and the scope is per run, not per system — §11): `assert(straight_len + 2*(bh_spigot_len + port_len) <= 2*body_len_mm)` → 160 + 78 = 238 ≤ 360 ✓
+Enclosed-**run** assert (⚠️ labelled "TVT assert" in the first pass; the source is DTSchB and the scope is per run, not per system — §11): `assert(straight_len + 2*(bh_spigot_len + port_proj) <= 2*body_len_mm)` → 160 + 70 = 230 ≤ 360 ✓
 Hole assert: `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)` → 89 ≥ 85 ✓
 
 **`/* [Print settings] */`**
@@ -569,7 +569,7 @@ Hole assert: `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)` → 89 ≥
    ⚠️ **Two corrections, 2026-08-03 (§11).** The **"EXOPET-II" label and the German federal funding claim never appeared in any search result** — only the paper title did — so neither is asserted here any more. And **the *basis* of the tube-system verdict could not be retrieved**: the rating scale, who rated, how many tube products were assessed, and above all *why* tube systems were rated unsuitable. Without the basis, "we answer each defect individually" is a claim about the defects **we** enumerated, not a demonstration that this design escapes the paper's verdict. Say that on the product page rather than implying the verdict has been met.
 2. **The evidence base points at substrate, not tunnels.** Hauzenberger et al. 2006 is the strongest welfare finding in the set and it is about **depth** (10 cm → significantly more wire-gnawing; 40 and 80 cm → burrows). If this kit displaces bedding or floor area it is a net welfare loss. That is why it runs *between* enclosures and why "optional enrichment, not housing" is not a hedge — it is the honest positioning.
 3. **The 70 mm floor can be violated invisibly at a bend.** v1 has no bends, which is partly why v1 has no bends. B1 needs an inscribed-circle assert before it ships.
-4. **Chain two straights and you break the enclosed-run limit** (398 mm vs 360 mm — DTSchB, not TVT; §11). The genderless port makes this physically possible and OpenSCAD cannot stop it. Engrave the rule, state it, keep the default single. **The per-run re-scoping does not soften this**: coupling two straights produces one 398 mm run, because a coupling is not a break.
+4. **Chain two straights and you break the enclosed-run limit** (390 mm vs 360 mm — DTSchB, not TVT; §11). The genderless port makes this physically possible and OpenSCAD cannot stop it. Engrave the rule, state it, keep the default single. **The per-run re-scoping does not soften this**: coupling two straights produces one 390 mm run, because a coupling is not a break.
 5. **Gnawing is low-probability, high-severity, and cannot be designed to zero.** The mitigation is removing initiation sites, not hoping. Provide better chew targets elsewhere in the enclosure.
 6. **Escape and entrapment at the bulkhead.** The bayonet is captive against axial pull, but this is a joint an animal lives in — the coupon must be pull-tested by hand and the detent tuned, and the joint inspected at every clean.
 
@@ -823,7 +823,7 @@ in an 80 mm bore the animal cannot rotate:
   branching one-way bore. It multiplies the ways to be trapped. A junction
   breaks a run only if it is widened to node width.
 - **A COUPLING is not a break.** It is a joint. Two straights coupled are
-  one run, and the arithmetic in §4 stands: 398 mm, over the limit.
+  one run, and the arithmetic in §4 stands: 390 mm, over the limit.
 - **A TOP HATCH does not reset the REVERSING count.** It resets the
   **RETRIEVAL** count. These are two different constraints with two
   different resetters, and collapsing them is the trap in the intuitive
@@ -844,10 +844,10 @@ the reversing count.
 
 ### 11.5 What is a loosening and what is not
 
-The old rule summed the whole system into one 238 mm "total enclosed"
+The old rule summed the whole system into one 230 mm "total enclosed"
 figure. The new rule is per run.
 
-- **The v1 Bin Bridge passes under both** (238 ≤ 360). This re-scoping was
+- **The v1 Bin Bridge passes under both** (230 ≤ 360). This re-scoping was
   not made to rescue a failing design.
 - Re-scoping is arguably the **more faithful** reading, not a loosening:
   the German is plural and reads per tube, and the summation was this

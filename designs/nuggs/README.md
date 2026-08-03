@@ -44,7 +44,7 @@ honest reason the page leads with the objection instead of burying it.
 | Cannot be ventilated / condenses | No closed volumes. Every run is open at both ends into a ventilated enclosure — no caps, no blind branches |
 | Cannot be cleaned | One twist releases any module for a hand wash, without disturbing the nest |
 | Transparent tube gives no refuge | Opaque, uncoloured filament; you inspect it by it being short and straight |
-| Endless tube mazes | **No single *run* of enclosed bore exceeds 2 × your animal's body length** — 360 mm at the default. A run ends at an open end, an open module, or a chamber he can turn around in. **A bend, a junction, a coupling and a top hatch are not ends** (see [The length rule](#the-length-rule-and-how-far-to-trust-it)). The Bin Bridge is one 238 mm run, and **one straight per run** is engraved on the part |
+| Endless tube mazes | **No single *run* of enclosed bore exceeds 2 × your animal's body length** — 360 mm at the default. A run ends at an open end, an open module, or a chamber he can turn around in. **A bend, a junction, a coupling and a top hatch are not ends** (see [The length rule](#the-length-rule-and-how-far-to-trust-it)). The Bin Bridge is one 230 mm run, and the limit is engraved on the part (`MAX RUN 360MM` / `COUPLINGS DONT RESET`) |
 | Eats cage floor and substrate | Runs between enclosures at bedding height — zero floor area, zero substrate |
 
 **Measure your hamster.** `body_len_mm` defaults to 180 mm and sets the
@@ -74,7 +74,7 @@ exactly three breaks:
 |---|---|
 | A bend | He cannot rotate in an 80 mm bore. A 45° elbow turns the *tube*, not the *animal* — he still has to reverse the whole way back |
 | A junction at bore diameter | A wye at 80 mm is a *branching* one-way bore. It multiplies the ways to be trapped, it does not reduce them |
-| A coupling | It is a joint. Two straights coupled are **one 398 mm run**, which is over the limit |
+| A coupling | It is a joint. Two straights coupled are **one 390 mm run**, which is over the limit |
 | A top hatch | It resets **retrieval** — you can reach him. It does not reset **reversing** — he still cannot turn around. Two different problems, two different fixes |
 
 **Why 360 and not some other number.** Because he cannot turn around, he
@@ -178,12 +178,14 @@ sections; override on the command line with `-D 'straight_len=120'`.
 > **2 × your animal's head-and-body length**. One straight plus both
 > bulkhead throats is 160 + 2×(25+10) = **230 mm**, inside the 360 mm
 > budget at `body_len_mm = 180`. Two straights coupled together is
-> **420 mm** and breaks it, because **a coupling is not a break** — the two
+> **390 mm** and breaks it, because **a coupling is not a break** — the two
 > tubes are one run. And because every NUGGS face mates with every other,
 > two straights *will* click together and feel right. `assert` runs at
 > render time and cannot see what you assemble on the bench, so the rule is
-> engraved on the outside of every straight instead: the port revision plus
-> **ONE STRAIGHT PER RUN**.
+> engraved on the outside of every straight instead: the port revision
+> (`NUGGS PORT R1`) plus **`MAX RUN 360MM`** and **`COUPLINGS DONT RESET`**.
+> Both engraved lines are derived from `body_len_mm`, so they cannot
+> disagree with the assert.
 >
 > If you need a longer bridge, move the enclosures closer or raise
 > `body_len_mm` to your *measured* animal — never add a second straight.
@@ -205,7 +207,7 @@ than several:
 
 | Part | Mark | Where |
 |---|---|---|
-| `straight` | port revision + `ONE STRAIGHT PER RUN` | outer tube wall, mid-length — in the room, between the enclosures |
+| `straight` | `NUGGS PORT R1` + `MAX RUN 360MM` + `COUPLINGS DONT RESET` | outer tube wall, mid-length — in the room, between the enclosures |
 | `bulkhead_out` | port revision | flange rim, outside the enclosure wall |
 | `bulkhead_in` | *(none, deliberately)* | every face it has is either inside the enclosure or buried in the wall hole |
 
