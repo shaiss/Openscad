@@ -6,11 +6,21 @@ name: CI
 # The `changes` job decides what actually runs: docs/skills-only PRs skip
 # the expensive render jobs, and design-only PRs gate just the designs they
 # touch. Downstream jobs are skipped via `if:` on the changes outputs rather
-# than workflow-level `paths:` filters, because jobs skipped via `if:` still
-# report a (skipped) check run that satisfies branch-protection required
-# checks — a paths-filtered workflow reports nothing and leaves required
-# checks pending forever. Keep the job `name:` strings stable: they are what
-# branch protection matches on.
+# than workflow-level `paths:` filters, because a paths-filtered workflow
+# reports nothing at all and leaves required checks pending forever, while an
+# `if:`-skipped job at least reports a check run. Keep the job `name:` strings
+# stable: they are what branch protection matches on.
+#
+# CAUTION, learned the hard way on PR #50: a check run reported as *skipped*
+# does NOT satisfy a required status check here. That PR had all 13 checks
+# reported and a mergeable_state of "clean", and the merge API still refused
+# it with "5 of 5 required status checks are expected", because three of the
+# five required contexts had been skipped. So any path that reaches merge
+# must actually RUN the five required jobs — Detect changed paths, Lint
+# scripts and workflows, OpenSCAD syntax/geometry check, printcheck unit
+# tests, and Render designs, gate STLs, test-slice. Adding a top-level
+# directory without adding it to the classifier below makes every PR that
+# touches only that directory permanently unmergeable.
 on:
   push:
     branches: [main]
@@ -120,9 +130,28 @@ jobs:
                 # concludes. Not because of the selftest fixtures: those live
                 # under tools/ and check.sh's globs cover only designs/, lib/,
                 # templates/ and styles/, so it never reads them.
-                designs/*|lib/*|templates/*|scripts/*|styles/*|\
-                tools/lineage/*|.github/workflows/ci.yml)
+                #
+                # site/ and vercel.json are here for a different reason
+                # entirely — see the required-context note below; they cannot
+                # move geometry, but the job has to RUN for such a PR to be
+                # mergeable at all.
+                designs/*|lib/*|templates/*|scripts/*|styles/*|site/*|\
+                vercel.json|tools/lineage/*|.github/workflows/ci.yml)
                   scad=true ;;
+              esac
+              # site/ and vercel.json cannot affect geometry — the site
+              # renders content FROM the designs, it does not define any.
+              # But three of the five contexts branch protection requires
+              # are the geometry jobs, and a job skipped via `if:` does NOT
+              # satisfy a required context here (verified: PR #50, all 13
+              # checks reported, merge still refused with "5 of 5 required
+              # status checks are expected"). Without this, a site-only PR
+              # is permanently unmergeable. The cheaper fix is to require
+              # "Static site builds" instead of the geometry jobs for these
+              # paths, but that needs a branch-protection change.
+              case "$f" in
+                site/*|vercel.json)
+                  infra=true; ptests=true ;;
               esac
             done
             # The other direction: a design that declares a style the PR
