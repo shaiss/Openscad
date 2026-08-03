@@ -71,10 +71,15 @@ Change them at your peril:
 2. **One module instance per render.** A second `callMain()` on the same
    instance throws *and* the previous run's output file is still readable — so
    reuse hands the visitor the previous model.
-3. **No include path.** The WASM build has no `-I` and reads `OPENSCADPATH`
-   before we can set it, so every included file is written into the *same*
-   directory as the entry file. That is why `includeClosure()` flattens to
-   basenames.
+3. **`OPENSCADPATH` works — but only from `preRun`.** The runtime reads its
+   environment at startup, so assigning `ENV` afterwards is too late, and
+   OpenSCAD's parser only registers search paths that *exist* when `callMain`
+   is called. Set it in `preRun`, create the directories first, and the repo's
+   own `lib:root` search path works unchanged — which is why the browser
+   mirrors the repo layout under `/repo` instead of flattening includes to
+   basenames. Flattening would have worked today (nothing uses a nested
+   include) and broken the first time a design wrote `include <BOSL2/std.scad>`
+   or `include <styles/<name>/style.scad>`.
 4. **`text()` needs a font.** Without a TTF on the virtual filesystem it emits
    a warning and contributes *no* geometry — calibration-cube's embossed size
    marker just vanishes while the render still reports success. DejaVu Sans

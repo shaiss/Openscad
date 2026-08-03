@@ -90,28 +90,29 @@ const FONT_LICENSE = join(SITE_DIR, "node_modules", "dejavu-fonts-ttf", "LICENSE
  * The design's parameters and its complete source bundle, as the browser
  * needs them.
  *
- * The include closure is flattened to basenames on purpose: the WASM build
- * has no include path and ignores OPENSCADPATH, so every file has to sit in
- * the same directory as the entry file for `use <threads-fdm.scad>` to
- * resolve. Verified against the real binary — desiccant-capsule renders only
- * when threads-fdm.scad is written next to model.scad.
+ * Files are keyed by their repo-relative path, and the browser recreates that
+ * layout under one root with OPENSCADPATH set to `lib:root` — the same search
+ * path every script in this repo exports. Mirroring rather than flattening is
+ * what keeps a nested reference (`BOSL2/std.scad`, `styles/<n>/style.scad`)
+ * resolvable if a design ever takes one.
  */
 function buildConfigurator(design) {
-  const source = readFileSync(join(design.dir, `${design.name}.scad`), "utf8");
+  const entry = `${design.relDir}/${design.name}.scad`;
+  const source = readFileSync(join(REPO_ROOT, entry), "utf8");
   const { sections, asserts } = parseParameters(source);
   if (!sections.length) return null;
 
-  // Same search path the scripts export: OPENSCADPATH="lib:repo-root", plus
-  // the design's own directory for a sibling include.
+  // Same roots the scripts search: OPENSCADPATH="lib:repo-root", plus the
+  // design's own directory for a sibling include.
   const resolve = (ref) => {
-    for (const candidate of [
-      join(REPO_ROOT, "lib", ref),
-      join(design.dir, ref),
-      join(REPO_ROOT, ref),
-    ]) {
+    for (const rel of [join("lib", ref), join(design.relDir, ref), ref]) {
+      const candidate = join(REPO_ROOT, rel);
       try {
         if (statSync(candidate).isFile()) {
-          return { contents: readFileSync(candidate, "utf8") };
+          return {
+            path: rel.split(sep).join("/"),
+            contents: readFileSync(candidate, "utf8"),
+          };
         }
       } catch {
         /* try the next root */
@@ -123,6 +124,7 @@ function buildConfigurator(design) {
   return {
     name: design.name,
     title: design.title,
+    entry,
     source,
     files: includeClosure(source, resolve),
     sections,

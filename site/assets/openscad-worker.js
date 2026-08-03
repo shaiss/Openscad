@@ -11,14 +11,19 @@
 //      upstream openscad-wasm README still shows — is an obsolete spelling
 //      that does NOT error: OpenSCAD prints "Ignoring request to enable
 //      unknown feature 'manifold'" and silently runs the old CGAL backend
-//      instead, measured 145x slower. So the render also asserts that the
-//      geometry line says "(manifold)" and reports it if not.
+//      instead, measured 145x slower. So the render also watches for that
+//      fallback and reports it rather than trusting the flag took.
 //   2. One module instance per render, always. A second callMain() on the
 //      same instance throws — and the previous run's output file is STILL
 //      readable, so a naive retry hands the visitor the PREVIOUS model.
-//   3. There is no -I/include path and OPENSCADPATH is read before we can
-//      set it, so every included file must be written into the SAME
-//      directory as the entry file.
+//   3. OPENSCADPATH works, but only if it is set in `preRun` (before the
+//      runtime starts) AND the directories exist before callMain — OpenSCAD's
+//      parser only adds search paths that exist at that moment. So the repo
+//      layout is mirrored under /repo and the same `lib:root` search path the
+//      shell scripts export is set there.
+
+// Where the repo layout is recreated inside the virtual filesystem.
+const ROOT = "/repo";
 
 let createOpenSCAD = null;
 
@@ -44,7 +49,7 @@ function formatValue(v) {
 }
 
 self.onmessage = async (event) => {
-  const { id, runtimeUrl, fontUrl, source, files = {}, params = {} } = event.data;
+  const { id, runtimeUrl, fontUrl, entry, source, files = {}, params = {} } = event.data;
   const log = [];
   const started = Date.now();
 
@@ -70,14 +75,23 @@ self.onmessage = async (event) => {
       noInitialRun: true,
       print: (t) => log.push(String(t)),
       printErr: (t) => log.push(String(t)),
+      // Must be set here: the runtime reads the environment at startup, so
+      // assigning ENV afterwards is too late to affect the include search.
+      preRun: [(mod) => { mod.ENV.OPENSCADPATH = `${ROOT}/lib:${ROOT}`; }],
     });
     const m = instance.getInstance ? instance.getInstance() : instance;
 
-    const mkdir = (p) => {
-      try {
-        m.FS.mkdir(p);
-      } catch {
-        /* already exists */
+    // FS.mkdir is one level at a time and throws on a missing parent, so a
+    // nested path like styles/<name>/ needs this rather than a bare mkdir.
+    const mkdirp = (p) => {
+      let cur = "";
+      for (const seg of p.split("/").filter(Boolean)) {
+        cur += `/${seg}`;
+        try {
+          m.FS.mkdir(cur);
+        } catch {
+          /* already exists */
+        }
       }
     };
 
@@ -85,17 +99,37 @@ self.onmessage = async (event) => {
     // and silently contributes NO geometry — calibration-cube's embossed size
     // marker just vanishes while the render still reports success.
     if (fontBytes) {
-      mkdir("/fonts");
+      mkdirp("/fonts");
       m.FS.writeFile("/fonts/design.ttf", fontBytes);
+      // Silences "Fontconfig error: Cannot load default config file"; fonts
+      // are found relative to the working directory, hence the chdir below.
+      m.FS.writeFile(
+        "/fonts/fonts.conf",
+        '<?xml version="1.0" encoding="UTF-8"?>\n' +
+          '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n<fontconfig>\n</fontconfig>'
+      );
+    }
+    try {
+      m.FS.chdir("/");
+    } catch {
+      /* already there */
     }
 
+    // Mirror the repo layout so OPENSCADPATH resolves exactly as it does on
+    // a developer's machine. Directories must exist BEFORE callMain: the
+    // parser only registers search paths that are present at that point.
+    mkdirp(`${ROOT}/lib`);
+    const entryPath = `${ROOT}/${entry || "model.scad"}`;
     for (const [name, contents] of Object.entries(files)) {
-      m.FS.writeFile(`/${name}`, contents);
+      const full = `${ROOT}/${name}`;
+      mkdirp(full.slice(0, full.lastIndexOf("/")));
+      m.FS.writeFile(full, contents);
     }
-    m.FS.writeFile("/model.scad", source);
+    mkdirp(entryPath.slice(0, entryPath.lastIndexOf("/")));
+    m.FS.writeFile(entryPath, source);
 
     const args = [
-      "/model.scad",
+      entryPath,
       "-o",
       "/out.stl",
       "--backend=manifold",
@@ -107,8 +141,12 @@ self.onmessage = async (event) => {
     try {
       code = m.callMain(args);
     } catch (err) {
+      // Emscripten can throw a bare pointer; formatException turns it into
+      // something a human can act on.
+      let e = err;
+      if (typeof e === "number" && m.formatException) e = m.formatException(e);
       code = -1;
-      log.push(`EXCEPTION: ${err && err.message ? err.message : String(err)}`);
+      log.push(`EXCEPTION: ${e && e.message ? e.message : String(e)}`);
     }
 
     const diagnostics = log.filter((l) => /^(ERROR|WARNING|TRACE)/.test(l));
@@ -133,9 +171,13 @@ self.onmessage = async (event) => {
       return;
     }
 
-    // Costs nothing and catches a silent 145x regression: if the flag ever
-    // stops taking effect this says "(Nef polyhedron)" instead.
-    const usedManifold = log.some((l) => l.includes("3D object (manifold)"));
+    // Costs nothing and catches a silent 145x regression. Detects the
+    // FALLBACK rather than requiring the success line: OpenSCAD does not
+    // always print a geometry line, so demanding "(manifold)" would cry wolf,
+    // while "(Nef polyhedron)" or a refused feature is unambiguous.
+    const usedManifold = !log.some((l) =>
+      /Ignoring request to enable unknown feature|\(Nef polyhedron\)|Unknown rendering backend/.test(l)
+    );
 
     const buffer = stl.buffer.slice(stl.byteOffset, stl.byteOffset + stl.byteLength);
     self.postMessage({ id, type: "done", stl: buffer, diagnostics, usedManifold, elapsedMs }, [

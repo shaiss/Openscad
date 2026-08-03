@@ -230,6 +230,7 @@
       id: ++seq,
       runtimeUrl,
       fontUrl,
+      entry: manifest.entry,
       source: manifest.source,
       files: manifest.files,
       params: collect(),

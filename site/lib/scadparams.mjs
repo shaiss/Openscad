@@ -195,23 +195,23 @@ export function parseParameters(source) {
 }
 
 /**
- * Every file that must exist in the WASM filesystem for this design to render.
+ * Every file that must exist in the WASM filesystem for this design to render,
+ * keyed by its path RELATIVE TO THE REPO ROOT.
  *
- * The WASM build has no `-I` and ignores OPENSCADPATH (it is read at startup,
- * before we can set it), so includes only resolve RELATIVE to the entry file.
- * Everything therefore lands in one flat directory next to `model.scad`, which
- * is why this returns basenames.
+ * The browser mirrors the repo layout and sets OPENSCADPATH to match, exactly
+ * as the shell scripts do (`lib:repo-root`). Keeping real paths rather than
+ * flattening to basenames is what lets a nested reference — `BOSL2/std.scad`,
+ * `styles/<name>/style.scad` — keep resolving if a design ever uses one.
  */
 export function includeClosure(source, resolve, seen = new Set()) {
   const files = {};
   const refs = [...source.matchAll(/^\s*(?:include|use)\s*<([^>]+)>/gm)].map((m) => m[1].trim());
   for (const ref of refs) {
-    const base = ref.split("/").pop();
-    if (seen.has(base)) continue;
-    seen.add(base);
+    if (seen.has(ref)) continue;
+    seen.add(ref);
     const resolved = resolve(ref);
     if (!resolved) continue;
-    files[base] = resolved.contents;
+    files[resolved.path] = resolved.contents;
     Object.assign(files, includeClosure(resolved.contents, resolve, seen));
   }
   return files;
