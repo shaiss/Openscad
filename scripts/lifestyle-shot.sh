@@ -24,7 +24,7 @@ cd "$(dirname "$0")/.."
 
 ZAI_MODEL="${ZAI_MODEL:-glm-image}"
 ZAI_ENDPOINT="${ZAI_ENDPOINT:-https://api.z.ai/api/paas/v4/images/generations}"
-ZAI_SIZE="${ZAI_SIZE:-1280x960}"
+ZAI_SIZE="${ZAI_SIZE:-1280x1280}"   # a size the GLM-Image docs show in examples
 
 design="${1:-}"
 mock=0
@@ -73,8 +73,10 @@ fit_budget() {
 
 generated=()
 while IFS= read -r line || [[ -n "$line" ]]; do
-  line="${line%%#*}"
-  [[ -n "$(trim "$line")" ]] || continue
+  # Full-line comments and blank lines only — a '#' inside a prompt is content
+  # (a scene may legitimately say "buoy #3"), so do not strip inline.
+  trimmed="$(trim "$line")"
+  [[ -z "$trimmed" || "$trimmed" == '#'* ]] && continue
   shot="$(trim "${line%%|*}")"
   prompt="$(trim "${line#*|}")"
   if [[ -z "$shot" || -z "$prompt" || "$line" != *"|"* ]]; then
@@ -107,31 +109,57 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     fi
     req_body="$(python3 -c 'import json,sys; print(json.dumps({"model":sys.argv[1],"prompt":sys.argv[2],"size":sys.argv[3]}))' \
       "$ZAI_MODEL" "$prompt" "$ZAI_SIZE")"
-    resp="$(curl -fsS -X POST "$ZAI_ENDPOINT" \
+    # Capture body AND status (no -f): a 4xx body carries the real reason — a
+    # rejected size, an invalid key, a content-filter block — which we must
+    # surface, not swallow, on the first live run.
+    http="$(curl -sS -w $'\n%{http_code}' -X POST "$ZAI_ENDPOINT" \
       -H "Authorization: Bearer ${ZAI_KEY}" \
       -H "Content-Type: application/json" \
-      -d "$req_body")" || { echo "GLM-Image request failed (HTTP error)" >&2; exit 1; }
-    # Parse ONCE from a captured string (not twice off stdin), and accept either
-    # a hosted url or inline base64, tagged so the shell knows how to fetch it.
-    # On anything unexpected, echo the raw body so the first live run is
-    # debuggable (a rejected size, a content-filter block, an async task, ...).
+      -d "$req_body")" || { echo "GLM-Image request failed (curl transport error)" >&2; exit 1; }
+    code="${http##*$'\n'}"
+    resp="${http%$'\n'*}"
+    if [[ "$code" != 2?? ]]; then
+      echo "GLM-Image HTTP ${code}: ${resp:0:800}" >&2
+      exit 1
+    fi
+    # Parse ONCE from the captured body. Accept a hosted url or inline base64;
+    # surface an error/refusal object or an unexpected shape (async task,
+    # content filter) with the raw body instead of a bare traceback.
     parsed="$(printf '%s' "$resp" | python3 -c '
 import json, sys
 raw = sys.stdin.read()
 try:
-    item = json.loads(raw)["data"][0]
+    obj = json.loads(raw)
+except Exception:
+    sys.stderr.write("non-JSON GLM-Image response: %s\n" % raw[:800]); raise
+if isinstance(obj, dict) and obj.get("error"):
+    sys.stderr.write("GLM-Image error: %s\n" % json.dumps(obj["error"])[:500]); sys.exit(3)
+try:
+    item = obj["data"][0]
     if item.get("url"):
         print("url\t" + item["url"])
     elif item.get("b64_json"):
         print("b64\t" + item["b64_json"])
     else:
-        raise KeyError("no url or b64_json in data[0]")
+        raise KeyError("data[0] has neither url nor b64_json")
 except Exception:
-    sys.stderr.write("unexpected GLM-Image response: %s\n" % raw[:800])
-    raise')"
+    sys.stderr.write("unexpected GLM-Image response shape: %s\n" % raw[:800]); raise')"
     kind="${parsed%%$'\t'*}"
     value="${parsed#*$'\t'}"
     if [[ "$kind" == "url" ]]; then
+      # SSRF guard: only fetch a public https URL. Even if the API response or
+      # ZAI_ENDPOINT is tampered with, never let it point curl at http:// or an
+      # internal/link-local host (cloud metadata at 169.254.169.254, etc.).
+      if [[ "$value" != https://* ]]; then
+        echo "refusing non-https image URL from API: ${value:0:80}" >&2
+        exit 1
+      fi
+      host="${value#https://}"; host="${host%%/*}"; host="${host%%:*}"
+      case "$host" in
+        localhost|0.*|127.*|10.*|169.254.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*|\[::1\]|::1|\[fe80:*|fe80:*)
+          echo "refusing image URL to a private/internal host: ${host}" >&2
+          exit 1 ;;
+      esac
       curl -fsSL "$value" -o "$tmp/gen.img"
     else
       printf '%s' "$value" | base64 -d >"$tmp/gen.img"
