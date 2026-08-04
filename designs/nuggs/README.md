@@ -193,9 +193,12 @@ sections; override on the command line with `-D 'straight_len=120'`.
 > This is the one rule the model cannot enforce for you. A **run** — the
 > continuously enclosed bore between two breaks — must stay within
 > **2 × your animal's head-and-body length**. One straight plus both
-> bulkhead throats is 160 + 2×(25+10) = **230 mm**, inside the 360 mm
-> budget at `body_len_mm = 180`. Two straights coupled together is
-> **390 mm** and breaks it, because **a coupling is not a break** — the two
+> bulkhead throats is 160 + 2×(4+4+25+10) = **246 mm**, inside the 360 mm
+> budget at `body_len_mm = 180`. (The two 4 mm figures are the bulkhead
+> flange plates. They are bored at full bore, so they are tube the animal
+> walks through, not mounting hardware outside the run — omitting them is
+> what made this read 230 mm until PR #78.) Two straights coupled together
+> is **406 mm** and breaks it, because **a coupling is not a break** — the two
 > tubes are one run. And because every NUGGS face mates with every other,
 > two straights *will* click together and feel right. `assert` runs at
 > render time and cannot see what you assemble on the bench, so the rule is

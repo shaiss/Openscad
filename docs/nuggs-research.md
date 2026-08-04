@@ -569,7 +569,7 @@ Hole assert: `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)` → 89 ≥
    ⚠️ **Two corrections, 2026-08-03 (§11).** The **"EXOPET-II" label and the German federal funding claim never appeared in any search result** — only the paper title did — so neither is asserted here any more. And **the *basis* of the tube-system verdict could not be retrieved**: the rating scale, who rated, how many tube products were assessed, and above all *why* tube systems were rated unsuitable. Without the basis, "we answer each defect individually" is a claim about the defects **we** enumerated, not a demonstration that this design escapes the paper's verdict. Say that on the product page rather than implying the verdict has been met.
 2. **The evidence base points at substrate, not tunnels.** Hauzenberger et al. 2006 is the strongest welfare finding in the set and it is about **depth** (10 cm → significantly more wire-gnawing; 40 and 80 cm → burrows). If this kit displaces bedding or floor area it is a net welfare loss. That is why it runs *between* enclosures and why "optional enrichment, not housing" is not a hedge — it is the honest positioning.
 3. **The 70 mm floor can be violated invisibly at a bend.** v1 has no bends, which is partly why v1 has no bends. B1 needs an inscribed-circle assert before it ships.
-4. **Chain two straights and you break the enclosed-run limit** (390 mm vs 360 mm — DTSchB, not TVT; §11). The genderless port makes this physically possible and OpenSCAD cannot stop it. Engrave the rule, state it, keep the default single. **The per-run re-scoping does not soften this**: coupling two straights produces one 390 mm run, because a coupling is not a break.
+4. **Chain two straights and you break the enclosed-run limit** (406 mm vs 360 mm — DTSchB, not TVT; §11). The genderless port makes this physically possible and OpenSCAD cannot stop it. Engrave the rule, state it, keep the default single. **The per-run re-scoping does not soften this**: coupling two straights produces one 406 mm run, because a coupling is not a break.
 5. **Gnawing is low-probability, high-severity, and cannot be designed to zero.** The mitigation is removing initiation sites, not hoping. Provide better chew targets elsewhere in the enclosure.
 6. **Escape and entrapment at the bulkhead.** The bayonet is captive against axial pull, but this is a joint an animal lives in — the coupon must be pull-tested by hand and the detent tuned, and the joint inspected at every clean.
 
@@ -898,7 +898,7 @@ in an 80 mm bore the animal cannot rotate:
   branching one-way bore. It multiplies the ways to be trapped. A junction
   breaks a run only if it is widened to node width.
 - **A COUPLING is not a break.** It is a joint. Two straights coupled are
-  one run, and the arithmetic in §4 stands: 390 mm, over the limit.
+  one run, and the arithmetic in §4 stands: 406 mm, over the limit.
 - **A TOP HATCH does not reset the REVERSING count.** It resets the
   **RETRIEVAL** count. These are two different constraints with two
   different resetters, and collapsing them is the trap in the intuitive
