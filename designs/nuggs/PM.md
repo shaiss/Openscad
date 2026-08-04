@@ -40,7 +40,7 @@ system inherits all of them** — a new module family is not a new charter.
 | # | Constraint | Number | Source | Reopens if |
 |---|---|---|---|---|
 | N1 | No passage narrower than the bore floor, anywhere — including the bulkhead throat, any bend's inscribed circle, and the neck of any module in any family | **70 mm** | Deutscher Tierschutzbund, pouch-full **entrance** minimum (⚠️ an entrance-opening rule applied to a bore, and secondary-summary — see research §11.8) | A better-sourced figure for a *pouch-full* Syrian appears. Not for print convenience, ever. **Not reopened by the 40–50 mm wild-burrow tunnel figure** — soil is grippable, self-ventilating and escapable by digging; PETG is none of those |
-| N2 | **No RUN of continuously enclosed bore exceeds 2 × body length.** A *run* is the maximal chain of enclosed bore between two **breaks**. A break is: an **open module** (longitudinal window ≥ 180°), a **port discharging into a ventilated enclosure**, or a **turnaround node** of clear internal width ≥ body length **that is itself open to ventilated space** (width alone is not a break — a sealed wide chamber is a dead volume, and N3 forbids it). **A bend is not a break. A junction at bore diameter is not a break. A coupling is not a break. A top hatch resets RETRIEVAL, not REVERSING.** | **360 mm** per run at `body_len_mm = 180`; **300 mm** if the run is not hand-releasable | Deutscher Tierschutzbund position paper *Tierschutzwidriges Zubehör* — **not TVT Merkblatt 62**; see research §11.2. One limb of a conjunctive test (length **and** ventilation **and** instructions), stated per tube | The owner measures a longer animal — the assert scales, the rule does not. Or someone opens the DTSchB PDF and finds it is per-*system*, in which case the per-run scope is retracted and N2 reverts to a total |
+| N2 ⚠️ **scope PROVISIONAL** | **No RUN of continuously enclosed bore exceeds 2 × body length.** The *number* is not in doubt; what is provisional is whether the source scopes it per tube or per system — marked LOW confidence in research §11.6 and listed as publication-blocking in Open decisions below. Until the DTSchB PDF is read, treat branched and looping layouts as OUT of scope and the Bin Bridge (one run, both ends open) as the only configuration this rule has been checked against. If the source turns out to be per-system, N2 reverts to a total and this line is the record of that risk being known in advance. A *run* is the maximal chain of enclosed bore between two **breaks**. A break is: an **open module** (longitudinal window ≥ 180°), a **port discharging into a ventilated enclosure**, or a **turnaround node** of clear internal width ≥ body length **that is itself open to ventilated space** (width alone is not a break — a sealed wide chamber is a dead volume, and N3 forbids it). **A bend is not a break. A junction at bore diameter is not a break. A coupling is not a break. A top hatch resets RETRIEVAL, not REVERSING.** | **360 mm** per run at `body_len_mm = 180`; **min(2 × body_len_mm, 300)** if the run is not hand-releasable — not "drops to 300", which is only a drop above body_len_mm = 150 | Deutscher Tierschutzbund position paper *Tierschutzwidriges Zubehör* — **not TVT Merkblatt 62**; see research §11.2. One limb of a conjunctive test (length **and** ventilation **and** instructions), stated per tube | The owner measures a longer animal — the assert scales, the rule does not. Or someone opens the DTSchB PDF and finds it is per-*system*, in which case the per-run scope is retracted and N2 reverts to a total |
 | N3 | No dead-air volume and no dead end. Every run is open at both ends — into a ventilated enclosure, an open module, or a turnaround node the animal can leave by turning around | 0 closed volumes | TVT MB 62 (condensation, ventilation) — the qualitative objection set, which is what MB 62 actually documents | **Reworked 2026-08-03:** this used to be satisfied by *banning branches*. It is now satisfied by **topology** — a branch is legal when every terminus is a node or an enclosure. A branch that ends in a bore-diameter stub is still forbidden |
 | N4 | No vertical runs; maximum incline | **15°** | Fall risk — Syrians climb well but have almost no depth perception | Never for v1; a future ramp module with treads would need its own evidence |
 | N5 | The entire enclosed length of any run opens by hand, tool-free, in one action | 1 action | A wedged or pouch-impacted animal cannot reverse | Never. Glued or screwed assembly does not satisfy this — and a run that fails it drops to N2's 300 mm limit rather than being allowed |
@@ -100,17 +100,28 @@ punctuated by 10–20 cm chambers, Gattermann 2001).
 
 Gate-green is necessary and **not** sufficient. v1 is done when:
 
-- [ ] `gate.sh --slice nuggs` exits 0 across all four parts *(met)*
-- [ ] Every welfare assert fires when deliberately violated *(met — and as of
+- [x] `gate.sh --slice nuggs` exits 0 across all four parts
+- [x] Every welfare assert fires when deliberately violated *(and as of
       2026-08-03 the fast `check.sh` pass fails on one too, not just the gate;
       it used to print `ok` for a design 20 mm under the bore floor)*
-- [x] **Two identical ports mate, twist shut, and resist axial pull** —
-      measured by the mate test: 0 interference seated at the insertion and
-      both locked clockings, 47.8 mm³ on pull-off when locked, 28.1 mm² of
-      bearing area *(met, round 2)*
-- [ ] **The joint's clearance does not depend on the caller's `$fn`** — the
-      standard is one standard or it is not a standard (see NOTES.md,
-      round 5)
+- [x] **Two identical ports mate, twist shut, and GEOMETRICALLY retain** —
+      measured by `lib/nuggs-coupling-mates.conf`: 0 facets of interference
+      seated at the insertion clocking and at BOTH locked clockings, 47.8 mm³
+      of trapped material on pull-off when locked, over 28.1 mm² of bearing
+      area *(round 2; both-directions coverage added round 6)*
+- [ ] **The joint resists a stated axial LOAD** — not the same item, and
+      splitting them is the point (PR #78 review). Everything above is a
+      boolean intersection: it proves the two solids cannot occupy the
+      pull-off position, which is a statement about *geometry*, not about
+      what PETG does at a given force. Bearing area is not strength — layer
+      adhesion, print orientation and `port_tol` all move the real number and
+      none of them appear in a mesh. This item needs a printed pair, a
+      defined load or torque criterion, and a measurement
+- [x] **The joint's clearance does not depend on the caller's `$fn`** — the
+      standard is one standard or it is not a standard. Pinned inside the
+      port and gated: the insertion case passes at mate-check's hardcoded
+      `$fn = 96`, and the port measures identically at caller `$fn` of 16,
+      48, 96 and 128 (NOTES.md round 5)
 - [ ] Minimum internal diameter ≥ 70 mm measured on every exported STL
 - [ ] The coupon has been **physically printed** and the joint exercised
 - [ ] README leads with the PLOS One position and the **corrected** DTSchB
@@ -121,7 +132,7 @@ Gate-green is necessary and **not** sufficient. v1 is done when:
 
 | # | Item | Why this rank | Cost |
 |---|---|---|---|
-| ~~B0~~ | ~~Make the coupling work~~ | **Done, round 2.** Nests, twists both ways, retains at 28.1 mm² bearing area | — |
+| ~~B0~~ | ~~Make the coupling work~~ | **Done in geometry, round 2.** Nests, twists both ways, **geometrically** retains over 28.1 mm² of bearing area. Not a load test — see the v1 axial-load item, which is deliberately still open | — |
 | ~~B1~~ | ~~Bed contact on the straight~~ | **Done, round 3.** lug_deg 30->40: contact 396->528 mm2, coverage 52->69%, printcheck warning cleared, joint unchanged | +4 g |
 | **B1a** | **Print the coupon and tune `port_tol`** | Now top. The joint is proven in geometry, not in plastic. Until a printed pair twists at a sane torque, every fit number here is a guess — and it is also the only way to know whether bed contact is really solved | ~90 g, 7 h |
 | **B1d** | **Make the port a shared library with a gated fit** | Promoted 2026-08-03 by N10. A standard that lives inside one design's `.scad` is not a standard: a second consumer inherits it by copy, and nothing in this repo gates a *fit*. Includes pinning the port's own tessellation, since the joint's clearance currently varies with the caller's `$fn` | Re-gates every design (a `lib/` path sets `infra=true`) |
