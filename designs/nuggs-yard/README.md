@@ -1,5 +1,17 @@
 # N.U.G.G.S. Yard
 
+> **Superseded joint — this kit does not interoperate with `nuggs` today.**
+> As of 2026-08-03, N.U.G.G.S. is a system with **one** genderless
+> interlock standard, and it is `nuggs`'s quarter-turn port. This design's
+> gendered lap-skirt joint is superseded by it: a Yard module and a `nuggs`
+> module will not mate, in either direction. A rebuild onto the shared port
+> — as **open modules with a round arc floor**, not flat troughs — is
+> planned as its own PR. Until it lands, treat the two kits as separate.
+> The welfare length rule quoted below has also been re-attributed and
+> re-scoped; the corrected version lives in
+> [`designs/nuggs/PM.md`](../nuggs/PM.md) (N2) and
+> [`docs/nuggs-research.md`](../../docs/nuggs-research.md) §11.
+
 An **open-top playpen run** for an adult Syrian hamster: turns, branches, a
 covered hide, and a closed circuit with no dead ends in it anywhere. It is a
 kit of modules you lay out on the floor of a playpen during free-roam time —

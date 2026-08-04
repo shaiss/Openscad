@@ -1,5 +1,21 @@
 # nuggs-yard — engineering log
 
+> **Status banner, 2026-08-03 — the joint is superseded.** N.U.G.G.S. is
+> now a system with one genderless interlock standard: `nuggs`'s
+> quarter-turn port. This design's lap-skirt joint (`joint_lap`, `joint_h`,
+> `joint_t`, `joint_tol`, `joint_skirt()`) is gendered and keyed to a flat
+> two-sidewall section, so it can only ever join troughs to troughs — it
+> does **not** mate with a `nuggs` module. A rebuild onto the shared port,
+> as open modules with a **round arc floor** rather than a flat trough
+> floor, is planned as its own PR; nothing below has been rebuilt yet.
+> Also re-attributed on the same date: the "covered length ≤ 2 × body
+> length" limit inherited below is the **Deutscher Tierschutzbund**
+> position paper's, **not** TVT Merkblatt 62's, and it is now measured
+> **per run** between breaks rather than as a system total. See
+> [`designs/nuggs/PM.md`](../nuggs/PM.md) N2 and
+> [`docs/nuggs-research.md`](../../docs/nuggs-research.md) §11. This file
+> is preserved as recorded history and is not rewritten here.
+
 Product page: `README.md`. Design request and the measurements behind it:
 [issue #73](https://github.com/shaiss/print-bench/issues/73). Sibling design
 (the enclosed wall-crossing tunnel, and the source of the welfare limits):
@@ -24,7 +40,7 @@ They share an animal and a research dossier, nothing else.
 | Filament budget 250–500 g | **given** (2026-08-03) | Sizes the whole kit; drove the module dimensions more than anything else |
 | Animal fits the default 80 mm width | **given** (2026-08-03) | Owner confirmed rather than measured; `body_len_mm` stays at Merck's 180 mm upper figure |
 | Bore floor 70 mm for covered segments | inherited from `nuggs` N1 | DTSchB pouch-full entrance minimum |
-| Covered length ≤ 2 × body length | inherited from `nuggs` N2 | TVT Merkblatt 62 |
+| Covered length ≤ 2 × body length | inherited from `nuggs` N2 | ⚠️ recorded here as TVT Merkblatt 62; re-attributed to the DTSchB position paper and re-scoped per run on 2026-08-03 — see the banner at the top |
 | Max incline 15°, no vertical runs | inherited from `nuggs` N4 | v1 is entirely flat, so this is satisfied by construction |
 | Playpen dimensions | **still unknown** | Not blocking: the kit is modular and the budget bounds the layout. The preview circuit is 409 × 409 mm |
 | PLA vs PETG | **assumed PLA** | The gate slices at 1.24 g/cm³, so every gram below is PLA. PETG is ~2.4% heavier and wants `joint_tol` re-tuned |

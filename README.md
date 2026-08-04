@@ -12,7 +12,7 @@ co-designer, and gated by automated printability checks before they ship.
 | <a href="designs/aerochord/"><img src="designs/aerochord/previews/contact-sheet.png" width="320" alt="aerochord previews"></a> | **[aerochord](designs/aerochord/)** — A musical wind instrument that (a) prints in place as **one piece** with no supports, (b) does not correspond to any instrument in the historical record, and (c) is only really designable/printable with an FDM machine and a computed internal geometry. The brief was an explicit stress test of the whole co-design pipeline. |
 | <a href="designs/calibration-cube/"><img src="designs/calibration-cube/previews/contact-sheet.png" width="320" alt="calibration-cube previews"></a> | **[calibration-cube](designs/calibration-cube/)** — Simple dimensional-accuracy test print; also serves as the repo's starter design demonstrating the parameter conventions. |
 | <a href="designs/desiccant-capsule/"><img src="designs/desiccant-capsule/previews/contact-sheet.png" width="320" alt="desiccant-capsule previews"></a> | **[desiccant-capsule](designs/desiccant-capsule/)** — Refillable two-part capsule for loose silica gel beads, lived-in filament dry-boxes. Perforated body lets air/moisture reach the beads; screw-on lid with real threads (not press-fit) and a ribbed grip edge so it can be opened with dry-box gloves on. Must print on FDM with no supports on either part. |
-| <a href="designs/nuggs/"><img src="designs/nuggs/previews/contact-sheet.png" width="320" alt="nuggs previews"></a> | **[nuggs](designs/nuggs/)** — A short, straight, wide-bore tunnel joining **two** hamster enclosures through their walls, for an adult Syrian. Not a tube *system* and nothing inside the cage — see the dossier for why that framing is deliberate (PLOS One / EXOPET-II rates tube systems unsuitable as a category; this design answers each cited defect individually or omits the part). |
+| <a href="designs/nuggs/"><img src="designs/nuggs/previews/contact-sheet.png" width="320" alt="nuggs previews"></a> | **[nuggs](designs/nuggs/)** — An 80 mm-bore tunnel **system** for an adult Syrian hamster, built around one genderless quarter-turn port that every module carries at every end. The kit that exists today is the Bin Bridge: two bulkheads and one straight joining two enclosures through their walls, with nothing inside the cage. |
 | <a href="designs/nuggs-yard/"><img src="designs/nuggs-yard/previews/contact-sheet.png" width="320" alt="nuggs-yard previews"></a> | **[nuggs-yard](designs/nuggs-yard/)** — An open-top run for an adult Syrian hamster's **playpen** — free-roam time outside the cage. The ask was "loops and twists, turns, branches, all the stuff to keep him busy". It is a floor-standing kit of modules the owner lays out themselves, not a fixed object. |
 | <a href="designs/sushi-battleship/"><img src="designs/sushi-battleship/previews/contact-sheet.png" width="320" alt="sushi-battleship previews"></a> | **[sushi-battleship](designs/sushi-battleship/)** — Battleship played with real sushi. |
 <!-- gallery:end -->
@@ -113,8 +113,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   source (entry point matches the directory name), the `README.md` product
   page, the `NOTES.md` engineering log, and committed `previews/`
 - `lib/` — shared modules: `printability.scad` (FDM fastener/chamfer
-  helpers), `threads-fdm.scad` (printable trapezoidal threads), each with a
-  `*-demo.scad` regression render, plus vendored
+  helpers), `threads-fdm.scad` (printable trapezoidal threads),
+  `nuggs-coupling.scad` (the NUGGS genderless quarter-turn bayonet port),
+  each with a `*-demo.scad` regression render, plus vendored
   [BOSL2](https://github.com/BelfrySCAD/BOSL2)
 - `build/` — generated STL/PNG outputs (gitignored)
 - `scripts/` — the toolchain:
