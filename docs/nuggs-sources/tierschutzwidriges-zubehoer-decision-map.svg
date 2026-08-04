@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">NUGGS welfare-source decision map</title>
+  <desc id="desc">A vector summary separating indexed source text, NUGGS interpretation, and blocked claims.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155"/>
+    </marker>
+    <style>
+      .title { font: 700 30px sans-serif; fill: #0f172a; }
+      .subtitle { font: 16px sans-serif; fill: #475569; }
+      .heading { font: 700 19px sans-serif; fill: #0f172a; }
+      .body { font: 16px sans-serif; fill: #1e293b; }
+      .small { font: 14px sans-serif; fill: #475569; }
+      .source { fill: #dcfce7; stroke: #15803d; stroke-width: 2; }
+      .interpretation { fill: #fef3c7; stroke: #b45309; stroke-width: 2; }
+      .blocked { fill: #fee2e2; stroke: #b91c1c; stroke-width: 2; }
+      .link { fill: none; stroke: #334155; stroke-width: 2; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1200" height="760" fill="#f8fafc"/>
+  <text x="50" y="55" class="title">NUGGS — DTSchB source decision map</text>
+  <text x="50" y="84" class="subtitle">Tierschutzwidriges Zubehör (publisher edition shown as June 2024)</text>
+
+  <rect x="50" y="120" width="1100" height="130" rx="14" class="source"/>
+  <text x="75" y="153" class="heading">SUPPORTED BY INDEXED PRIMARY-PDF TEXT</text>
+  <text x="75" y="184" class="body">“Kunststoffröhren” are acceptable only when all three conditions hold:</text>
+  <text x="90" y="214" class="body">≤ 2 × animal body length  AND  adequate ventilation  AND  instructions against misuse</text>
+  <text x="75" y="238" class="small">The search index truncates the sentence ending; complete PDF context remains unread.</text>
+
+  <path d="M600 250 L600 295" class="link"/>
+
+  <rect x="50" y="300" width="520" height="175" rx="14" class="interpretation"/>
+  <text x="75" y="334" class="heading">NUGGS INTERPRETATION</text>
+  <text x="75" y="368" class="body">Generic plural “Kunststoffröhren” supports</text>
+  <text x="75" y="394" class="body">applying the limit to tubes, not an explicit</text>
+  <text x="75" y="420" class="body">sum of an entire connected system.</text>
+  <text x="75" y="452" class="small">Confidence: supportive, not yet document-complete.</text>
+
+  <rect x="630" y="300" width="520" height="175" rx="14" class="blocked"/>
+  <text x="655" y="334" class="heading">NOT ESTABLISHED BY THE EXCERPT</text>
+  <text x="655" y="368" class="body">• NUGGS RUN and break definitions</text>
+  <text x="655" y="396" class="body">• treatment of couplings or connected tubes</text>
+  <text x="655" y="424" class="body">• the claimed 7 cm entrance/bore rule</text>
+  <text x="655" y="452" class="small">Blocked pending an end-to-end PDF reading.</text>
+
+  <path d="M310 475 L310 530" class="link"/>
+  <path d="M890 475 L890 530" class="link"/>
+
+  <rect x="50" y="535" width="1100" height="145" rx="14" class="interpretation"/>
+  <text x="75" y="570" class="heading">PRODUCT-MANAGER ACTION</text>
+  <text x="75" y="604" class="body">Keep N2 at 2 × body length and keep length joined to ventilation and instructions.</text>
+  <text x="75" y="632" class="body">Retain “scope PROVISIONAL”; do not publish branches/loops as source-cleared yet.</text>
+  <text x="75" y="660" class="body">Replace this evidence package with page-faithful PDF + Markdown when the binary is available.</text>
+
+  <text x="50" y="723" class="small">Repository source: docs/nuggs-sources/tierschutzwidriges-zubehoer.md</text>
+</svg>
+

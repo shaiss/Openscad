@@ -152,7 +152,7 @@ Gate-green is necessary and **not** sufficient. v1 is done when:
 
 | Question | Blocking? | Assumption if unanswered |
 |---|---|---|
-| **Is the 2× body-length rule per tube or per system?** | **Blocks publishing N2's relaxation.** This is the hinge of the whole re-charter and it rests on plural German in a search summary (research §11.6, LOW confidence) | Per tube → per run. If the PDF says otherwise, N2 reverts to a total and the branch/loop scope closes again |
+| **Is the 2× body-length rule per tube or per system?** | **Blocks publishing N2's relaxation.** Indexed primary-PDF text supports per-tube scope and confirms that length, ventilation and instructions are conjunctive, but the complete document and surrounding definitions remain unread. See the [NUGGS source record and vector decision map](../../docs/nuggs-sources/tierschutzwidriges-zubehoer.md). | Per tube → per run remains provisional. If full-text review says otherwise, N2 reverts to a total and the branch/loop scope closes again |
 | Head-and-body length of the actual animal | **Blocks N2's real value** | `body_len_mm = 180` (Merck upper figure) |
 | Shoulder width, hip width, head width with both pouches loaded | Not blocking, but it is the **only** unsourced input in the design — nobody publishes it. It is also what the ~45 mm body width behind the 110 mm hairpin figure is guessed from | 80 mm is generous. This is an assumption, not a derivation |
 | Which two enclosures, and their wall thickness (calipers) | Blocks the bulkhead's real dimensioning | Plastic bin, 1.5–20 mm range supported |
