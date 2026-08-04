@@ -40,6 +40,15 @@ Two halves, and they have very different evidential weight:
 > confidence ladder for every number the design leans on. Where §2, §4,
 > §8, §9 and §10 below are corrected in place they say so and point here.
 > Nothing has been deleted.
+>
+> **Primary-text pass, 2026-08-04.** The complete 12-page DTSchB position
+> paper is now committed with a [page-addressable Markdown
+> conversion](nuggs-sources/tierschutzwidriges-zubehoer.md). It resolves the
+> 2× criterion as per plastic tube, confirms that length, ventilation and
+> instructions are conjunctive acceptance conditions, and contains **no 7 cm
+> or 70 mm entrance minimum**. Historical caveats below remain as the record
+> of earlier rounds; where they say the PDF is unread, this note supersedes
+> them. The PLOS One paper, loaded-pouch source and TVT MB 62 remain unread.
 
 ---
 
@@ -252,7 +261,7 @@ Each is a design constraint with its number and source. Where the fact-checker c
 
 | # | Constraint | Number | Why |
 |---|---|---|---|
-| **S1** | **No passage anywhere may be narrower than 70 mm ID** — measured at the worst point, including inside the bulkhead throat, at every joint, and through any future bend's inscribed circle. Non-negotiable `assert`, never a Customizer-tunable minimum. | **70 mm** | Deutscher Tierschutzbund's Goldhamster brochure: *"the entrance diameter should be 7 cm so that the animals can pass through easily even with full cheek pouches."* ⚠️ **The 65 mm figure in circulation is Hamsterhilfe Südwest, a rescue org — not the DTSchB, and 5 mm below what the body it was attributed to actually publishes.** Do not use 65 mm. |
+| **S1** | **No passage anywhere may be narrower than 70 mm ID** — measured at the worst point, including inside the bulkhead throat, at every joint, and through any future bend's inscribed circle. Non-negotiable `assert`, never a Customizer-tunable minimum. | **70 mm** | Secondary summaries attribute a pouch-full **entrance** minimum to the Deutscher Tierschutzbund's Goldhamster guidance; the previously quoted English sentence was a search paraphrase and is withdrawn. The primary *Tierschutzwidriges Zubehör* paper contains no 7 cm/70 mm number. The floor remains a conservative safety rule pending retrieval of the separate primary brochure. |
 | **S2** | **Design target 80 mm ID for the sustained run.** | **80 mm** | German tube-specific guidance: *"mindestens 7–8 cm Innendurchmesser… mindestens 8 cm für ausgewachsene Goldhamster."* 80 mm is the stated minimum for a *full-grown* Syrian, not the top of a range. A doorway is a momentary squeeze; a tube is a traverse with no room to reverse. |
 | **S3** | **Sizing case is the pouch-full animal, not the resting one.** Cheek pouches are 20 mm wide when full, 40 mm long, extending to the scapulae. | 20 mm/pouch | ScienceDirect (veterinary science): *"4–8 mm wide when empty and 20 mm when full"*, *"20 × 40 mm"*. ⚠️ The "30 mm head + 2×20 mm = 70 mm" derivation is **not** independent corroboration — the 30 mm head width is uncited and the geometry double-counts. The agreement with 70 mm is coincidence. Cite DTSchB, not the arithmetic. |
 | **S4** | **Body girth is not the binding constraint** — do not size the bore from it. Uniform-cylinder equivalent diameter is 37–48 mm across the whole mass range, comfortably under every bore under discussion. The pouch is what binds. | 37–48 mm | Derived; and hamsters are compressible, so "clearance per side" is not a wedging criterion. ⚠️ The "1.34 mm clearance at 200 g" alarm figure is **retracted** — it rested on a CritterTrail bore of 50.8 mm when Kaytee publishes 2.25 in / 57.15 mm. |
@@ -599,7 +608,14 @@ Hole assert: `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)` → 89 ≥
 - **Does the owner already own, or will they buy, an 89 mm bi-metal hole saw + arbor + pilot bit?** There is no way around a hole larger than the bore. If the answer is no, v1 is not buildable and that needs to be known before a session starts, not after.
 - **Licence?** Decide before the first STL ships. Permissive, no NC clause, so third-party compatible parts are legally clean and the port spec can be quoted.
 
-**Methods caveat to carry forward verbatim:** every external source in this plan was reached through WebSearch result summaries under an organisational egress block that returned 403 on CONNECT for effectively every research host. No page was read end to end. Before this becomes a published product page, the load-bearing figures — the DTSchB 7 cm entrance minimum, TVT Merkblatt 62's 2×-body-length limit and its exact wording, the PLOS One verdict, and the 20 mm full-pouch width — should be read in the primary text from an unrestricted network.
+**Historical methods caveat (round 1, retained verbatim):** every external source in this plan was reached through WebSearch result summaries under an organisational egress block that returned 403 on CONNECT for effectively every research host. No page was read end to end. Before this becomes a published product page, the load-bearing figures — the DTSchB 7 cm entrance minimum, TVT Merkblatt 62's 2×-body-length limit and its exact wording, the PLOS One verdict, and the 20 mm full-pouch width — should be read in the primary text from an unrestricted network.
+
+> **2026-08-04 discharge:** *Tierschutzwidriges Zubehör* has now been read
+> end to end from the committed primary PDF. It attributes the 2× criterion
+> to plastic tubes, joins it conjunctively to ventilation and instructions,
+> and contains no 7 cm/70 mm rule. The original caveat also misattributes the
+> number to TVT. The separate Goldhamster brochure, TVT MB 62, PLOS One paper
+> and loaded-pouch source still require primary-text review.
 
 > **Correction to the reading list above, 2026-08-03 (§11).** The caveat itself
 > stays verbatim — it is the record of what round 1 did and did not do, and it
@@ -640,22 +656,22 @@ Hole assert: `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)` → 89 ≥
 >
 > What this does and does not move:
 >
-> - **DTSchB attribution: stays MODERATE, better supported within it.** The
+> - **DTSchB attribution: promoted to HIGH on 2026-08-04.** The
 >   scale here is HIGH / MODERATE / LOW / NONE and nothing else — an earlier
 >   draft of this note wrote "good", which is not a tier (PR #78 review).
 >   Corroboration inside a tier is not promotion out of it: the bar for HIGH is
->   the primary text, and that has still not been read. Two independent searches, run by
+>   the primary text; the committed PDF now clears that bar. Two independent searches, run by
 >   different agents on different days, both return this criterion attributed to
 >   the DTSchB position paper and neither returns any length limit attributed to
 >   TVT. The re-attribution in §11 is on firmer ground than when it was made.
-> - **Conjunctive framing: stays MODERATE, same reasoning.** The returned wording is explicitly
+> - **Conjunctive framing: promoted to HIGH on 2026-08-04.** The primary wording is explicitly
 >   three-limbed (length AND ventilation AND instructions). NUGGS answers the
 >   ventilation limb by construction.
-> - **Per-tube scope: still LOW, and unchanged.** The German is plural ("Sie
->   dürfen…"), which is the same grammatical hint §11 already rests on — not new
->   evidence, the same inference reached twice. The reviewing agent said so
->   directly: the paper supports the 2× criterion but does not establish a
->   per-tube scope.
+> - **Per-tube scope: promoted to HIGH on 2026-08-04.** The primary sentence
+>   makes `Kunststoffröhren` the subject of all three conditions; the paper
+>   separately says `Röhrensysteme` when discussing long systems and states no
+>   summed system-length formula. The NUGGS per-run mapping remains engineering
+>   judgement and is deliberately stricter than a per-component cap.
 >
 > And the caveat still stands in full: **that agent could not read the PDF
 > either.** Its own attempts to fetch and extract the document returned nothing
@@ -675,7 +691,7 @@ Hole assert: `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)` → 89 ≥
 - [ ] `designs/nuggs/NOTES.md` exists, with a **"Print this first"** section naming `port_tol` as the knob, ±0.05 as the step, and the caliper bore check (≥ 79.0 mm) as the go/no-go.
 
 **Safety asserts present and firing**
-- [ ] `assert(bore_d >= min_bore_mm)` with a message naming the DTSchB 7 cm entrance minimum.
+- [ ] `assert(bore_d >= min_bore_mm)` with a message identifying 70 mm as a conservative pouch-full safety floor from secondary guidance, not from the reviewed DTSchB position paper.
 - [ ] A per-**run** enclosed-length assert (the Bin Bridge's one run is `straight_len + 2*(2*bh_flange_t + bh_spigot_len + port_proj) <= 2*body_len_mm`), with a message naming the **Deutscher Tierschutzbund** position paper *Tierschutzwidriges Zubehör* — **not TVT Merkblatt 62** (§11), stating that the limit is one limb of a conjunctive test, and stating that a bend, a junction at bore diameter, a coupling and a top hatch do not reset it.
 - [ ] `assert(lug_deg <= 360/n_lug/2)` — genderless self-complementarity.
 - [ ] `assert(lug_ramp >= 47)`, `assert(wall >= 3*nozzle)`, `assert(straight_len <= 240)`, `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)`, `assert(max_incline_deg <= 15)`.
@@ -819,10 +835,11 @@ position paper *Tierschutzwidriges Zubehör*:
 > gewährleisten.
 
 (*Plastic tubes are acceptable only if they are at most twice the animal's
-body length and ensure adequate ventilation.* The domain-restricted search
-added a third limb: and come with instructions clarifying that such tubes
-should not be misused.) **This is a quoted search summary, not a sentence
-read in its source.**
+body length and ensure adequate ventilation.*) **2026-08-04 primary-text
+correction:** the sentence continues across PDF pp. 7–8 with the third limb:
+the tubes must carry instructions making clear that they must not be misused.
+The [committed transcription](nuggs-sources/tierschutzwidriges-zubehoer.md)
+preserves the complete wording.
 
 Three things follow, and the second and third matter more than the name:
 
@@ -924,10 +941,10 @@ figure. The new rule is per run.
 
 - **The v1 Bin Bridge passes under both** (246 ≤ 360). This re-scoping was
   not made to rescue a failing design.
-- Re-scoping is arguably the **more faithful** reading, not a loosening:
-  the German is plural and reads per tube, and the summation was this
-  dossier's own aggregation. But see §11.6 — that inference is the weakest
-  link in the whole chain.
+- Re-scoping is the **more faithful** reading: primary text makes
+  `Kunststoffröhren` the subject of the cap, while the summation was this
+  dossier's own aggregation. The source does not define a run; NUGGS's
+  continuous-run cap is a deliberately stricter engineering mapping.
 - It unblocks the backlog honestly. A branched or looping system is now
   compliant **iff every leg between breaks is short and every branch point
   claiming to reset the count is a node** — which is also the wild-burrow
@@ -940,10 +957,15 @@ Stated plainly, because the product page will be quoted against it.
 
 **HIGH confidence**
 
-- The egress block is real, total and organisational; **no primary source
-  was read**, in either pass.
+- The complete DTSchB primary paper was read on 2026-08-04. The exact
+  criterion is on PDF pp. 7–8 and is preserved in the repository.
+- The 2× limit belongs to the **DTSchB** position paper, is per plastic tube,
+  is an acceptance limit rather than a recommendation, and is conjunctive
+  with adequate ventilation and instructions against misuse.
+- The paper contains **no 7 cm/70 mm entrance minimum**.
 - **The TVT attribution of the 2× rule is probably wrong.** Five searches,
-  zero hits for a TVT length limit.
+  zero hits for a TVT length limit. The DTSchB paper lists TVT MB 62 as a
+  source but does not map the numerical sentence to it; MB 62 remains unread.
 - **The Hauzenberger author list is wrong** (Gebhardt-Henrich & Steiger,
   not Mueller & Wechsler).
 - **An 80 mm bore is a one-way bore.** To reverse direction the animal must
@@ -954,19 +976,15 @@ Stated plainly, because the product page will be quoted against it.
 
 **MODERATE confidence**
 
-- That the rule belongs to the **DTSchB** position paper, and that it is
-  **conjunctive** with ventilation. Same wording returned by two
-  independent searches including a domain-restricted one — and never
-  opened.
+- The 70 mm floor remains supported only by secondary summaries of a
+  different DTSchB Goldhamster publication. The position paper reviewed here
+  says only that openings must suit the species.
 
-**LOW confidence — and this is the hinge of the entire relaxation**
+**LOW confidence**
 
-- **That the rule is per-tube rather than per-system.** It is inferred from
-  **plural German in a search summary** of a PDF nobody in either session
-  could open. If it turns out to be per-system, the per-run rule is a
-  loosening with no source behind it, and "a bend is not a break" becomes
-  the only defensible part of the change. Say so on the product page.
-  Confirm against the PDF before anything ships.
+- No remaining item about the DTSchB 2× wording or scope. NUGGS's definitions
+  of a run, break, reversing distance and retrieval remain project engineering
+  judgement rather than low-confidence claims about the source.
 
 **NONE — pure engineering judgement, no literature exists**
 
@@ -1022,13 +1040,12 @@ against both, so both are on the record:
 `min_bore_mm = 70` **stays a hard assert.** Two honest qualifications that
 do not change that:
 
-- The DTSchB 7 cm figure is framed as an **entrance-opening minimum for
-  furnishing objects generally** (houses, hides, entrances), not as a
-  tube-bore standard. This dossier's S1 presents it in quotation marks; the
-  quotation marks are **not earned** — it is a search summary, and the
-  search backend explicitly noted it could not extract the sentence from
-  the DTSchB PDF and was reading it off secondary pages. Keep the number;
-  describe it accurately as an entrance minimum applied to a bore.
+- The reviewed DTSchB position paper contains **no 7 cm/70 mm figure**. It
+  says only that sleeping-house openings should be sized for the species
+  (PDF p. 7). The number came from secondary summaries of a separate
+  Goldhamster publication; this dossier's old quotation marks were unearned
+  and have been removed. Keep the conservative safety floor, but do not cite
+  this position paper for it.
 - The 4–5 cm wild tunnel figure is roughly **half** the 80 mm design target
   and well under the 70 mm floor. The rebuttal above (soil is not PETG)
   stands, and the design is on stronger ground naming the number and

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
   <title id="title">NUGGS welfare-source decision map</title>
-  <desc id="desc">A vector summary separating indexed source text, NUGGS interpretation, and blocked claims.</desc>
+  <desc id="desc">A vector summary separating verified primary text, NUGGS engineering rules, and unresolved claims.</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
       <path d="M0,0 L0,6 L9,3 z" fill="#334155"/>
@@ -20,39 +20,38 @@
 
   <rect width="1200" height="760" fill="#f8fafc"/>
   <text x="50" y="55" class="title">NUGGS — DTSchB source decision map</text>
-  <text x="50" y="84" class="subtitle">Tierschutzwidriges Zubehör (publisher edition shown as June 2024)</text>
+  <text x="50" y="84" class="subtitle">Tierschutzwidriges Zubehör (June 2024), verified against the committed 12-page PDF</text>
 
   <rect x="50" y="120" width="1100" height="130" rx="14" class="source"/>
-  <text x="75" y="153" class="heading">SUPPORTED BY INDEXED PRIMARY-PDF TEXT</text>
+  <text x="75" y="153" class="heading">VERIFIED PRIMARY TEXT — PDF PAGES 7–8</text>
   <text x="75" y="184" class="body">“Kunststoffröhren” are acceptable only when all three conditions hold:</text>
   <text x="90" y="214" class="body">≤ 2 × animal body length  AND  adequate ventilation  AND  instructions against misuse</text>
-  <text x="75" y="238" class="small">The search index truncates the sentence ending; complete PDF context remains unread.</text>
+  <text x="75" y="238" class="small">“nur dann akzeptabel” + “höchstens” makes this a conjunctive acceptance limit.</text>
 
   <path d="M600 250 L600 295" class="link"/>
 
   <rect x="50" y="300" width="520" height="175" rx="14" class="interpretation"/>
-  <text x="75" y="334" class="heading">NUGGS INTERPRETATION</text>
-  <text x="75" y="368" class="body">Generic plural “Kunststoffröhren” supports</text>
-  <text x="75" y="394" class="body">applying the limit to tubes, not an explicit</text>
-  <text x="75" y="420" class="body">sum of an entire connected system.</text>
-  <text x="75" y="452" class="small">Confidence: supportive, not yet document-complete.</text>
+  <text x="75" y="334" class="heading">SOURCE SCOPE RESOLVED</text>
+  <text x="75" y="368" class="body">“Kunststoffröhren” is the subject of all</text>
+  <text x="75" y="394" class="body">three conditions. No summed system-length</text>
+  <text x="75" y="420" class="body">formula appears anywhere in the paper.</text>
+  <text x="75" y="452" class="small">Conclusion: per tube, not a total-system sum.</text>
 
   <rect x="630" y="300" width="520" height="175" rx="14" class="blocked"/>
-  <text x="655" y="334" class="heading">NOT ESTABLISHED BY THE EXCERPT</text>
+  <text x="655" y="334" class="heading">NOT ESTABLISHED BY THIS PAPER</text>
   <text x="655" y="368" class="body">• NUGGS RUN and break definitions</text>
   <text x="655" y="396" class="body">• treatment of couplings or connected tubes</text>
-  <text x="655" y="424" class="body">• the claimed 7 cm entrance/bore rule</text>
-  <text x="655" y="452" class="small">Blocked pending an end-to-end PDF reading.</text>
+  <text x="655" y="424" class="body">• any 7 cm / 70 mm entrance or bore rule</text>
+  <text x="655" y="452" class="small">TVT MB 62 is listed as a source but remains unread.</text>
 
   <path d="M310 475 L310 530" class="link"/>
   <path d="M890 475 L890 530" class="link"/>
 
   <rect x="50" y="535" width="1100" height="145" rx="14" class="interpretation"/>
   <text x="75" y="570" class="heading">PRODUCT-MANAGER ACTION</text>
-  <text x="75" y="604" class="body">Keep N2 at 2 × body length and keep length joined to ventilation and instructions.</text>
-  <text x="75" y="632" class="body">Retain “scope PROVISIONAL”; do not publish branches/loops as source-cleared yet.</text>
-  <text x="75" y="660" class="body">Replace this evidence package with page-faithful PDF + Markdown when the binary is available.</text>
+  <text x="75" y="604" class="body">Remove N2 “scope PROVISIONAL”; keep length joined to ventilation and instructions.</text>
+  <text x="75" y="632" class="body">Keep the stricter NUGGS per-run cap; label run and break definitions engineering judgement.</text>
+  <text x="75" y="660" class="body">Do not cite this paper for N1’s 70 mm floor; retrieve the separate primary brochure.</text>
 
   <text x="50" y="723" class="small">Repository source: docs/nuggs-sources/tierschutzwidriges-zubehoer.md</text>
 </svg>
-

@@ -106,18 +106,18 @@ Merkblatt 62, which this project cited for two rounds and which appears
 never to have published a length limit at all (its objections are
 qualitative). In the source it is one limb of a *conjunctive* test: tubes
 are acceptable only if they are at most twice body length **and** ensure
-adequate ventilation. Both limbs, or neither.
+adequate ventilation **and** include instructions against misuse. All three
+limbs, or none.
 
-**How much to trust it.** Every source here was reached through search-result
-summaries under an egress block; **nobody on this project has read the
-primary text.** Specifically:
+**How much to trust it.** The complete June 2024 primary PDF has now been read
+and is committed with a [page-addressable transcript and decision
+map](../../docs/nuggs-sources/tierschutzwidriges-zubehoer.md). Specifically:
 
-- *Probably right:* the rule is DTSchB's, not TVT's, and it is conjunctive.
-- *Least certain, and it is the load-bearing part:* that the limit applies
-  **per tube** rather than to a whole system. That reading is inferred from
-  plural German in a search summary. If it turns out to be per-system, this
-  page's rule is too permissive and the "one straight per run" line becomes
-  "one straight, full stop."
+- *Primary-text verified:* the criterion applies to `Kunststoffröhren`
+  (plastic tubes), not a summed whole system, and length, ventilation and
+  instructions are conjunctive.
+- *Our stricter rule:* the paper does not define a run or a break. NUGGS caps
+  the whole continuously enclosed run, not merely each printed component.
 - *Two figures that cut the other way, both real:* German pet-care sites
   circulate a **stricter** 25–30 cm maximum; and wild Syrians work burrow
   galleries averaging **200 cm** and reaching 900 cm, at tunnel diameters
@@ -173,7 +173,7 @@ dry fully. Never a dishwasher — the heated dry cycle exceeds even PETG.
 | Parameter | Default | What it does |
 |---|---|---|
 | `bore_d` | 80 mm | Internal bore. The headline number; asserted ≥ `min_bore_mm` |
-| `min_bore_mm` | 70 mm | Welfare floor (DTSchB pouch-full entrance minimum). Never lower it |
+| `min_bore_mm` | 70 mm | Conservative pouch-full safety floor from secondary guidance. The reviewed DTSchB position paper contains no 70 mm rule. Never lower it |
 | `body_len_mm` | 180 mm | Your animal's head-and-body length; sets the enclosed-**run** budget (2 ×) |
 | `straight_len` | 160 mm | Face-to-face run length |
 | `port_tol` | 0.30 mm | **The one fit knob.** A real clearance in millimetres on every coupling surface — radial, axial *and* circumferential — whatever bore you set. Tune on the coupon in ±0.05 steps |

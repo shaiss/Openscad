@@ -824,15 +824,13 @@ file has now recorded six times: prose asserting something the model does not do
   gates a *fit*, so a future change could silently un-fix the coupling and
   CI would stay green. Running `nuggs-matetest.scad` in the gate needs a
   convention that does not exist yet.
-- **Nobody has read the DTSchB position paper, and it is now load-bearing.**
-  Round 5 rests N2's per-run scope on plural German in a search summary
-  (research §11.6, LOW confidence). This is the single highest-value thing
-  anyone with an unrestricted network can do for this design, and it takes
-  minutes: open *Tierschutzwidriges Zubehör* and read the tube sentence. If
-  it is per-system, N2 reverts to a total and the branch/loop scope closes
-  again. While reading, also settle TVT MB 62 (does it publish any length
-  number at all?), the DTSchB 7 cm entrance minimum, the PLOS One tube
-  verdict's **basis**, and the 20 mm loaded-pouch width.
+- **Primary-text review completed 2026-08-04.** The complete DTSchB position
+  paper is committed under `docs/nuggs-sources/` with a page-addressable
+  transcript. Pages 7–8 apply the 2× criterion to plastic tubes and make
+  length, ventilation and instructions conjunctive. They do not define a
+  NUGGS run or contain a 7 cm/70 mm minimum. TVT MB 62, the separate
+  Goldhamster brochure, the PLOS One verdict's **basis**, and the 20 mm
+  loaded-pouch source still need primary-text review.
 - **The confidence ladder is now a maintained artifact.** `docs/nuggs-research.md`
   §11.6 grades every welfare figure HIGH/MODERATE/LOW/NONE. Anything added
   to this design that quotes a welfare number gets a row there, or it is a
