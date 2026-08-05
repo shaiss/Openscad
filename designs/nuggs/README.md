@@ -116,8 +116,10 @@ map](../../docs/nuggs-sources/tierschutzwidriges-zubehoer.md). Specifically:
 - *Primary-text verified:* the criterion applies to `Kunststoffröhren`
   (plastic tubes), not a summed whole system, and length, ventilation and
   instructions are conjunctive.
-- *Our stricter rule:* the paper does not define a run or a break. NUGGS caps
-  the whole continuously enclosed run, not merely each printed component.
+- *How the source is enforced:* the paper does not define a run or a break.
+  NUGGS treats a continuously enclosed bore as one plastic tube across printed
+  component joints. That mapping lets the model and CI enforce the paper's
+  per-tube cap; it is not an additional, stricter restriction.
 - *Two figures that cut the other way, both real:* German pet-care sites
   circulate a **stricter** 25–30 cm maximum; and wild Syrians work burrow
   galleries averaging **200 cm** and reaching 900 cm, at tunnel diameters

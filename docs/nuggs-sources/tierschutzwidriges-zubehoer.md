@@ -47,9 +47,11 @@ The relevant bullet begins on PDF page 7 and ends on page 8:
    `höchstens` mean acceptable only if, and at most.
 3. **It is conjunctive.** Length, adequate ventilation, and instructions
    against misuse are joined in one `wenn … und …` test.
-4. **The source does not define a NUGGS run or break.** Applying one stricter
-   cap to a continuous enclosed run is a NUGGS engineering rule, not quoted
-   DTSchB language.
+4. **The source does not define a NUGGS run or break.** NUGGS treats a
+   continuously enclosed bore as one plastic tube even when printed components
+   are joined by couplings. Run and break are the operational definitions that
+   let the design and CI enforce the source's per-tube cap; they do not add a
+   stricter cap.
 5. **This document contains no 7 cm or 70 mm entrance minimum.** Its page 7
    housing guidance says openings should be sized for the species, without a
    number. The NUGGS bore floor therefore needs a different primary source.
@@ -60,11 +62,11 @@ The relevant bullet begins on PDF page 7 and ends on page 8:
 ### Product-manager decision
 
 N2's source-scope question is resolved: remove the provisional per-tube marker.
-Keep NUGGS's per-run rule because it is stricter than applying the cap only to
-individual components, and continue to label the run/break definitions as
-engineering judgement. Never cite the 2× condition without its ventilation and
-instructions limbs. Keep N1's 70 mm floor as a safety rule, but do not attribute
-that number to this position paper.
+Keep NUGGS's per-run check as the enforceable definition of one plastic tube
+across component joints, and continue to distinguish that operational mapping
+from quoted source language. Never cite the 2× condition without its ventilation
+and instructions limbs. Keep N1's 70 mm floor as a safety rule, but do not
+attribute that number to this position paper.
 
 ## Full German transcription
 

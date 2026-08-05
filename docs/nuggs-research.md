@@ -18,6 +18,13 @@ Two halves, and they have very different evidential weight:
    *refute* rather than agree. Corrections won over originals, and the
    refuted figures are named in place so they cannot creep back in.
 
+> **Evidence standard for restrictions:** NUGGS does not add a restriction
+> without a documented source or explicit, reviewable logic. One academic
+> citation is sufficient; a non-academic consensus claim requires at least
+> three independent sources. Operational definitions may make a sourced rule
+> enforceable by the model and CI, but must preserve rather than exceed the
+> source's strictness.
+
 > **Provenance caveat, load-bearing:** every external source below was
 > reached through web-search result summaries under an egress block that
 > returned 403 on effectively every research host. **No page was read end
@@ -670,8 +677,9 @@ Hole assert: `assert(wall_hole_d >= bore_d + 2*bh_spigot_wall + 1.0)` → 89 ≥
 > - **Per-tube scope: promoted to HIGH on 2026-08-04.** The primary sentence
 >   makes `Kunststoffröhren` the subject of all three conditions; the paper
 >   separately says `Röhrensysteme` when discussing long systems and states no
->   summed system-length formula. The NUGGS per-run mapping remains engineering
->   judgement and is deliberately stricter than a per-component cap.
+>   summed system-length formula. NUGGS treats a continuously enclosed bore as
+>   one plastic tube across component joints; the per-run mapping is how the
+>   model and CI enforce the source's cap, not a stricter cap.
 >
 > And the caveat still stands in full: **that agent could not read the PDF
 > either.** Its own attempts to fetch and extract the document returned nothing
@@ -943,8 +951,9 @@ figure. The new rule is per run.
   not made to rescue a failing design.
 - Re-scoping is the **more faithful** reading: primary text makes
   `Kunststoffröhren` the subject of the cap, while the summation was this
-  dossier's own aggregation. The source does not define a run; NUGGS's
-  continuous-run cap is a deliberately stricter engineering mapping.
+  dossier's own aggregation. The source does not define a run; NUGGS treats a
+  continuously enclosed bore as one plastic tube across component joints so
+  the source's per-tube cap remains enforceable by the model and CI.
 - It unblocks the backlog honestly. A branched or looping system is now
   compliant **iff every leg between breaks is short and every branch point
   claiming to reset the count is a node** — which is also the wild-burrow
