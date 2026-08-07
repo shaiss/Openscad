@@ -1,0 +1,254 @@
+name: Lifestyle clip (tier-2, AI motion)
+
+# Generate a tier-2 AI motion clip for a design and open a DRAFT PR with it
+# for a human to approve. Fires automatically when a designs/*/motion.conf
+# lands on the default branch — writing the manifest is the request — and can
+# also be dispatched by hand to re-roll a clip or override the generation
+# knobs. The clip is cosmetic and geometrically approximate (Vidu 2 animates
+# an impression of the seed image, and can invent motion the printed part
+# cannot perform), so it never merges itself — a person reviews the
+# generation and the disclosure before it lands.
+# See scripts/lifestyle-clip.sh and #75.
+#
+# No ZAI_KEY secret is set in this repository today — this workflow is proven
+# by scripts/lifestyle-clip.sh --mock and the readme-gate selftest, and
+# lifestyle-clip.sh's header lists the API facts the first live run must
+# verify.
+#
+# Prerequisites (one-time):
+#   1. Add the ZAI_KEY repository secret (Settings > Secrets and variables >
+#      Actions).
+#   2. Enable Settings > Actions > General > Workflow permissions >
+#      "Allow GitHub Actions to create and approve pull requests" — OFF by
+#      default. Without it the final `gh pr create` is denied even with the
+#      pull-requests: write permission below, and the run fails AFTER spending
+#      an API call (the branch is still pushed; open the PR from it manually).
+# Without ZAI_KEY an auto-triggered run skips with a notice rather than failing —
+# the clip is supplemental, so its absence must not redden every design change.
+# A manual dispatch still fails loudly: someone pressed the button and is owed
+# a reason. Dispatch from the default branch so the generated branch forks cleanly.
+
+on:
+  # Auto: writing or editing a design's motion.conf IS the request for a
+  # clip, so landing one on the default branch generates it. Scoped to that
+  # one path — the draft PR this workflow opens only touches README.md and
+  # previews/, so merging it cannot re-trigger the workflow.
+  push:
+    branches: [main]
+    paths:
+      - 'designs/*/motion.conf'
+  # Manual: regenerate an existing clip (an AI generation is not reproducible,
+  # so re-rolling is a normal thing to want) or override the generation knobs.
+  workflow_dispatch:
+    inputs:
+      design:
+        description: Design directory under designs/ (must ship a motion.conf)
+        required: true
+        default: calibration-cube
+      duration:
+        description: Clip duration in seconds passed to Vidu 2 (4 is the documented-safe value)
+        required: false
+        default: '4'
+      size:
+        description: Video size WxH passed to Vidu 2 (override if the API rejects the default)
+        required: false
+        default: 1280x720
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  detect:
+    name: Resolve which designs to render
+    runs-on: ubuntu-latest
+    outputs:
+      designs: ${{ steps.pick.outputs.designs }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          # Full history: a push can carry many commits, and the range below
+          # has to reach whichever one touched the manifest.
+          fetch-depth: 0
+      - name: List the designs whose motion.conf this run is about
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_DESIGN: ${{ github.event.inputs.design }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          names=""
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            # The design input is free-form text. Validate its SHAPE before
+            # anything interpolates it: design directories here are kebab-case
+            # (same rule lifestyle-clip.sh enforces later), and bash's [[ =~ ]]
+            # matches the whole string, so a value smuggling a newline — which
+            # would let a crafted input inject extra ::workflow::commands into
+            # the log — cannot pass. After this check, interpolating the name
+            # into messages below is provably safe.
+            if ! [[ "$INPUT_DESIGN" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+              echo "::error::the 'design' input is not a valid design-directory name (lowercase kebab-case, e.g. calibration-cube)"
+              exit 1
+            fi
+            # An archived design (designs/<n>/ARCHIVED) is frozen at v0.1 and
+            # retired from active CI — see CLAUDE.md, "Archived designs
+            # (v0.1 freeze)". Generating a new AI clip for one would spend an
+            # API call restyling a design nobody maintains. A dispatch fails
+            # loudly rather than skipping: someone pressed the button and is
+            # owed a reason (same rule as the missing-key case below).
+            if [ -f "designs/$INPUT_DESIGN/ARCHIVED" ]; then
+              echo "::error::designs/$INPUT_DESIGN is archived at v0.1 and retired from active CI — lift the ARCHIVED marker (or revive the design as a derivative) before generating new clips for it."
+              exit 1
+            fi
+            names="$INPUT_DESIGN"
+          else
+            # A force-push or a first push leaves github.event.before pointing
+            # at nothing. Fall back to the empty tree, which diffs the WHOLE
+            # pushed tree: comparing only HEAD against its parent would miss a
+            # manifest added by any earlier commit in a multi-commit push, and
+            # the workflow would then report success having generated nothing.
+            # Erring wide is the right way round — the path filter means this
+            # only fires when a motion.conf actually moved.
+            range="${BEFORE}..${GITHUB_SHA}"
+            if ! git rev-parse --quiet --verify "${BEFORE}^{commit}" >/dev/null 2>&1; then
+              range="$(git hash-object -t tree /dev/null)..${GITHUB_SHA}"
+            fi
+            while IFS= read -r f; do
+              case "$f" in
+                designs/*/motion.conf)
+                  n=${f#designs/}; n=${n%%/*}
+                  # A deleted manifest still shows up in the diff; only render
+                  # designs whose manifest exists at this commit. Archived
+                  # designs are skipped like every other CI path skips them
+                  # (CLAUDE.md, "Archived designs (v0.1 freeze)") — their
+                  # committed pages stay as they are.
+                  [ -f "designs/$n/motion.conf" ] || continue
+                  if [ -f "designs/$n/ARCHIVED" ]; then
+                    echo "skip $n: archived at v0.1, not regenerating clips"
+                    continue
+                  fi
+                  names="$names $n" ;;
+              esac
+            done < <(git diff --name-only "$range")
+          fi
+          # shellcheck disable=SC2086  # splitting the name list is the point
+          set -- $names
+          json="$(printf '%s\n' "$@" \
+            | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().split()))')"
+          echo "designs=$json" >> "$GITHUB_OUTPUT"
+          echo "designs: $json"
+
+  generate:
+    name: Generate and open a draft PR
+    needs: detect
+    if: needs.detect.outputs.designs != '[]'
+    strategy:
+      # One PR per design, and one failure does not cancel the others.
+      fail-fast: false
+      matrix:
+        design: ${{ fromJSON(needs.detect.outputs.designs) }}
+    concurrency:
+      group: lifestyle-clip-${{ matrix.design }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    # Backstop: video generation is async and takes minutes per clip (the
+    # generator's poll deadline defaults to 900 s per shot), so a stalled API
+    # call must not hold the runner — but 20 minutes would be too tight. A
+    # multi-shot manifest must fit shots x ZAI_POLL_DEADLINE in here.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Don't leave the token in .git/config for the later steps that
+          # process API-supplied video bytes; the push below supplies it
+          # explicitly instead.
+          persist-credentials: false
+
+      - name: Install ImageMagick, ffmpeg and gifsicle
+        # Plain apt-get, deliberately not cache-apt-pkgs: none of these are on
+        # docs-check check 9's verified postinst-free allowlist (ImageMagick
+        # is the package that check exists to keep out of the cache).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick ffmpeg gifsicle || { sleep 5; sudo apt-get install -y imagemagick ffmpeg gifsicle; }
+
+      - name: Generate the motion clip and embed its disclosure
+        env:
+          ZAI_KEY: ${{ secrets.ZAI_KEY }}
+          DESIGN: ${{ matrix.design }}
+          ZAI_VIDEO_DURATION: ${{ github.event.inputs.duration }}
+          ZAI_VIDEO_SIZE: ${{ github.event.inputs.size }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ZAI_KEY:-}" ]; then
+            if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+              # Someone pressed the button and expects a clip: say why not.
+              echo "::error::ZAI_KEY secret is not set for this repository"
+              exit 1
+            fi
+            # Auto-triggered. The clip is supplemental and cosmetic, so a repo
+            # without the key should not get a red X on every design change —
+            # the deterministic previews are the deliverable and they are
+            # gated elsewhere.
+            echo "::notice::ZAI_KEY is not set — skipping the tier-2 motion clip for ${DESIGN}"
+            echo "SKIPPED=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          ./scripts/lifestyle-clip.sh "$DESIGN"
+
+      - name: Prove the disclosure gate passes
+        if: env.SKIPPED != '1'
+        env:
+          DESIGN: ${{ matrix.design }}
+        # The generated PR is opened with GITHUB_TOKEN, so it will NOT trigger
+        # the normal CI. Run the product-page gate here so the disclosure
+        # (AI-styled scene label + "geometry is approximate" caption) is
+        # verified before a human ever sees the PR.
+        run: ./scripts/readme-gate.sh "$DESIGN"
+
+      - name: Open a draft PR with the generated clip
+        if: env.SKIPPED != '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DESIGN: ${{ matrix.design }}
+          RUN_ID: ${{ github.run_id }}
+          BASE: ${{ github.event.repository.default_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          branch="lifestyle-clip/${DESIGN}-${RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          # Stage exactly the generated lifestyle GIF(s) and the README — a
+          # precise add (not the whole previews/ dir) so no unrelated
+          # working-tree change rides along, and via -print0 so it never
+          # word-splits or fails on a literal glob.
+          git add "designs/${DESIGN}/README.md"
+          find "designs/${DESIGN}/previews" -maxdepth 1 -type f -name 'lifestyle-*.gif' -print0 \
+            | xargs -0 --no-run-if-empty git add
+          if git diff --cached --quiet; then
+            echo "::error::generator produced no changes"
+            exit 1
+          fi
+          git commit -m "Add AI motion clip: ${DESIGN}"
+          # persist-credentials:false above means no stored remote auth — supply
+          # the token explicitly for this one push (masked in logs by Actions).
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "$branch"
+          body="$(cat <<EOF
+          Automated **tier-2 AI motion clip** for \`${DESIGN}\`, generated by Z.AI Vidu 2 (image-to-video, seeded from the design's committed tier-1 shot) from the prompt in \`designs/${DESIGN}/motion.conf\`.
+
+          This clip is **purely supplemental and cosmetic** — and in motion the model can invent movement the printed part does not have. The deterministic \`animations.conf\` GIF and the STL remain the motion-true artifacts. The README embed carries the required disclosure (an \`AI-styled scene\` alt label and a \`geometry is approximate\` caption), and \`readme-gate.sh\` passed in the generating workflow.
+
+          **Review before merging:** watch the clip and confirm it does not show mechanism the print cannot perform, confirm it sits below the deterministic previews, then take this out of draft. Regenerate by re-running the *Lifestyle clip (tier-2, AI motion)* workflow. Note: because this PR was opened by \`GITHUB_TOKEN\`, the normal CI did not auto-run — push a trivial commit or re-run CI if you want the full suite on it.
+
+          🤖 Generated with [Claude Code](https://claude.com/claude-code)
+          EOF
+          )"
+          if ! gh pr create --draft --base "$BASE" --head "$branch" \
+              --title "Add AI motion clip: ${DESIGN}" --body "$body"; then
+            echo "::warning::Could not open the PR automatically. The branch '${branch}' IS pushed — enable Settings > Actions > General > Workflow permissions > 'Allow GitHub Actions to create and approve pull requests' (or use a PAT), then open a PR from that branch into ${BASE}."
+            exit 1
+          fi

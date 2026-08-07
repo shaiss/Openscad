@@ -1,6 +1,6 @@
 ---
 name: product-shots
-description: Give a design's product page real-world-looking product shots — path-traced studio renders of the printed part (deterministic, CI-gated), plus an optional AI-restyled lifestyle shot when the session has an image-generation tool. Use when asked for product shots, hero images, photoreal/real-world renders, or when invoked as /product-shots [name].
+description: Give a design's product page real-world-looking product shots — path-traced studio renders of the printed part (deterministic, CI-gated), plus optional AI-restyled lifestyle shots and motion clips via the CI-wired manifests. Use when asked for product shots, hero images, photoreal/real-world renders, motion or video previews, or when invoked as /product-shots [name].
 ---
 
 # Product shots — real-world-looking images for the product page
@@ -16,7 +16,8 @@ Two tiers, in order:
 the *embed*: `shots.conf` says which shot exists and how it is framed,
 README.md places it. The `regen` job in `.github/workflows/ci.yml` runs
 `product-shot.sh` for every design a PR touches and pushes the PNGs to the
-branch; the lifestyle workflow fires on a `lifestyle.conf` landing on main.
+branch; the lifestyle workflows fire on a `lifestyle.conf` (still) or
+`motion.conf` (clip) landing on main.
 So you can write a manifest and push without `bpy` installed at all. Render
 locally when you want to *judge* framing before pushing — that is a real
 reason, and §"Judge the framing" below is about exactly that.
@@ -36,12 +37,14 @@ Two tiers, in order:
    AVX2 CPU kernel by what the host supports, and their rounding differs,
    so compare renders from different hardware perceptually, not byte-wise.
 2. **AI-restyled lifestyle shot (optional — only when the session has an
-   image-generation tool).** Restyle the committed raytrace into a
-   real-world scene. This tier is **purely supplemental and cosmetic** — a
-   general real-world impression for the reader, not a geometry-true render:
-   assume it may be geometrically off. Never a substitute for tier 1, never
-   the only image on the page, and it always ships with a visible warning
-   note directly below it (see below).
+   image-generation tool), and optionally an AI motion clip via CI.**
+   Restyle the committed raytrace into a real-world scene — or animate it
+   with the motion-clip pipeline (see the subsection at the end of Tier 2).
+   This tier is **purely supplemental and cosmetic** — a general real-world
+   impression for the reader, not a geometry-true render: assume it may be
+   geometrically off. Never a substitute for tier 1, never the only image on
+   the page, and it always ships with a visible warning note directly below
+   it (see below).
 
 ## Tier 1 workflow
 
@@ -171,11 +174,33 @@ Two ways to generate one, both landing the same disclosed
   lifestyle shot only augments it — never the hero or the only image —
   giving the reader a general real-world feel for the piece.
 
-## Freezing and review
+### Motion clips (tier-2 video)
+
+The motion sibling of the lifestyle shot, and CI-wired the same way: write
+`designs/<name>/motion.conf` (one `<shot> | <prompt>` line) and land it on
+main — the **Lifestyle clip (tier-2, AI motion)** workflow
+(`.github/workflows/lifestyle-clip.yml`, `scripts/lifestyle-clip.sh`) fires
+on the manifest, animates the design's committed tier-1 shot with the Z.AI
+Vidu 2 image-to-video API, transcodes the result to a GIF within the
+animation budget, embeds it with the disclosure, runs `readme-gate.sh`, and
+opens a draft PR to approve.
+
+- **Name `<shot>` after the exact `animations.conf` or `shots.conf` entry it
+  restyles** (so `turntable` becomes `previews/lifestyle-turntable.gif`) —
+  the clip must sit beside its deterministic counterpart, never replace it.
+- The disclosure rules above apply verbatim (inline embed only, `AI-styled
+  scene` label, `geometry is approximate` caption) — the gate treats a
+  `lifestyle-*.gif` exactly like a `lifestyle-*.png`, judged against the
+  animation-GIF budget. Write the caption's motion clause too: the movement
+  shown is illustrative, not a simulation.
+- **A clip is doubly cosmetic**: the geometry is an impression *and the
+  motion is invented by the model* — it can show a mechanism the print
+  cannot perform. The `animations.conf` GIF is the motion-true artifact; a
+  clip may only ever augment it, below it on the page.
 
 Product shots follow the same freeze policy as `previews/CAMERAS.md`
-cameras and `animations.conf`: once reviewers have compared against a
-shot, don't silently re-frame it. The freeze lives in the manifest line, so
+cameras, `animations.conf` and `motion.conf`: once reviewers have compared
+against a shot, don't silently re-frame it. The freeze lives in the manifest line, so
 CI regenerating a shot never breaks it — same camera in, same framing out.
 
 Keeping a shot current after a geometry change used to be a manual step in
