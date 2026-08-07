@@ -1366,3 +1366,64 @@ jobs:
                 ...context.repo, issue_number: context.issue.number, body,
               });
             }
+
+  # Single summary context, so branch protection can require ONE check
+  # ("CI OK") instead of matching five job names. The point: a required
+  # context must actually RUN to satisfy protection (PR #50), which is why
+  # this workflow carries always-run formality modes (render-gate's "gate
+  # nothing" mode, ptests=true on soft-infra paths). Once branch protection
+  # requires only this job, every other job can be honestly skipped via
+  # `if:` and those modes can be retired — and docs-only PRs, which today
+  # run no required context at all, become mergeable.
+  #
+  # Skipped counts as OK here BY DESIGN: a skip is the classifier's verdict
+  # that the job had nothing to judge. The trade is real — a classifier bug
+  # that wrongly skips a job now merges green instead of stranding the PR —
+  # which is why the classifier's fail-closed constructs (the command
+  # substitution capture, the unguarded blast-radius call) matter more once
+  # this is the required context, not less.
+  #
+  # geo-diff is deliberately not in `needs`: it is advisory
+  # (continue-on-error) and its verdict must not gate a merge.
+  #
+  # Every gating job belongs in this list. A job missing from `needs` can
+  # fail without blocking the merge, and nothing detects the omission — add
+  # new jobs here in the same change that creates them.
+  ci-ok:
+    name: CI OK
+    needs:
+      - changes
+      - lint
+      - regen
+      - printcheck-tests
+      - stylelift-tests
+      - lineage-tests
+      - style-gate
+      - design-docs
+      - site-build
+      - scad-check
+      - scad-check-nightly
+      - render-gate
+    # !cancelled(): run and report even when a needed job failed or was
+    # skipped — the default would skip this job the moment any dependency
+    # was, which as a required context is exactly the PR #50 trap.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every gating job succeeded or was skipped by the classifier
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'EOF'
+          import json, os, sys
+          needs = json.loads(os.environ["RESULTS"])
+          for job, info in sorted(needs.items()):
+              print(f"{info['result']:>9}  {job}")
+          bad = [j for j, i in needs.items()
+                 if i["result"] not in ("success", "skipped")]
+          if bad:
+              print(f"\nnot green: {', '.join(sorted(bad))}")
+              sys.exit(1)
+          print("\nCI OK")
+          EOF
