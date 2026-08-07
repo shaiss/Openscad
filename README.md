@@ -115,6 +115,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
 - `lib/` — shared modules: `printability.scad` (FDM fastener/chamfer
   helpers), `threads-fdm.scad` (printable trapezoidal threads),
   `nuggs-coupling.scad` (the NUGGS genderless quarter-turn bayonet port),
+  `print-in-place.scad` (print-in-place slide rails, tabs, end-stops,
+  sacrificial membranes and a teardrop-bore hinge, extracted from the
+  archived sushi-battleship),
   each with a `*-demo.scad` regression render, plus vendored
   [BOSL2](https://github.com/BelfrySCAD/BOSL2)
 - `build/` — generated STL/PNG outputs (gitignored)
