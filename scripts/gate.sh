@@ -403,8 +403,10 @@ else
     # and on any infra change (gate_designs=ALL), so skipping here is what
     # stops a frozen design from spending render/slice cycles forever.
     # A caller that NAMES an archived design still gates it (the branch
-    # above never reaches this loop), which is the revival path: a PR that
-    # touches the design's own files re-gates it as usual.
+    # above never reaches this loop). That is the revival path, and CI only
+    # ever names an archived design when the PR edited its own files: the
+    # `changes` classifier drops an archived design that was pulled in only
+    # by blast radius or a shared style, so an indirect touch never lands here.
     if [[ -f "designs/${name}/ARCHIVED" ]]; then
       echo "skip ${name}: archived at $(head -1 "designs/${name}/ARCHIVED") — frozen, not gated in full-catalog runs"
       archived=$((archived + 1))

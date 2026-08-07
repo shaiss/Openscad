@@ -85,6 +85,7 @@ jobs:
             echo "changed files:"; printf '  %s\n' "${files[@]}"
             infra=false
             declare -A names=()
+            declare -A touched=()
             declare -A touched_styles=()
             for f in "${files[@]}"; do
               case "$f" in
@@ -118,8 +119,11 @@ jobs:
                 designs/*/*)
                   n=${f#designs/}; n=${n%%/*}
                   # skip names whose entry point no longer exists (deleted
-                  # or renamed design directories)
-                  [ -f "designs/$n/$n.scad" ] && names[$n]=1 ;;
+                  # or renamed design directories). `touched` records the
+                  # designs the PR edited DIRECTLY (their own files), as
+                  # distinct from ones pulled in later by blast radius or a
+                  # shared style — the archived filter below needs that split.
+                  [ -f "designs/$n/$n.scad" ] && { names[$n]=1; touched[$n]=1; } ;;
               esac
               case "$f" in
                 tools/printcheck/*|.github/workflows/ci.yml) ptests=true ;;
@@ -219,6 +223,23 @@ jobs:
             # is what just moved.
             for n in "${!names[@]}"; do
               [ -f "designs/$n/style.conf" ] && styles=true
+            done
+            # Archived designs (designs/<n>/ARCHIVED) are frozen at v0.1 and
+            # retired from active CI. Gate them ONLY when the PR edits their
+            # own files (a revival), never when they were pulled in
+            # indirectly — by a parent's blast radius or by a shared style
+            # they declare. Without this an edit to an active parent, or to a
+            # style a frozen design happens to use, would drag the frozen
+            # design back through the printcheck+slice gate, defeating the
+            # retirement. This mirrors the full-catalog (ALL) skip in
+            # gate.sh, regen and geo-diff, so the one policy — "archived
+            # unless the PR touches its own files" — holds on every path.
+            # (No design ships a derives.conf or style.conf today, so this is
+            # a guard against a future coupling, not a live case.)
+            for n in "${!names[@]}"; do
+              if [ -f "designs/$n/ARCHIVED" ] && [ -z "${touched[$n]:-}" ]; then
+                unset 'names[$n]'
+              fi
             done
             if $infra; then
               gate=true; designs=ALL

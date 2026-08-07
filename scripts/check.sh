@@ -87,8 +87,22 @@ check() {
   fi
 }
 
+# An archived design (designs/<n>/ARCHIVED) is frozen at v0.1 and retired from
+# full-catalog CI. The syntax/link pass skips it for the same reason gate.sh,
+# regen and geo-diff do: a shared-code change (a lib/ or scripts/ edit reaches
+# this pass over the whole tree) must not be held hostage by a design nobody is
+# maintaining. Only checks a designs/<n>/<file> path; lib/, templates/ and
+# styles/ files are never archived and always fall through to be checked.
+scad_is_archived() {
+  case "$1" in
+    designs/*/*) local d=${1#designs/}; d=${d%%/*}; [[ -f "designs/$d/ARCHIVED" ]] ;;
+    *) return 1 ;;
+  esac
+}
+
 shopt -s nullglob
 for f in designs/*/*.scad lib/*.scad templates/*.scad styles/*/*.scad; do
+  scad_is_archived "$f" && continue
   check "$f"
 done
 
@@ -105,6 +119,7 @@ echo "-- library-link check"
 # loses its tokens would render an unstyled shape and still pass the gate.
 lib_search=("$PWD/lib" "$PWD" /usr/share/openscad/libraries)
 for f in designs/*/*.scad lib/*.scad templates/*.scad styles/*/*.scad; do
+  scad_is_archived "$f" && continue
   while read -r ref; do
     [[ -f "$(dirname "$f")/$ref" ]] && continue     # sibling file
     found=0

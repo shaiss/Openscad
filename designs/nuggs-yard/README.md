@@ -9,6 +9,8 @@
 > **before it was ever printed or physically validated** (see the work-in-progress
 > note below), so its geometry is unproven — a revival should start there.
 
+<!-- -->
+
 > **Superseded joint — this kit does not interoperate with `nuggs` today.**
 > As of 2026-08-03, N.U.G.G.S. is a system with **one** genderless
 > interlock standard, and it is `nuggs`'s quarter-turn port. This design's
