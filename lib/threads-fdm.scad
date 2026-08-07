@@ -116,10 +116,12 @@ _max_chord = 0.1;
 // now (1) never tessellate coarser than the helix's own `seg` (mask_fn =
 // max($fn, seg) in each module), and (2) oversize by this margin, so
 //     inradius - crest >= _mask_clear·cos(180/seg) - _max_chord
-// which is positive for every parameter set the chord guard admits: any
-// value above _max_chord/cos(180/seg) <= 0.134 clears, and 1 mm carries
-// >= 0.65 mm of slack at the coarsest legal seg. One named number in one
-// place so the trade can be re-made, same as _max_chord above.
+// which is positive whenever _mask_clear > _max_chord/cos(180/seg). That
+// threshold never exceeds 2·_max_chord = 0.2, because any sweepable seg
+// (>= 3) has cos(180/seg) >= 0.5 — so 1 mm clears it at least fivefold at
+// EVERY seg, with no assumption about how coarse a legal seg can get. One
+// named number in one place so the trade can be re-made, same as
+// _max_chord above.
 _mask_clear = 1;
 
 // One trapezoidal helix as a single polyhedron, swept `starts` times.

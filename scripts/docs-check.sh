@@ -173,12 +173,16 @@ done < <(git ls-files -s scripts/)
 #    animate.sh shipped exactly that and failed as "openscad: not found" in
 #    regen alone (issue #85, bug 1). Two invocation shapes are flagged: a
 #    literal `openscad` handed to xvfb-run, and one in direct command
-#    position. Comment lines and any line that references OPENSCAD_BIN
-#    (the default assignment, the compliant invocations) pass.
+#    position. Comment lines pass (prose may quote the bad shape when
+#    documenting it); nothing else does — compliant invocations never
+#    contain the lowercase literal, and the default assignment
+#    (OPENSCAD_BIN="${OPENSCAD_BIN:-openscad}") sits outside both
+#    invocation shapes, so no allowance for lines mentioning OPENSCAD_BIN
+#    is needed and none is made (a violation sharing a line with the
+#    variable still fails — Copilot review on #90).
 for f in scripts/*.sh; do
   while IFS=: read -r ln line; do
     [[ "$line" =~ ^[[:space:]]*# ]] && continue
-    [[ "$line" == *OPENSCAD_BIN* ]] && continue
     err "${f}:${ln} invokes a literal openscad binary — route it through \"\$OPENSCAD_BIN\" (issue #85)"
   done < <(grep -nE '(xvfb-run[^|#]*[[:space:]]|^[[:space:]]*|[|;&][[:space:]]*|\$\([[:space:]]*)openscad(-nightly)?([[:space:]]|$)' "$f" || true)
 done
