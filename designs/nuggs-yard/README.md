@@ -5,7 +5,9 @@
 > design is retired from active CI to save render cycles. To improve it, fork
 > the repo, update it against current CI, and contribute it back as a
 > derivative per the repo's [lineage tracking](../../docs/derivative-designs.md)
-> (see also [CLAUDE.md](../../CLAUDE.md) → "Archived designs").
+> (see also [CLAUDE.md](../../CLAUDE.md) → "Archived designs"). It was frozen
+> **before it was ever printed or physically validated** (see the work-in-progress
+> note below), so its geometry is unproven — a revival should start there.
 
 > **Superseded joint — this kit does not interoperate with `nuggs` today.**
 > As of 2026-08-03, N.U.G.G.S. is a system with **one** genderless

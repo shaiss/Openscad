@@ -393,6 +393,7 @@ if [[ ${#names[@]} -ge 1 ]]; then
   done
 else
   found=0
+  archived=0
   for dir in designs/*/; do
     [[ -d "$dir" ]] || continue
     name="$(basename "$dir")"
@@ -406,13 +407,20 @@ else
     # touches the design's own files re-gates it as usual.
     if [[ -f "designs/${name}/ARCHIVED" ]]; then
       echo "skip ${name}: archived at $(head -1 "designs/${name}/ARCHIVED") — frozen, not gated in full-catalog runs"
+      archived=$((archived + 1))
       continue
     fi
     found=1
     gate_one "$name"
   done
   if [[ "$found" -eq 0 ]]; then
-    echo "no designs found under designs/"
+    # Distinguish an empty tree from one where every design is archived, so a
+    # green no-op reads honestly instead of looking like nothing exists.
+    if [[ "$archived" -gt 0 ]]; then
+      echo "no designs gated: all ${archived} design(s) under designs/ are archived at v0.1"
+    else
+      echo "no designs found under designs/"
+    fi
   fi
 fi
 
