@@ -148,6 +148,24 @@ for f in lib/*.scad; do
     || err "lib/${b}.scad has no lib/${b}-demo.scad (CLAUDE.md requires one per first-party library)"
 done
 
+# 7. Shebang <=> executable, on the COMMITTED mode. Every file in scripts/
+#    that opens with a #! line is a command and must be 100755 in the index;
+#    a file without one (today only preview-budget.sh, a sourced helper) is
+#    correctly 100644. The committed mode is what regressed on site.sh
+#    (issue #61): nothing in CI invokes most scripts by ./path, so a 644
+#    commit ships silently and only a human following the docs hits
+#    "Permission denied". `git ls-files -s` reads the index, not the
+#    filesystem — a local chmod can't mask what a fresh clone will get.
+while read -r mode _ _ path; do
+  [[ -f "$path" ]] || continue
+  first="$(head -c 2 "$path")"
+  if [[ "$first" == '#!' && "$mode" != 100755 ]]; then
+    err "${path} has a shebang but is committed mode ${mode} — 'git update-index --chmod=+x ${path}' (issue #61)"
+  elif [[ "$first" != '#!' && "$mode" == 100755 ]]; then
+    err "${path} is committed executable but has no shebang — sourced helpers stay 100644"
+  fi
+done < <(git ls-files -s scripts/)
+
 if [[ "$fail" == 0 ]]; then
   echo "ok    docs match the tree"
 fi
