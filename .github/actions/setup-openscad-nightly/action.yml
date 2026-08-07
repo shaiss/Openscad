@@ -33,10 +33,12 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
-          | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
+        # signed-by binds the OBS key to this one repository — a key dropped
+        # into trusted.gpg.d would be trusted for every configured repo.
         curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
-          | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
+          | sudo gpg --dearmor -o /usr/share/keyrings/openscad-nightly.gpg
+        echo 'deb [signed-by=/usr/share/keyrings/openscad-nightly.gpg] https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
+          | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
         sudo apt-get update
         # --download-only into the cache dir: this fetches openscad-nightly
         # AND every dependency the runner image is missing, so the install
@@ -47,6 +49,10 @@ runs:
           openscad-nightly
         # apt downloads as root; the cache action tars as the runner user.
         sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/openscad-nightly-debs"
+        # The debs are downloaded; drop the repo entry so any later apt step
+        # in the same job resolves against the stock Ubuntu archives only —
+        # matching what a cache-hit run sees, where OBS is never added.
+        sudo rm -f /etc/apt/sources.list.d/openscad-nightly.list
     - name: Install openscad-nightly from the cached packages
       shell: bash
       run: |

@@ -132,9 +132,14 @@ jobs:
             declare -A touched_styles=()
             for f in "${files[@]}"; do
               case "$f" in
+                # .github/actions is geometry infra alongside ci.yml: the
+                # composite action there selects the OpenSCAD build five
+                # jobs render with, so an action-only PR must re-gate — with
+                # no rule it would classify as nothing and merge with zero
+                # geometry verification.
                 lib/*|scripts/gate.sh|scripts/lineage.sh|\
                 tools/printcheck/*|tools/lineage/*|\
-                .github/workflows/ci.yml)
+                .github/workflows/ci.yml|.github/actions/*)
                   geo_infra=true ;;
                 # tools/photoshot is soft: it renders product shots FROM
                 # exported STLs and can change a pixel but never a mesh.
@@ -156,7 +161,7 @@ jobs:
                 # committed stamp (scripts/regen-stamp.sh), so ALL here means
                 # "consider every design", not "re-render every design".
                 lib/*|tools/lineage/*|tools/photoshot/*|\
-                .github/workflows/ci.yml|\
+                .github/workflows/ci.yml|.github/actions/*|\
                 scripts/render.sh|scripts/animate.sh|\
                 scripts/product-shot.sh|scripts/gallery.sh|\
                 scripts/product-page.sh|scripts/preview-budget.sh|\
@@ -214,7 +219,7 @@ jobs:
                 # all.
                 designs/*|lib/*|templates/*|scripts/*|styles/*|site/*|\
                 vercel.json|tools/lineage/*|tools/photoshot/*|\
-                .github/workflows/ci.yml)
+                .github/workflows/ci.yml|.github/actions/*)
                   scad=true ;;
               esac
             done
@@ -485,14 +490,29 @@ jobs:
           done
           # OpenSCAD is needed when something re-renders: previews and GIFs
           # render through it, and gallery.sh renders a missing contact
-          # sheet. When every candidate was stamp-skipped the gallery still
-          # rebuilds (below) but from committed sheets only — a design whose
-          # sheet is missing is also a design with no matching stamp, so the
-          # two cannot disagree.
+          # sheet.
           render=false
           [ -n "$render_designs" ] && render=true
           gallery=false
           [ -n "$designs" ] && gallery=true
+          # The gallery rebuild usually needs no toolchain (it reads the
+          # committed sheets) — but gallery.sh renders a missing contact
+          # sheet itself, for ANY design's row, not just a candidate's, and
+          # a deleted sheet does not invalidate any stamp (previews/ outputs
+          # are excluded from the fingerprint on purpose). So when the
+          # gallery will run without any candidate rendering, check every
+          # design's sheet and force the toolchain install if one is absent,
+          # rather than letting gallery.sh die on a missing openscad.
+          if [ "$gallery" = true ] && [ "$render" = false ]; then
+            for d in designs/*/; do
+              n=${d#designs/}; n=${n%/}
+              [ -f "designs/$n/$n.scad" ] || continue
+              if [ ! -f "designs/$n/previews/contact-sheet.png" ]; then
+                echo "contact sheet missing for $n — installing the render toolchain for gallery.sh's fallback"
+                render=true
+              fi
+            done
+          fi
           # A fork PR's GITHUB_TOKEN is read-only, so there is nothing to push
           # back to. The commit step turns that into a clear failure with the
           # file list rather than a permissions error nobody can act on.
