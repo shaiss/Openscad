@@ -71,6 +71,16 @@ jobs:
           set -euo pipefail
           names=""
           if [ "$EVENT" = "workflow_dispatch" ]; then
+            # An archived design (designs/<n>/ARCHIVED) is frozen at v0.1 and
+            # retired from active CI — see CLAUDE.md, "Archived designs
+            # (v0.1 freeze)". Generating a new AI shot for one would spend an
+            # API call restyling a design nobody maintains. A dispatch fails
+            # loudly rather than skipping: someone pressed the button and is
+            # owed a reason (same rule as the missing-key case below).
+            if [ -f "designs/$INPUT_DESIGN/ARCHIVED" ]; then
+              echo "::error::designs/$INPUT_DESIGN is archived at v0.1 and retired from active CI — lift the ARCHIVED marker (or revive the design as a derivative) before generating new shots for it."
+              exit 1
+            fi
             names="$INPUT_DESIGN"
           else
             # A force-push or a first push leaves github.event.before pointing
@@ -89,8 +99,16 @@ jobs:
                 designs/*/lifestyle.conf)
                   n=${f#designs/}; n=${n%%/*}
                   # A deleted manifest still shows up in the diff; only render
-                  # designs whose manifest exists at this commit.
-                  [ -f "designs/$n/lifestyle.conf" ] && names="$names $n" ;;
+                  # designs whose manifest exists at this commit. Archived
+                  # designs are skipped like every other CI path skips them
+                  # (CLAUDE.md, "Archived designs (v0.1 freeze)") — their
+                  # committed pages stay as they are.
+                  [ -f "designs/$n/lifestyle.conf" ] || continue
+                  if [ -f "designs/$n/ARCHIVED" ]; then
+                    echo "skip $n: archived at v0.1, not regenerating shots"
+                    continue
+                  fi
+                  names="$names $n" ;;
               esac
             done < <(git diff --name-only "$range")
           fi
