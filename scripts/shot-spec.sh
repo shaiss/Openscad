@@ -286,12 +286,12 @@ cmd_embed() {
     embed_lifestyle "$design" "$shot"
   else
     # Recover the color/finish from the manifest so the alt text is accurate.
-    local conf="$ROOT/$design/shots.conf" line name color finish rest
+    local conf="$ROOT/$design/shots.conf" line name color finish
     local col="a printed part" fin=""
     if [[ -f "$conf" ]]; then
       while IFS= read -r line || [[ -n "$line" ]]; do
         line="${line%%#*}"; [[ "$line" =~ [^[:space:]] ]] || continue
-        IFS='|' read -r name color finish rest <<<"$line"
+        IFS='|' read -r name color finish _ <<<"$line"
         name="${name//[[:space:]]/}"
         [[ "$name" == "$shot" ]] || continue
         col="#${color//[[:space:]]/}"; fin="${finish//[[:space:]]/}"
@@ -307,13 +307,15 @@ cmd_embed() {
 # it catches a malformed line while it is still cheap to fix, and it is what the
 # --selftest exercises.
 check_shots() {  # <conf> ; sets rc via `bad`
-  local conf="$1" line name color finish camera size defines
+  local conf="$1" line name color finish camera size
   [[ -f "$conf" ]] || return 0
   local n=0
   while IFS= read -r line || [[ -n "$line" ]]; do
     n=$((n+1))
     line="${line%%#*}"; [[ "$line" =~ [^[:space:]] ]] || continue
-    IFS='|' read -r name color finish camera size defines <<<"$line"
+    # trailing `_` absorbs the optional defines field; it is not validated here
+    # (product-shot.sh owns -D parsing), so it is intentionally unused.
+    IFS='|' read -r name color finish camera size _ <<<"$line"
     name="${name//[[:space:]]/}"; color="${color//[[:space:]]/}"
     finish="${finish//[[:space:]]/}"; camera="${camera//[[:space:]]/}"
     size="${size//[[:space:]]/}"
