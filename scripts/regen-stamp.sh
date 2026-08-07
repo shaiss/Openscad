@@ -45,11 +45,15 @@ fi
 # never sneak into the fingerprint. Content is hashed from the working tree,
 # so uncommitted edits change the stamp the way they change the render.
 inputs() {
-  # `|| true` on the filter chains: grep exits 1 when a filter leaves nothing,
-  # which is a real outcome (a design with no non-prose files outside
-  # previews/), and under `set -e` that would silently TRUNCATE the input list
-  # mid-function — a wrong stamp, not a failed run.
-  git ls-files -- "designs/${name}" \
+  # The enumeration is captured FIRST, outside any pipeline, so a git
+  # failure aborts loudly instead of hashing a truncated list. Only the
+  # grep chain carries `|| true`: grep exits 1 when a filter leaves
+  # nothing, which is a real outcome (a design with no non-prose files
+  # outside previews/), and under `set -e` that would silently TRUNCATE
+  # the input list mid-function — a wrong stamp, not a failed run.
+  local design_files
+  design_files="$(git ls-files -- "designs/${name}")"
+  printf '%s\n' "$design_files" \
     | grep -vE '\.md$' \
     | grep -v -x -F "designs/${name}/ARCHIVED" \
     | grep -v -F "designs/${name}/previews/" \

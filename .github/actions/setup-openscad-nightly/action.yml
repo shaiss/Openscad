@@ -51,9 +51,22 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        # Guarded glob: a restored-but-empty cache would otherwise hand dpkg
+        # the literal '*.deb' and fail with a message pointing nowhere near
+        # the actual problem.
+        shopt -s nullglob
+        debs=("$HOME"/.cache/openscad-nightly-debs/*.deb)
+        if [ "${#debs[@]}" -eq 0 ]; then
+          echo "::error::the openscad-nightly deb cache restored empty — bump the cache-version input (ci.yml passes it) to force a fresh OBS download"
+          exit 1
+        fi
         # dpkg -i over the whole set resolves the install order itself; the
         # apt -f fallback pulls any residual dependency from the stock Ubuntu
         # archives (never from OBS, which on a cache hit was never added).
-        sudo dpkg -i "$HOME"/.cache/openscad-nightly-debs/*.deb \
-          || sudo apt-get install -y -f
+        # apt-get update first: on a cache hit nothing has refreshed the
+        # package lists this job, and -f resolution needs current ones.
+        if ! sudo dpkg -i "${debs[@]}"; then
+          sudo apt-get update
+          sudo apt-get install -y -f
+        fi
         openscad-nightly --version
