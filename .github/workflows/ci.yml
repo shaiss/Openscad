@@ -85,6 +85,7 @@ jobs:
             echo "changed files:"; printf '  %s\n' "${files[@]}"
             infra=false
             declare -A names=()
+            declare -A touched=()
             declare -A touched_styles=()
             for f in "${files[@]}"; do
               case "$f" in
@@ -118,8 +119,11 @@ jobs:
                 designs/*/*)
                   n=${f#designs/}; n=${n%%/*}
                   # skip names whose entry point no longer exists (deleted
-                  # or renamed design directories)
-                  [ -f "designs/$n/$n.scad" ] && names[$n]=1 ;;
+                  # or renamed design directories). `touched` records the
+                  # designs the PR edited DIRECTLY (their own files), as
+                  # distinct from ones pulled in later by blast radius or a
+                  # shared style — the archived filter below needs that split.
+                  [ -f "designs/$n/$n.scad" ] && { names[$n]=1; touched[$n]=1; } ;;
               esac
               case "$f" in
                 tools/printcheck/*|.github/workflows/ci.yml) ptests=true ;;
@@ -219,6 +223,23 @@ jobs:
             # is what just moved.
             for n in "${!names[@]}"; do
               [ -f "designs/$n/style.conf" ] && styles=true
+            done
+            # Archived designs (designs/<n>/ARCHIVED) are frozen at v0.1 and
+            # retired from active CI. Gate them ONLY when the PR edits their
+            # own files (a revival), never when they were pulled in
+            # indirectly — by a parent's blast radius or by a shared style
+            # they declare. Without this an edit to an active parent, or to a
+            # style a frozen design happens to use, would drag the frozen
+            # design back through the printcheck+slice gate, defeating the
+            # retirement. This mirrors the full-catalog (ALL) skip in
+            # gate.sh, regen and geo-diff, so the one policy — "archived
+            # unless the PR touches its own files" — holds on every path.
+            # (No design ships a derives.conf or style.conf today, so this is
+            # a guard against a future coupling, not a live case.)
+            for n in "${!names[@]}"; do
+              if [ -f "designs/$n/ARCHIVED" ] && [ -z "${touched[$n]:-}" ]; then
+                unset 'names[$n]'
+              fi
             done
             if $infra; then
               gate=true; designs=ALL
@@ -347,7 +368,15 @@ jobs:
             if [ "$GATE_DESIGNS" = "ALL" ]; then
               for d in designs/*/; do
                 n=${d#designs/}; n=${n%/}
-                [ -f "designs/$n/$n.scad" ] && designs="$designs $n"
+                [ -f "designs/$n/$n.scad" ] || continue
+                # A design frozen at v0.1 (designs/<n>/ARCHIVED) is retired
+                # from full-catalog regeneration — this is the ALL branch, the
+                # main-push and infra-change path, and the whole point of the
+                # freeze is that a frozen design stops re-rendering forever. A
+                # PR that edits the design's own files arrives via the explicit
+                # GATE_DESIGNS list below, so reviving it still regenerates it.
+                [ -f "designs/$n/ARCHIVED" ] && { echo "regen: skip archived $n"; continue; }
+                designs="$designs $n"
               done
             else
               designs="$GATE_DESIGNS"
@@ -1117,7 +1146,14 @@ jobs:
           if [ "$GATE_DESIGNS" = ALL ] || [ -z "$GATE_DESIGNS" ]; then
             designs="$(for d in designs/*/; do
               n="$(basename "$d")"
-              [ -f "designs/$n/$n.scad" ] && echo "$n"
+              [ -f "designs/$n/$n.scad" ] || continue
+              # Skip designs frozen at v0.1 (designs/<n>/ARCHIVED) in the
+              # full-catalog branch, matching gate.sh and the regen job: a
+              # frozen design is not re-rendered for a base-vs-head diff it
+              # can no longer move. A PR editing an archived design lands in
+              # the explicit GATE_DESIGNS list below and is still diffed.
+              [ -f "designs/$n/ARCHIVED" ] && continue
+              echo "$n"
             done)"
           else
             designs="$(tr ' ' '\n' <<<"$GATE_DESIGNS")"
