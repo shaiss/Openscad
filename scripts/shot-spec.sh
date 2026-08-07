@@ -83,6 +83,14 @@ die() { echo "error: $*" >&2; exit 1; }
 # product-shot.sh's <shot> and lifestyle-shot.sh validate against.
 is_kebab() { [[ "$1" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; }
 
+# Every subcommand interpolates <design> into paths ("$ROOT/$design/..."), so a
+# name like "../scripts" would escape the design tree. Pin it to kebab-case
+# BEFORE any path is built — the same guard lifestyle-shot.sh applies for the
+# same reason. Call this first in every verb that takes a design.
+require_design() {
+  is_kebab "$1" || die "design name '$1' must be kebab-case ([a-z0-9-]) — no path separators"
+}
+
 lookup() {  # lookup <name> <table-array-name...> ; echoes value or empty
   local want="$1"; shift
   local -n tbl="$1"
@@ -193,9 +201,9 @@ cmd_add() {
     esac
   done
 
+  require_design "$design"
   [[ -d "$ROOT/$design" ]] || die "no $ROOT/$design"
   is_kebab "$shot" || die "shot name '$shot' must be kebab-case ([a-z0-9-])"
-  is_kebab "$design" || die "design name '$design' must be kebab-case"
   [[ " $FINISHES " == *" $finish "* ]] || die "unknown finish '$finish' — one of: $FINISHES"
   valid_size "$size" || die "bad size '$size' — want WxH (each 4..$MAX_DIM px)"
 
@@ -203,13 +211,20 @@ cmd_add() {
   [[ -z "$camera" ]] && camera="$(resolve_view "$view")"
   valid_camera "$camera" || die "bad camera '$camera' — want rotz,elev,zoom (zoom>0)"
 
-  # The pose is a raw -D payload passed to OpenSCAD (e.g. part="assembled"). A
-  # space would split it into two defines the manifest can't represent per its
-  # single-field grammar, so reject an interior space rather than emit a line
-  # product-shot.sh will misparse. Multiple defines are legal in the file, but
-  # this convenience writes one; hand-edit for more and re-run `check`.
-  if [[ -n "$pose" && "$pose" == *" "* ]]; then
-    die "pose '$pose' has a space — one define per shot here (e.g. part=\"assembled\"); hand-edit shots.conf for multiple"
+  # The pose is a raw -D payload passed to OpenSCAD (e.g. part="assembled"), and
+  # it becomes the manifest's last field. Reject the characters that would
+  # produce a line product-shot.sh misparses rather than emit one: a space
+  # splits it into two defines the single-field grammar can't hold; a '|' is the
+  # field separator; a '#' is stripped as a comment (inline in shots.conf); a
+  # newline breaks the one-line grammar entirely. Multiple defines are legal in
+  # the file — hand-edit for that and re-run `check`.
+  if [[ -n "$pose" ]]; then
+    case "$pose" in
+      *" "*)   die "pose '$pose' has a space — one define per shot here (e.g. part=\"assembled\"); hand-edit shots.conf for multiple" ;;
+      *"|"*)   die "pose '$pose' contains '|' — that is the manifest field separator" ;;
+      *"#"*)   die "pose '$pose' contains '#' — product-shot.sh strips it as a comment" ;;
+      *$'\n'*) die "pose must be a single line" ;;
+    esac
   fi
 
   local conf="$ROOT/$design/shots.conf"
@@ -247,6 +262,7 @@ cmd_lifestyle() {
       *) die "unknown option '$1' to lifestyle";;
     esac
   done
+  require_design "$design"
   [[ -d "$ROOT/$design" ]] || die "no $ROOT/$design"
   is_kebab "$shot" || die "shot name '$shot' must be kebab-case ([a-z0-9-])"
   [[ -n "$scene" ]] || die "a lifestyle shot needs --scene '<describe the setting>' (text-to-image: describe the scene, not fake geometry)"
@@ -282,6 +298,8 @@ cmd_lifestyle() {
 cmd_embed() {
   local design="${1:-}" shot="${2:-}"; shift $(( $# >= 2 ? 2 : $# ))
   [[ -n "$design" && -n "$shot" ]] || die "usage: embed <design> <shot> [--lifestyle]"
+  require_design "$design"
+  is_kebab "$shot" || die "shot name '$shot' must be kebab-case ([a-z0-9-])"
   if [[ "${1:-}" == "--lifestyle" ]]; then
     embed_lifestyle "$design" "$shot"
   else
@@ -351,6 +369,7 @@ check_lifestyle() {  # <conf>
 cmd_check() {
   local design="${1:-}"
   [[ -n "$design" ]] || die "usage: check <design>"
+  require_design "$design"
   [[ -d "$ROOT/$design" ]] || die "no $ROOT/$design"
   local bad=0
   check_shots "$ROOT/$design/shots.conf"
@@ -407,9 +426,18 @@ run_selftest() {
   _run 1 "unknown view"   -- add gadget b --view sideways
   _run 1 "unknown color"  -- add gadget b --color mauve
   _run 1 "bad size"       -- add gadget b --size 99999x10
+  # pose rejects every char that would corrupt the manifest line
   _run 1 "has a space"    -- add gadget b --pose 'part="a" show="b"'
+  _run 1 "field separator" -- add gadget b --pose 'part="a"|x'
+  _run 1 "as a comment"    -- add gadget b --pose 'part="a"#x'
   # custom camera + hex color accepted
   _run 0 "wrote entry" -- add gadget top-down --camera 0,80,0.95 --color '#123456'
+
+  # design-name traversal is refused by every verb before a path is built
+  _run 1 "must be kebab-case" -- add ../scripts evil --view hero
+  _run 1 "must be kebab-case" -- lifestyle ../scripts evil --scene "x"
+  _run 1 "must be kebab-case" -- embed ../scripts evil
+  _run 1 "must be kebab-case" -- check ../scripts
 
   # lifestyle: happy path + disclosure emitted + freeze + empty-scene refusal
   _run 0 "geometry is approximate" -- lifestyle gadget product-hero --scene "on a workbench under warm light"
