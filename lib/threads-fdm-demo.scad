@@ -79,3 +79,17 @@ translate([180, 0, 0]) thread_helix(d_major, depth, pitch, starts, neck, seg = 2
 //    mesh: lib/threads-fdm-mates.conf, run by scripts/mate-check.sh.
 echo(str("flank_add(", tol, ") = ", flank_add(tol),
          "  -- fit is verified in threads-fdm-mates.conf, not here"));
+
+// 7. The clip-mask regime of issue #64. Left: the capsule's neck under a
+//    deliberately coarse caller $fn — at $fn = 8 the old fixed d_major + 2
+//    mask's inradius (15·cos 22.5° = 13.858) fell below the 14 mm crest and
+//    shaved it; the mask now never tessellates coarser than `seg` and derives
+//    its oversize from _mask_clear. Right: the bore cutter at tol = 2, past
+//    the old d_major + 4 mask that capped delivered clearance at 2 mm
+//    (single start at pitch 8, because flank_add(2) puts w_root at 6.06,
+//    which the multi-start rib bound refuses at the capsule's pitch 4).
+//    Render-only: a render cannot measure a mesh, so the dimensional
+//    before/after lives in issue #64's measurements; this keeps the regime
+//    rendering and both derived masks exercised on every check.sh run.
+translate([225, 0, 0]) { $fn = 8; thread_neck(d_major, depth, pitch, starts, neck); }
+translate([270, 0, 0]) thread_bore_cut(28, 1.2, 8, 1, 9, 2, over = 0.4);

@@ -148,6 +148,69 @@ for f in lib/*.scad; do
     || err "lib/${b}.scad has no lib/${b}-demo.scad (CLAUDE.md requires one per first-party library)"
 done
 
+# 7. Shebang <=> executable, on the COMMITTED mode. Every file in scripts/
+#    that opens with a #! line is a command and must be 100755 in the index;
+#    a file without one (today only preview-budget.sh, a sourced helper) is
+#    correctly 100644. The committed mode is what regressed on site.sh
+#    (issue #61): nothing in CI invokes most scripts by ./path, so a 644
+#    commit ships silently and only a human following the docs hits
+#    "Permission denied". `git ls-files -s` reads the index, not the
+#    filesystem — a local chmod can't mask what a fresh clone will get.
+while read -r mode _ _ path; do
+  [[ -f "$path" ]] || continue
+  first="$(head -c 2 "$path")"
+  if [[ "$first" == '#!' && "$mode" != 100755 ]]; then
+    err "${path} has a shebang but is committed mode ${mode} — 'git update-index --chmod=+x ${path}' (issue #61)"
+  elif [[ "$first" != '#!' && "$mode" == 100755 ]]; then
+    err "${path} is committed executable but has no shebang — sourced helpers stay 100644"
+  fi
+done < <(git ls-files -s scripts/)
+
+# 8. Every OpenSCAD invocation in scripts/ goes through $OPENSCAD_BIN. The
+#    contract is documented in CLAUDE.md and CI's render path sets
+#    OPENSCAD_BIN=openscad-nightly, so a script that hardcodes the binary
+#    works everywhere EXCEPT the one CI job that installs only the nightly —
+#    animate.sh shipped exactly that and failed as "openscad: not found" in
+#    regen alone (issue #85, bug 1). Two invocation shapes are flagged: a
+#    literal `openscad` handed to xvfb-run, and one in direct command
+#    position. Comment lines pass (prose may quote the bad shape when
+#    documenting it); nothing else does — compliant invocations never
+#    contain the lowercase literal, and the default assignment
+#    (OPENSCAD_BIN="${OPENSCAD_BIN:-openscad}") sits outside both
+#    invocation shapes, so no allowance for lines mentioning OPENSCAD_BIN
+#    is needed and none is made (a violation sharing a line with the
+#    variable still fails — Copilot review on #90).
+for f in scripts/*.sh; do
+  while IFS=: read -r ln line; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    err "${f}:${ln} invokes a literal openscad binary — route it through \"\$OPENSCAD_BIN\" (issue #85)"
+  done < <(grep -nE '(xvfb-run[^|#]*[[:space:]]|^[[:space:]]*|[|;&][[:space:]]*|\$\([[:space:]]*)openscad(-nightly)?([[:space:]]|$)' "$f" || true)
+done
+
+# 9. Cached apt packages must be postinst-free. awalsh128/cache-apt-pkgs-action
+#    restores a package's FILE LIST without replaying its postinst, so a
+#    package that builds update-alternatives symlinks in postinst (ImageMagick:
+#    /usr/bin/montage -> /etc/alternatives/montage) comes back with those
+#    names dangling — and it fails one run LATE: the cold run installs
+#    normally and passes, the restore breaks whoever pushes next (issue #85,
+#    bug 2). The allowlist below is the set verified postinst-free (dpkg -I:
+#    control tarball carries no postinst, no alternatives registration).
+#    Adding a package to a cached `packages:` list means verifying it the
+#    same way and extending this list in the same PR — or installing it with
+#    plain apt-get as the regen job and lifestyle-shot.yml deliberately do.
+while IFS=: read -r wf pkgs; do
+  for p in $pkgs; do
+    case "$p" in
+      xvfb|openscad|openscad-mcad|prusa-slicer|f3d) ;;
+      *) err "${wf} caches apt package '${p}' which is not on the verified postinst-free allowlist — cache-apt restores skip postinst, so alternatives-managed binaries come back dangling one run later (issue #85); verify with dpkg -I and extend the allowlist here, or use plain apt-get" ;;
+    esac
+  done
+done < <(awk '/awalsh128\/cache-apt-pkgs-action/{f=1}
+              f && /^[[:space:]]*packages:/{
+                sub(/^[[:space:]]*packages:[[:space:]]*/,"");
+                print FILENAME ":" $0; f=0
+              }' .github/workflows/*.yml)
+
 if [[ "$fail" == 0 ]]; then
   echo "ok    docs match the tree"
 fi

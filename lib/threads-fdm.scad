@@ -107,6 +107,23 @@ _sink = 0.4;
 // it is one number in one place precisely so that trade can be re-made.
 _max_chord = 0.1;
 
+// Radial oversize of the clip masks in thread_neck / thread_bore_cut over the
+// crest they must never touch. The masks are cylinders, i.e. polygons at some
+// fragment count n, and a polygon's INRADIUS falls (1 - cos(180/n))·R short
+// of its nominal radius — so at a coarse caller $fn the old fixed +1 radial
+// margin was overrun and the mask silently shaved the crest it existed to
+// clear (issue #64; at d_major 28 the neck mask bit below $fn 9). Both masks
+// now (1) never tessellate coarser than the helix's own `seg` (mask_fn =
+// max($fn, seg) in each module), and (2) oversize by this margin, so
+//     inradius - crest >= _mask_clear·cos(180/seg) - _max_chord
+// which is positive whenever _mask_clear > _max_chord/cos(180/seg). That
+// threshold never exceeds 2·_max_chord = 0.2, because any sweepable seg
+// (>= 3) has cos(180/seg) >= 0.5 — so 1 mm clears it at least fivefold at
+// EVERY seg, with no assumption about how coarse a legal seg can get. One
+// named number in one place so the trade can be re-made, same as
+// _max_chord above.
+_mask_clear = 1;
+
 // One trapezoidal helix as a single polyhedron, swept `starts` times.
 //   d_major  outer (crest) diameter
 //   depth    radial thread depth; also sets the axial flank run, so the
@@ -307,15 +324,22 @@ module thread_neck(d_major, depth, pitch, starts, length,
         length - ch, " tall against a documented length of ", length,
         ". Use chamfer = 0 for no lead-in."));
     assert(length > ch, "thread neck length must exceed its lead-in chamfer.");
+    // The clip mask is a polygon whose inradius must clear the d_major crest;
+    // floor its tessellation at the helix's own `seg` so a coarse caller $fn
+    // cannot shave the crest, and derive the oversize from _mask_clear (the
+    // derivation lives on that constant — issue #64).
+    mask_fn = max($fn, seg);
     intersection() {
         union() {
             cylinder(d = d_min, h = length);
             thread_helix(d_major, depth, pitch, starts, length, seg = seg);
         }
         union() {
-            cylinder(d = d_major + 2, h = length - ch);
+            cylinder(d = d_major + 2 * _mask_clear, h = length - ch,
+                     $fn = mask_fn);
             translate([0, 0, length - ch])
-                cylinder(d1 = d_major + 2, d2 = d_min - 0.6, h = ch + eps);
+                cylinder(d1 = d_major + 2 * _mask_clear, d2 = d_min - 0.6,
+                         h = ch + eps, $fn = mask_fn);
         }
     }
 }
@@ -364,10 +388,17 @@ module thread_bore_cut(d_major, depth, pitch, starts, length, tol,
         " must be positive; a non-positive bore deletes the thread silently."));
     wa = is_undef(w_add) ? flank_add(tol) : w_add;
     ext = pitch;                             // run out past the rim
+    // The mask must clear the CUTTER's crest at d_major/2 + tol, so its
+    // diameter scales with tol — the old fixed d_major + 4 capped the
+    // delivered clearance at 2 mm (less at a coarse caller $fn) while `tol`
+    // kept rising, silently. Same tessellation floor and oversize derivation
+    // as thread_neck's mask (see _mask_clear — issue #64).
+    mask_fn = max($fn, seg);
     intersection() {
         thread_helix(d_major + 2 * tol, depth, pitch, starts, length + over,
                      w_add = wa, seg = seg);
         translate([0, 0, -ext])
-            cylinder(d = d_major + 4, h = length + over + ext);
+            cylinder(d = d_major + 2 * tol + 2 * _mask_clear,
+                     h = length + over + ext, $fn = mask_fn);
     }
 }
