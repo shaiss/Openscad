@@ -71,6 +71,17 @@ jobs:
           set -euo pipefail
           names=""
           if [ "$EVENT" = "workflow_dispatch" ]; then
+            # The design input is free-form text. Validate its SHAPE before
+            # anything interpolates it: design directories here are kebab-case
+            # (same rule lifestyle-shot.sh enforces later), and bash's [[ =~ ]]
+            # matches the whole string, so a value smuggling a newline — which
+            # would let a crafted input inject extra ::workflow::commands into
+            # the log — cannot pass. After this check, interpolating the name
+            # into messages below is provably safe.
+            if ! [[ "$INPUT_DESIGN" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+              echo "::error::the 'design' input is not a valid design-directory name (lowercase kebab-case, e.g. sushi-battleship)"
+              exit 1
+            fi
             # An archived design (designs/<n>/ARCHIVED) is frozen at v0.1 and
             # retired from active CI — see CLAUDE.md, "Archived designs
             # (v0.1 freeze)". Generating a new AI shot for one would spend an
