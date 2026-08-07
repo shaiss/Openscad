@@ -155,6 +155,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `lint-scad.sh` — report-only [sca2d](https://gitlab.com/bath_open_instrumentation_group/sca2d) static analysis
   - `preview-budget.sh` — sourced helper defining the GIF and product-shot
     size budgets
+  - `regen-stamp.sh` — a design's regeneration input fingerprint; CI skips
+    re-rendering previews/GIFs/product shots when it matches the committed
+    stamp
 - `site/` — the static product site built from the designs, styles and
   previews already committed here, and deployed on Vercel — see its
   [README](site/README.md)
