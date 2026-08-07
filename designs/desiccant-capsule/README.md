@@ -1,5 +1,12 @@
 # Desiccant Capsule
 
+> [!NOTE]
+> **Archived at v0.1 (2026-08-07) — frozen, not actively maintained.** This
+> design is retired from active CI to save render cycles. To improve it, fork
+> the repo, update it against current CI, and contribute it back as a
+> derivative per the repo's [lineage tracking](../../docs/derivative-designs.md)
+> (see also [CLAUDE.md](../../CLAUDE.md) → "Archived designs").
+
 Refillable two-part screw capsule for loose silica gel beads in filament
 dry-boxes. The perforated body lets air and moisture reach the beads, and
 the lid screws on with real trapezoidal threads and a ribbed grip edge —

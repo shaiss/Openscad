@@ -393,15 +393,36 @@ if [[ ${#names[@]} -ge 1 ]]; then
   done
 else
   found=0
+  archived=0
   for dir in designs/*/; do
     [[ -d "$dir" ]] || continue
     name="$(basename "$dir")"
     [[ -f "designs/${name}/${name}.scad" ]] || continue
+    # A design frozen at v0.1 (designs/<name>/ARCHIVED) is retired from the
+    # full-catalog gate — this no-args path is what CI runs on a main push
+    # and on any infra change (gate_designs=ALL), so skipping here is what
+    # stops a frozen design from spending render/slice cycles forever.
+    # A caller that NAMES an archived design still gates it (the branch
+    # above never reaches this loop). That is the revival path, and CI only
+    # ever names an archived design when the PR edited its own files: the
+    # `changes` classifier drops an archived design that was pulled in only
+    # by blast radius or a shared style, so an indirect touch never lands here.
+    if [[ -f "designs/${name}/ARCHIVED" ]]; then
+      echo "skip ${name}: archived at $(head -1 "designs/${name}/ARCHIVED") — frozen, not gated in full-catalog runs"
+      archived=$((archived + 1))
+      continue
+    fi
     found=1
     gate_one "$name"
   done
   if [[ "$found" -eq 0 ]]; then
-    echo "no designs found under designs/"
+    # Distinguish an empty tree from one where every design is archived, so a
+    # green no-op reads honestly instead of looking like nothing exists.
+    if [[ "$archived" -gt 0 ]]; then
+      echo "no designs gated: all ${archived} design(s) under designs/ are archived at v0.1"
+    else
+      echo "no designs found under designs/"
+    fi
   fi
 fi
 
