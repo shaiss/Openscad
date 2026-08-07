@@ -166,6 +166,47 @@ while read -r mode _ _ path; do
   fi
 done < <(git ls-files -s scripts/)
 
+# 8. Every OpenSCAD invocation in scripts/ goes through $OPENSCAD_BIN. The
+#    contract is documented in CLAUDE.md and CI's render path sets
+#    OPENSCAD_BIN=openscad-nightly, so a script that hardcodes the binary
+#    works everywhere EXCEPT the one CI job that installs only the nightly —
+#    animate.sh shipped exactly that and failed as "openscad: not found" in
+#    regen alone (issue #85, bug 1). Two invocation shapes are flagged: a
+#    literal `openscad` handed to xvfb-run, and one in direct command
+#    position. Comment lines and any line that references OPENSCAD_BIN
+#    (the default assignment, the compliant invocations) pass.
+for f in scripts/*.sh; do
+  while IFS=: read -r ln line; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" == *OPENSCAD_BIN* ]] && continue
+    err "${f}:${ln} invokes a literal openscad binary — route it through \"\$OPENSCAD_BIN\" (issue #85)"
+  done < <(grep -nE '(xvfb-run[^|#]*[[:space:]]|^[[:space:]]*|[|;&][[:space:]]*|\$\([[:space:]]*)openscad(-nightly)?([[:space:]]|$)' "$f" || true)
+done
+
+# 9. Cached apt packages must be postinst-free. awalsh128/cache-apt-pkgs-action
+#    restores a package's FILE LIST without replaying its postinst, so a
+#    package that builds update-alternatives symlinks in postinst (ImageMagick:
+#    /usr/bin/montage -> /etc/alternatives/montage) comes back with those
+#    names dangling — and it fails one run LATE: the cold run installs
+#    normally and passes, the restore breaks whoever pushes next (issue #85,
+#    bug 2). The allowlist below is the set verified postinst-free (dpkg -I:
+#    control tarball carries no postinst, no alternatives registration).
+#    Adding a package to a cached `packages:` list means verifying it the
+#    same way and extending this list in the same PR — or installing it with
+#    plain apt-get as the regen job and lifestyle-shot.yml deliberately do.
+while IFS=: read -r wf pkgs; do
+  for p in $pkgs; do
+    case "$p" in
+      xvfb|openscad|openscad-mcad|prusa-slicer|f3d) ;;
+      *) err "${wf} caches apt package '${p}' which is not on the verified postinst-free allowlist — cache-apt restores skip postinst, so alternatives-managed binaries come back dangling one run later (issue #85); verify with dpkg -I and extend the allowlist here, or use plain apt-get" ;;
+    esac
+  done
+done < <(awk '/awalsh128\/cache-apt-pkgs-action/{f=1}
+              f && /^[[:space:]]*packages:/{
+                sub(/^[[:space:]]*packages:[[:space:]]*/,"");
+                print FILENAME ":" $0; f=0
+              }' .github/workflows/*.yml)
+
 if [[ "$fail" == 0 ]]; then
   echo "ok    docs match the tree"
 fi

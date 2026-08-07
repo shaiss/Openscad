@@ -855,6 +855,8 @@ jobs:
         with:
           # No ImageMagick: style-check.sh refreshes the swatch preview only
           # when montage is present, and this job is here to judge conformance.
+          # Postinst-free packages only (no update-alternatives) — a cache
+          # restore skips postinst, see issue #85; docs-check.sh enforces.
           packages: xvfb
           # cache key; bump to pull fresh package versions (see scad-check)
           version: "2026-08"
@@ -970,6 +972,8 @@ jobs:
       - name: Install OpenSCAD (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
+          # Postinst-free packages only (no update-alternatives) — a cache
+          # restore skips postinst, see issue #85; docs-check.sh enforces.
           packages: openscad openscad-mcad xvfb
           # cache key; bump to pull fresh package versions (e.g. after a
           # runner-image rollover or when apt security updates matter)
@@ -996,6 +1000,8 @@ jobs:
       - name: Install xvfb (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
+          # Postinst-free packages only (no update-alternatives) — a cache
+          # restore skips postinst, see issue #85; docs-check.sh enforces.
           packages: xvfb
           version: "2026-08"
       - name: Install OpenSCAD nightly (cached)
@@ -1042,6 +1048,8 @@ jobs:
           # apt 2.7.x is the newest CI-practical build. f3d likewise uses
           # the Ubuntu package (2.2.x; upstream 3.x ships .debs if we ever
           # need newer) — it only renders artifact previews here.
+          # Postinst-free packages only (no update-alternatives) — a cache
+          # restore skips postinst, see issue #85; docs-check.sh enforces.
           packages: xvfb prusa-slicer f3d
           # cache key; bump to pull fresh package versions (see scad-check)
           version: "2026-08"
@@ -1256,6 +1264,8 @@ jobs:
       - name: Install xvfb (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
+          # Postinst-free packages only (no update-alternatives) — a cache
+          # restore skips postinst, see issue #85; docs-check.sh enforces.
           packages: xvfb
           version: "2026-08"
       - name: Install OpenSCAD nightly (cached)
