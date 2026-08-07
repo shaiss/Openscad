@@ -1,5 +1,12 @@
 # sushi-battleship
 
+> [!NOTE]
+> **Archived at v0.1 (2026-08-07) — frozen, not actively maintained.** This
+> design is retired from active CI to save render cycles. To improve it, fork
+> the repo, update it against current CI, and contribute it back as a
+> derivative per the repo's [lineage tracking](../../docs/derivative-designs.md)
+> (see also [CLAUDE.md](../../CLAUDE.md) → "Archived designs").
+
 Battleship, played with real sushi. A two-part printable game board: a
 tray holds a 4×4 grid of cut roll pieces, and a lid on top carries one
 **print-in-place sliding shutter per cell** (A1–D4). Call a shot; on a

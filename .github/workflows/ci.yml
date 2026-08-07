@@ -347,7 +347,15 @@ jobs:
             if [ "$GATE_DESIGNS" = "ALL" ]; then
               for d in designs/*/; do
                 n=${d#designs/}; n=${n%/}
-                [ -f "designs/$n/$n.scad" ] && designs="$designs $n"
+                [ -f "designs/$n/$n.scad" ] || continue
+                # A design frozen at v0.1 (designs/<n>/ARCHIVED) is retired
+                # from full-catalog regeneration — this is the ALL branch, the
+                # main-push and infra-change path, and the whole point of the
+                # freeze is that a frozen design stops re-rendering forever. A
+                # PR that edits the design's own files arrives via the explicit
+                # GATE_DESIGNS list below, so reviving it still regenerates it.
+                [ -f "designs/$n/ARCHIVED" ] && { echo "regen: skip archived $n"; continue; }
+                designs="$designs $n"
               done
             else
               designs="$GATE_DESIGNS"
@@ -1117,7 +1125,14 @@ jobs:
           if [ "$GATE_DESIGNS" = ALL ] || [ -z "$GATE_DESIGNS" ]; then
             designs="$(for d in designs/*/; do
               n="$(basename "$d")"
-              [ -f "designs/$n/$n.scad" ] && echo "$n"
+              [ -f "designs/$n/$n.scad" ] || continue
+              # Skip designs frozen at v0.1 (designs/<n>/ARCHIVED) in the
+              # full-catalog branch, matching gate.sh and the regen job: a
+              # frozen design is not re-rendered for a base-vs-head diff it
+              # can no longer move. A PR editing an archived design lands in
+              # the explicit GATE_DESIGNS list below and is still diffed.
+              [ -f "designs/$n/ARCHIVED" ] && continue
+              echo "$n"
             done)"
           else
             designs="$(tr ' ' '\n' <<<"$GATE_DESIGNS")"

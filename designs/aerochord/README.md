@@ -1,5 +1,12 @@
 # aerochord
 
+> [!NOTE]
+> **Archived at v0.1 (2026-08-07) — frozen, not actively maintained.** This
+> design is retired from active CI to save render cycles. To improve it, fork
+> the repo, update it against current CI, and contribute it back as a
+> derivative per the repo's [lineage tracking](../../docs/derivative-designs.md)
+> (see also [CLAUDE.md](../../CLAUDE.md) → "Archived designs").
+
 **One breath, a whole chord.** aerochord is a print-in-place wind instrument
 with no equivalent in the historical record: a single mouthpiece feeds a shared
 plenum that splits into several internal *fipples* (the flue-and-edge sound

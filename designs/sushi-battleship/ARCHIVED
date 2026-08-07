@@ -1,0 +1,12 @@
+v0.1
+Archived 2026-08-07. Frozen at v0.1 and retired from active CI.
+
+CI skips this design in full-catalog runs (the default-branch push and any
+infra change, where gate_designs=ALL), so a frozen design never spends render,
+slice or product-shot cycles again. A pull request that edits this design's own
+files still gates it normally — that is the revival path: fork the repo, update
+the design against current CI, and contribute it back as a derivative per the
+repo's lineage tracking (docs/derivative-designs.md).
+
+The marker is presence-only; this text is for humans. See CLAUDE.md,
+"Archived designs (v0.1 freeze)".

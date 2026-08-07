@@ -1,5 +1,12 @@
 # N.U.G.G.S.
 
+> [!NOTE]
+> **Archived at v0.1 (2026-08-07) — frozen, not actively maintained.** This
+> design is retired from active CI to save render cycles. To improve it, fork
+> the repo, update it against current CI, and contribute it back as a
+> derivative per the repo's [lineage tracking](../../docs/derivative-designs.md)
+> (see also [CLAUDE.md](../../CLAUDE.md) → "Archived designs").
+
 An 80 mm-bore tunnel **system** for an adult Syrian hamster whose factory
 cage tubes are too narrow for a pouch-full animal. The system is really one
 thing: a **genderless quarter-turn port**. Every module carries the same

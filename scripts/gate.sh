@@ -397,6 +397,17 @@ else
     [[ -d "$dir" ]] || continue
     name="$(basename "$dir")"
     [[ -f "designs/${name}/${name}.scad" ]] || continue
+    # A design frozen at v0.1 (designs/<name>/ARCHIVED) is retired from the
+    # full-catalog gate — this no-args path is what CI runs on a main push
+    # and on any infra change (gate_designs=ALL), so skipping here is what
+    # stops a frozen design from spending render/slice cycles forever.
+    # A caller that NAMES an archived design still gates it (the branch
+    # above never reaches this loop), which is the revival path: a PR that
+    # touches the design's own files re-gates it as usual.
+    if [[ -f "designs/${name}/ARCHIVED" ]]; then
+      echo "skip ${name}: archived at $(head -1 "designs/${name}/ARCHIVED") — frozen, not gated in full-catalog runs"
+      continue
+    fi
     found=1
     gate_one "$name"
   done
