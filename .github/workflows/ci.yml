@@ -22,14 +22,19 @@ name: CI
 # directory without adding it to the classifier below makes every PR that
 # touches only that directory permanently unmergeable.
 #
-# That is also why the `regen` job is ungated and why the four jobs that
-# `needs:` it — design-docs, site-build, scad-check and scad-check-nightly —
-# carry `if: !cancelled()`: a skipped `regen` would skip all four, and one of
-# them (scad-check, "OpenSCAD syntax/geometry check") is a required context,
-# which is all it takes. regen always runs and decides internally whether it
-# has any work. Note render-gate is NOT among them: it gates STLs, which no
-# regenerated preview can affect, so it keeps `needs: changes` and starts in
-# parallel.
+# That is also why the `regen` job is ungated and why the two jobs that
+# `needs:` it — design-docs and site-build — carry `if: !cancelled()`: a
+# skipped `regen` would skip both, and design-docs judges the product pages
+# regen may have just drafted. regen always runs and decides internally
+# whether it has any work. render-gate is NOT among them: it gates STLs,
+# which no regenerated preview can affect, so it keeps `needs: changes` and
+# starts in parallel. The scad-check jobs used to wait on regen too, for one
+# reason only — check.sh's docs-check asserts the README gallery is fresh,
+# and regen is what refreshes it — and that wait roughly doubled the wall
+# time of every PR run. They now run docs-check with DOCS_CHECK_GALLERY=skip
+# and start at t=0; design-docs re-asserts gallery freshness against the
+# post-regen tree with `docs-check.sh --gallery-only`, so the check itself
+# never went away, it just moved to the one job already waiting there.
 on:
   push:
     branches: [main]
@@ -58,6 +63,8 @@ jobs:
       styles: ${{ steps.filter.outputs.styles }}
       gate: ${{ steps.filter.outputs.gate }}
       gate_designs: ${{ steps.filter.outputs.gate_designs }}
+      regen: ${{ steps.filter.outputs.regen }}
+      regen_designs: ${{ steps.filter.outputs.regen_designs }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -71,10 +78,13 @@ jobs:
           set -euo pipefail
           scad=false; ptests=false; stests=false; ltests=false; styles=false
           gate=false; designs=""
+          regen=false; regen_designs=""
           if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
-            # Default-branch push: run everything, gate every design.
+            # Default-branch push: run everything, gate and regenerate every
+            # design.
             scad=true; ptests=true; stests=true; ltests=true; styles=true
             gate=true; designs=ALL
+            regen=true; regen_designs=ALL
           else
             # Capture via command substitution so a git failure fails the
             # step: mapfile < <(git diff ...) would swallow the error and
@@ -83,21 +93,74 @@ jobs:
             files=()
             [ -n "$changed" ] && mapfile -t files <<<"$changed"
             echo "changed files:"; printf '  %s\n' "${files[@]}"
-            infra=false
+            # Two infra tiers, where there used to be one. The old single
+            # `infra` treated every file under scripts/ as able to move any
+            # design's geometry, so a gallery.sh or readme-gate.sh edit
+            # re-gated, re-rendered and re-shot the entire catalog. What a
+            # change can actually reach:
+            #
+            #   geo_infra — can change an exported STL or a gate verdict, so
+            #   every design re-gates (designs=ALL): the shared libraries,
+            #   the two scripts the render gate executes (gate.sh, and
+            #   lineage.sh, which it sources), printcheck (the analyzer that
+            #   judges every STL), tools/lineage (the resolver that decides
+            #   which designs a change reaches at all: edit it and every
+            #   blast radius in the tree can move, including the one this
+            #   very step is about to compute — so the safe reading of a
+            #   resolver edit is "assume it reaches everything"), and this
+            #   workflow.
+            #
+            #   soft_infra — everything else under scripts/, plus site/ and
+            #   vercel.json: cannot move geometry (the site renders content
+            #   FROM the designs; check.sh and friends judge sources, and
+            #   the scad case below already re-runs them). But three of the
+            #   five required contexts are geometry jobs and a job skipped
+            #   via `if:` does NOT satisfy a required context (PR #50, see
+            #   the CAUTION at the top of this file) — so the jobs must RUN.
+            #   gate=true with an EMPTY design list is render-gate's "run
+            #   but gate nothing" mode: the job reports success in seconds
+            #   without installing anything, instead of the old behaviour of
+            #   gating ALL designs for changes that cannot affect one.
+            #
+            # regen scope (regen_all below) is decoupled from gate scope for
+            # the same reason: gate.sh and printcheck change verdicts, not
+            # pixels; the preview/GIF/product-shot generators change pixels,
+            # not verdicts.
+            geo_infra=false; soft_infra=false; regen_all=false
             declare -A names=()
             declare -A touched_styles=()
             for f in "${files[@]}"; do
               case "$f" in
-                # A lib/script/printcheck/workflow change can break any
-                # design, so it re-gates all of them. tools/lineage joins
-                # that list because it is what decides which designs a
-                # change reaches at all: edit the resolver and every blast
-                # radius in the tree can move, including the one this very
-                # step is about to compute — so the safe reading of a
-                # resolver edit is "assume it reaches everything".
-                lib/*|scripts/*|tools/printcheck/*|tools/lineage/*|\
+                lib/*|scripts/gate.sh|scripts/lineage.sh|\
+                tools/printcheck/*|tools/lineage/*|\
                 .github/workflows/ci.yml)
-                  infra=true ;;
+                  geo_infra=true ;;
+                # tools/photoshot is soft: it renders product shots FROM
+                # exported STLs and can change a pixel but never a mesh.
+                # Before it had a rule here a photoshot-only PR ran no
+                # required context at all and could never merge.
+                scripts/*|site/*|vercel.json|tools/photoshot/*)
+                  soft_infra=true ;;
+              esac
+              case "$f" in
+                # Everything a committed preview, GIF, product shot or the
+                # gallery is derived from, beyond the design's own directory:
+                # the generator scripts, the photoshot renderer behind
+                # product-shot.sh (previously matched by NO rule here at all,
+                # so a photoshot.py change regenerated nothing), the resolver
+                # that orders the gallery, the libraries, and this workflow.
+                # gate.sh and printcheck are deliberately absent: they judge
+                # STLs and cannot change a pixel. The regen job further skips
+                # any design whose input fingerprint still matches its
+                # committed stamp (scripts/regen-stamp.sh), so ALL here means
+                # "consider every design", not "re-render every design".
+                lib/*|tools/lineage/*|tools/photoshot/*|\
+                .github/workflows/ci.yml|\
+                scripts/render.sh|scripts/animate.sh|\
+                scripts/product-shot.sh|scripts/gallery.sh|\
+                scripts/product-page.sh|scripts/preview-budget.sh|\
+                scripts/regen-stamp.sh|scripts/lineage.sh)
+                  regen_all=true ;;
               esac
               case "$f" in
                 # A style, the tool behind it, or anything a swatch includes
@@ -140,27 +203,15 @@ jobs:
                 # under tools/ and check.sh's globs cover only designs/, lib/,
                 # templates/ and styles/, so it never reads them.
                 #
-                # site/ and vercel.json are here for a different reason
-                # entirely — see the required-context note below; they cannot
-                # move geometry, but the job has to RUN for such a PR to be
-                # mergeable at all.
+                # site/, vercel.json and tools/photoshot are here for a
+                # different reason entirely — the soft-infra tier note above;
+                # they cannot move geometry, but this job is a required
+                # context and has to RUN for such a PR to be mergeable at
+                # all.
                 designs/*|lib/*|templates/*|scripts/*|styles/*|site/*|\
-                vercel.json|tools/lineage/*|.github/workflows/ci.yml)
+                vercel.json|tools/lineage/*|tools/photoshot/*|\
+                .github/workflows/ci.yml)
                   scad=true ;;
-              esac
-              # site/ and vercel.json cannot affect geometry — the site
-              # renders content FROM the designs, it does not define any.
-              # But three of the five contexts branch protection requires
-              # are the geometry jobs, and a job skipped via `if:` does NOT
-              # satisfy a required context here (verified: PR #50, all 13
-              # checks reported, merge still refused with "5 of 5 required
-              # status checks are expected"). Without this, a site-only PR
-              # is permanently unmergeable. The cheaper fix is to require
-              # "Static site builds" instead of the geometry jobs for these
-              # paths, but that needs a branch-protection change.
-              case "$f" in
-                site/*|vercel.json)
-                  infra=true; ptests=true ;;
               esac
             done
             # The other direction: a design that declares a style the PR
@@ -195,8 +246,8 @@ jobs:
             # parts that moved — the same fail-open trap the command
             # substitution above was written to avoid.
             #
-            # Two skips, both narrow. $infra already means designs=ALL, so
-            # there is nothing left to widen and nothing can go ungated by
+            # Two skips, both narrow. $geo_infra already means designs=ALL,
+            # so there is nothing left to widen and nothing can go ungated by
             # not asking — judging whether the records themselves are sound
             # is `lineage check`'s job, not this step's. And an empty names
             # would expand to ZERO arguments, which the resolver rejects as
@@ -205,7 +256,7 @@ jobs:
             # Placed above the style sweep below so a derivative that
             # declares a style is re-checked against it too: its geometry
             # just moved, which is the same reason the sweep exists.
-            if ! $infra && [ "${#names[@]}" -gt 0 ]; then
+            if ! $geo_infra && [ "${#names[@]}" -gt 0 ]; then
               radius="$(./scripts/lineage.sh blast-radius "${!names[@]}")"
               while IFS= read -r n; do
                 # Same rule as the loop above: a lineage record can outlive
@@ -220,24 +271,33 @@ jobs:
             for n in "${!names[@]}"; do
               [ -f "designs/$n/style.conf" ] && styles=true
             done
-            if $infra; then
+            if $geo_infra; then
               gate=true; designs=ALL
-              # An infra change gates every design THROUGH printcheck, so the
-              # analyzer is on the critical path for the whole run and its own
-              # tests belong in it — a printcheck regression would otherwise be
-              # judged by the very build that shipped it.
-              #
-              # This also closes a merge trap. "printcheck unit tests" is one of
-              # the five required contexts, and a job skipped via `if:` does NOT
-              # satisfy one (PR #50, see the note at the top of this file). With
-              # ptests set only by tools/printcheck/, site/ and this workflow, a
-              # lib/- or scripts/-only PR — the most common kind here — reported
-              # it as skipped and could never be merged. The site/* rule below
-              # already carries ptests for exactly this reason; the same hole
-              # was left open on the infra path until #37 fell into it.
+              # A geometry-infra change gates every design THROUGH printcheck,
+              # so the analyzer is on the critical path for the whole run and
+              # its own tests belong in it — a printcheck regression would
+              # otherwise be judged by the very build that shipped it.
               ptests=true
             elif [ "${#names[@]}" -gt 0 ]; then
               gate=true; designs="${!names[*]}"
+            fi
+            # Required contexts must actually RUN (the tier note above, and
+            # the CAUTION at the top of this file). "printcheck unit tests"
+            # is required too, and with ptests set only by tools/printcheck/
+            # and this workflow, a scripts/- or site/-only PR — the most
+            # common kind here — would report it as skipped and could never
+            # be merged (#37 fell into exactly this hole on the old infra
+            # path). gate may already be true with a design list from the
+            # names loop; this only ever widens it to "run", never narrows
+            # the list.
+            if $soft_infra; then
+              gate=true; ptests=true
+            fi
+            # regen scope, decoupled from the gate scope above.
+            if $regen_all; then
+              regen=true; regen_designs=ALL
+            elif [ "${#names[@]}" -gt 0 ]; then
+              regen=true; regen_designs="${!names[*]}"
             fi
           fi
           {
@@ -248,6 +308,8 @@ jobs:
             echo "styles=$styles"
             echo "gate=$gate"
             echo "gate_designs=$designs"
+            echo "regen=$regen"
+            echo "regen_designs=$regen_designs"
           } >> "$GITHUB_OUTPUT"
 
   regen:
@@ -272,11 +334,18 @@ jobs:
     # One of them, scad-check, is a required context, and one is enough to
     # strand a PR (see the CAUTION at the top of this file).
     #
-    # Cost note: an infra change sets gate_designs=ALL, so a lib/ or
-    # scripts/ edit re-renders every design's shots, Cycles included. That
-    # is deliberate — such a change can move any design's geometry, which is
-    # precisely when a stale image is most misleading — and it runs in
-    # parallel with render-gate, which is the longer pole either way.
+    # Cost note: the classifier's regen_designs says which designs to
+    # CONSIDER (a lib/ or generator-script edit says ALL, because such a
+    # change can move any design's derived artifacts, which is precisely
+    # when a stale image is most misleading). Which of those actually
+    # re-render is then decided per design by an input fingerprint
+    # (scripts/regen-stamp.sh) against the committed
+    # previews/.regen-stamp: re-rendering a Cycles shot to discover it is
+    # byte-identical costs minutes, the hash comparison costs milliseconds,
+    # and the stamp is written in the same commit as the artifacts, so it
+    # can never claim freshness the artifacts don't have. A missing or
+    # mismatching stamp always regenerates — staleness in a stamp costs
+    # time, never correctness.
     name: Regenerate previews and product pages
     needs: changes
     runs-on: ubuntu-latest
@@ -336,40 +405,65 @@ jobs:
       - name: Decide what needs regenerating
         id: plan
         env:
-          GATE: ${{ needs.changes.outputs.gate }}
-          GATE_DESIGNS: ${{ needs.changes.outputs.gate_designs }}
+          REGEN: ${{ needs.changes.outputs.regen }}
+          REGEN_DESIGNS: ${{ needs.changes.outputs.regen_designs }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           HAVE_PAT: ${{ secrets.REGEN_TOKEN != '' }}
         run: |
           set -euo pipefail
           designs=""
-          if [ "$GATE" = "true" ]; then
-            if [ "$GATE_DESIGNS" = "ALL" ]; then
+          if [ "$REGEN" = "true" ]; then
+            if [ "$REGEN_DESIGNS" = "ALL" ]; then
               for d in designs/*/; do
                 n=${d#designs/}; n=${n%/}
                 [ -f "designs/$n/$n.scad" ] && designs="$designs $n"
               done
             else
-              designs="$GATE_DESIGNS"
+              designs="$REGEN_DESIGNS"
             fi
           fi
-          # Normalize to a single-space-separated list: gate_designs arrives
+          # Normalize to a single-space-separated list: regen_designs arrives
           # space-separated and the ALL branch above builds one with a leading
           # space, and the emptiness test below has to see "" for "nothing".
           # shellcheck disable=SC2086  # splitting the name list is the point
           set -- $designs
           designs="$*"
+          # Input-fingerprint short-circuit (see the cost note above): a
+          # candidate design re-renders only when its fingerprint no longer
+          # matches the committed stamp. The full candidate list still feeds
+          # the gallery rebuild and the product-page draft step — both read
+          # prose the fingerprint deliberately ignores, and both are cheap.
+          render_designs=""
+          for n in $designs; do
+            stamp="designs/$n/previews/.regen-stamp"
+            if [ -f "$stamp" ] \
+               && [ "$(./scripts/regen-stamp.sh "$n")" = "$(cat "$stamp")" ]; then
+              echo "skip $n: inputs unchanged since the committed stamp"
+            else
+              render_designs="$render_designs $n"
+            fi
+          done
+          # shellcheck disable=SC2086  # splitting the name list is the point
+          set -- $render_designs
+          render_designs="$*"
           # Which toolchains this run actually needs. bpy is a ~1 GB wheel and
           # Cycles is minutes per shot, so it is installed only when some
-          # target design ships a shots.conf — not on every design change.
+          # design that will actually re-render ships a shots.conf — not on
+          # every design change.
           shots=false
-          for n in $designs; do
+          for n in $render_designs; do
             [ -f "designs/$n/shots.conf" ] && shots=true
           done
-          # OpenSCAD is needed for any regeneration at all: previews and GIFs
-          # render through it, and gallery.sh renders a missing contact sheet.
+          # OpenSCAD is needed when something re-renders: previews and GIFs
+          # render through it, and gallery.sh renders a missing contact
+          # sheet. When every candidate was stamp-skipped the gallery still
+          # rebuilds (below) but from committed sheets only — a design whose
+          # sheet is missing is also a design with no matching stamp, so the
+          # two cannot disagree.
           render=false
-          [ -n "$designs" ] && render=true
+          [ -n "$render_designs" ] && render=true
+          gallery=false
+          [ -n "$designs" ] && gallery=true
           # A fork PR's GITHUB_TOKEN is read-only, so there is nothing to push
           # back to. The commit step turns that into a clear failure with the
           # file list rather than a permissions error nobody can act on.
@@ -398,19 +492,32 @@ jobs:
           fi
           {
             echo "designs=$designs"
+            echo "render_designs=$render_designs"
             echo "shots=$shots"
             echo "render=$render"
+            echo "gallery=$gallery"
             echo "can_push=$can_push"
             echo "already=$already"
             echo "have_pat=$HAVE_PAT"
           } >> "$GITHUB_OUTPUT"
-          echo "regenerating: ${designs:-(nothing — no design moved)}"
+          echo "candidates: ${designs:-(nothing — no design moved)}"
+          echo "re-rendering: ${render_designs:-(nothing — no candidate has changed inputs)}"
 
-      - name: Install the render toolchain (OpenSCAD nightly, xvfb, ImageMagick)
+      - name: Install OpenSCAD nightly (cached)
         if: steps.plan.outputs.render == 'true'
         # openscad-nightly is the same engine render-gate uses, so a preview is
-        # rendered by the build that gates the STL sitting next to it.
+        # rendered by the build that gates the STL sitting next to it. The
+        # composite action caches the OBS .debs — five jobs in this workflow
+        # need the nightly engine and each used to pay the OBS fetch on every
+        # run.
         #
+        # NOTE this job checks out the PR HEAD BRANCH, not the merge ref, so
+        # the action file must exist on that branch: a PR whose branch predates
+        # .github/actions/setup-openscad-nightly fails here until it merges in
+        # the default branch.
+        uses: ./.github/actions/setup-openscad-nightly
+      - name: Install the render toolchain (xvfb, ImageMagick, gifsicle)
+        if: steps.plan.outputs.render == 'true'
         # Deliberately plain apt-get rather than awalsh128/cache-apt-pkgs-action,
         # which the other jobs use: ImageMagick's `convert` and `montage` are
         # update-alternatives symlinks (/usr/bin/montage -> /etc/alternatives/
@@ -427,13 +534,8 @@ jobs:
         # gifsicle is optional to animate.sh (palette shrink) but keeps GIFs
         # inside the size budget readme-gate enforces.
         run: |
-          echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
-            | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
-          curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
-            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
           sudo apt-get update
-          sudo apt-get install -y openscad-nightly xvfb imagemagick gifsicle
-          openscad-nightly --version
+          sudo apt-get install -y xvfb imagemagick gifsicle
           # Prove the alternatives-backed binaries actually resolve, so a
           # packaging regression fails here with a clear message instead of
           # halfway through a design's previews.
@@ -457,21 +559,35 @@ jobs:
           python3 -c 'import bpy; print("bpy", bpy.app.version_string)'
 
       - name: Regenerate previews, animations, product shots and the gallery
-        if: steps.plan.outputs.render == 'true'
+        # gallery, not render: this step also runs when every candidate was
+        # stamp-skipped, because the gallery scrapes prose (NOTES.md) the
+        # stamps deliberately ignore — its own rebuild is seconds and needs
+        # no toolchain when every contact sheet is committed.
+        if: steps.plan.outputs.gallery == 'true'
         env:
           OPENSCAD_BIN: openscad-nightly
           OPENSCAD_ARGS: --backend=manifold
-          DESIGNS: ${{ steps.plan.outputs.designs }}
+          RENDER_DESIGNS: ${{ steps.plan.outputs.render_designs }}
           SHOTS: ${{ steps.plan.outputs.shots }}
         run: |
           set -euo pipefail
-          for n in $DESIGNS; do
+          for n in $RENDER_DESIGNS; do
             # Each generator errors out when its manifest is absent, so ask
             # first — a design with no frozen cameras is not a failure.
             [ -f "designs/$n/previews/cameras.conf" ] && ./scripts/render.sh "$n" --previews
             [ -f "designs/$n/animations.conf" ]       && ./scripts/animate.sh "$n"
             if [ "$SHOTS" = "true" ] && [ -f "designs/$n/shots.conf" ]; then
               ./scripts/product-shot.sh "$n"
+            fi
+            # Stamp AFTER the generators, and only for a design that has any
+            # manifest at all: the stamp lands in the same commit as the
+            # artifacts it fingerprints, so it can never claim a freshness
+            # the artifacts don't have.
+            if [ -f "designs/$n/previews/cameras.conf" ] \
+               || [ -f "designs/$n/animations.conf" ] \
+               || [ -f "designs/$n/shots.conf" ]; then
+              mkdir -p "designs/$n/previews"
+              ./scripts/regen-stamp.sh "$n" > "designs/$n/previews/.regen-stamp"
             fi
           done
           # Last, and unconditional within this step: the gallery is ordered by
@@ -693,17 +809,10 @@ jobs:
           packages: xvfb
           # cache key; bump to pull fresh package versions (see scad-check)
           version: "2026-08"
-      - name: Install OpenSCAD nightly (OBS repo)
+      - name: Install OpenSCAD nightly (cached)
         # Same engine as render-gate, so a swatch measures the same here as
         # it does in the gate that judges the printable parts.
-        run: |
-          echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
-            | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
-          curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
-            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
-          sudo apt-get update
-          sudo apt-get install -y openscad-nightly
-          openscad-nightly --version
+        uses: ./.github/actions/setup-openscad-nightly
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -736,6 +845,13 @@ jobs:
           ref: ${{ needs.regen.outputs.sha }}
       - name: Every design ships a product-page README
         run: ./scripts/readme-gate.sh
+      - name: README gallery is current (post-regen)
+        # The one docs-check assertion that judges a regen OUTPUT rather than
+        # the sources: it lives here, after regen, so the scad-check jobs can
+        # run docs-check with DOCS_CHECK_GALLERY=skip and start at t=0
+        # instead of waiting out the regen job (see the note at the top of
+        # this file).
+        run: ./scripts/docs-check.sh --gallery-only
       - name: Lifestyle-shot disclosure guards still fire
         # No lifestyle-*.png exists in the tree yet, so the per-design gate
         # above never exercises requirement 9. The selftest builds throwaway
@@ -789,18 +905,19 @@ jobs:
 
   scad-check:
     name: OpenSCAD syntax/geometry check
-    # Waits on regen because check.sh runs docs-check.sh, which asserts the
-    # README gallery is not stale — and regenerating that gallery is now
-    # regen's job. Checking the pre-regen tree would fail on a gallery the
-    # same run is about to fix.
-    needs: [changes, regen]
-    if: ${{ !cancelled() && needs.changes.outputs.scad == 'true' }}
+    # No longer waits on regen: everything check.sh judges is authored
+    # source, except docs-check's gallery-freshness assertion — which is
+    # skipped here (DOCS_CHECK_GALLERY=skip) and asserted post-regen by
+    # design-docs instead. Waiting on regen for that one line serialized
+    # this job behind the slowest job in the workflow and roughly doubled
+    # every PR run's wall time.
+    needs: changes
+    if: needs.changes.outputs.scad == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-          ref: ${{ needs.regen.outputs.sha }}
       - name: Install OpenSCAD (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
@@ -809,6 +926,8 @@ jobs:
           # runner-image rollover or when apt security updates matter)
           version: "2026-08"
       - name: Run check.sh
+        env:
+          DOCS_CHECK_GALLERY: skip
         run: ./scripts/check.sh
 
   # Same checks against the OpenSCAD dev snapshot with the Manifold
@@ -817,32 +936,26 @@ jobs:
   # catches nightly-only regressions before they surprise the gate.
   scad-check-nightly:
     name: OpenSCAD syntax/geometry check (nightly, manifold)
-    needs: [changes, regen]
-    if: ${{ !cancelled() && needs.changes.outputs.scad == 'true' }}
+    # Same regen decoupling as scad-check above.
+    needs: changes
+    if: needs.changes.outputs.scad == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-          ref: ${{ needs.regen.outputs.sha }}
       - name: Install xvfb (cached)
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
           packages: xvfb
           version: "2026-08"
-      - name: Install OpenSCAD nightly (OBS repo)
-        run: |
-          echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
-            | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
-          curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
-            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
-          sudo apt-get update
-          sudo apt-get install -y openscad-nightly
-          openscad-nightly --version
+      - name: Install OpenSCAD nightly (cached)
+        uses: ./.github/actions/setup-openscad-nightly
       - name: Run check.sh (manifold backend)
         env:
           OPENSCAD_BIN: openscad-nightly
           OPENSCAD_ARGS: --backend=manifold
+          DOCS_CHECK_GALLERY: skip
         run: ./scripts/check.sh
 
   render-gate:
@@ -857,7 +970,22 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+      # "Run but gate nothing" mode: gate=true with an EMPTY gate_designs is
+      # the classifier's soft-infra verdict — the change cannot move an
+      # exported STL, but this is a required context and a skipped job does
+      # not satisfy one (PR #50). Every substantive step below carries the
+      # gate_designs guard so the job reports success in seconds without
+      # installing a toolchain it will not use. Once branch protection is
+      # switched to a single summary context, this mode can become a real
+      # `if:` skip on the job.
+      - name: Nothing to gate on this change
+        if: needs.changes.outputs.gate_designs == ''
+        run: |
+          echo "No geometry-affecting path changed and no design is in scope."
+          echo "This required context runs as a formality — see the soft-infra"
+          echo "note in the 'Detect changed paths' job."
       - name: Install xvfb, PrusaSlicer and f3d (cached)
+        if: needs.changes.outputs.gate_designs != ''
         uses: awalsh128/cache-apt-pkgs-action@v1.4.3
         with:
           # PrusaSlicer stays on the Ubuntu package: upstream stopped
@@ -868,23 +996,19 @@ jobs:
           packages: xvfb prusa-slicer f3d
           # cache key; bump to pull fresh package versions (see scad-check)
           version: "2026-08"
-      - name: Install OpenSCAD nightly (OBS repo)
+      - name: Install OpenSCAD nightly (cached)
         # Dev snapshots render with the Manifold backend — order-of-
         # magnitude faster than 2021.01's CGAL on these models. The stable
         # binary remains covered by the scad-check job.
-        run: |
-          echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
-            | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
-          curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
-            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
-          sudo apt-get update
-          sudo apt-get install -y openscad-nightly
-          openscad-nightly --version
+        if: needs.changes.outputs.gate_designs != ''
+        uses: ./.github/actions/setup-openscad-nightly
       - uses: actions/setup-python@v6
+        if: needs.changes.outputs.gate_designs != ''
         with:
           python-version: '3.12'
           cache: pip
       - name: Install printcheck
+        if: needs.changes.outputs.gate_designs != ''
         run: pip install -e tools/printcheck
       - name: Prove the derivative gate can still fire
         # The gate's derivative check rests entirely on two undocumented
@@ -899,11 +1023,13 @@ jobs:
         # stopped firing is indistinguishable from a gate with nothing to
         # report — every derivative below would pass by saying nothing. It
         # costs seconds: four small fixtures, no printcheck, no slicer.
+        if: needs.changes.outputs.gate_designs != ''
         env:
           OPENSCAD_BIN: openscad-nightly
           OPENSCAD_ARGS: --backend=manifold
         run: ./scripts/lineage.sh selftest
       - name: Render, gate with printcheck, test-slice with PrusaSlicer
+        if: needs.changes.outputs.gate_designs != ''
         env:
           GATE_DESIGNS: ${{ needs.changes.outputs.gate_designs }}
           OPENSCAD_BIN: openscad-nightly
@@ -921,7 +1047,7 @@ jobs:
             ./scripts/gate.sh --slice $GATE_DESIGNS | tee gate.log
           fi
       - name: Write job summary
-        if: always()
+        if: always() && needs.changes.outputs.gate_designs != ''
         run: |
           python3 scripts/gate-summary.py gate.log > gate-summary.md \
             || echo '_no gate output captured_' > gate-summary.md
@@ -938,7 +1064,8 @@ jobs:
         # standing; the superseding run posts the real result.
         if: >-
           !cancelled() && github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.full_name == github.repository
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          needs.changes.outputs.gate_designs != ''
         uses: actions/github-script@v8
         with:
           script: |
@@ -1008,7 +1135,7 @@ jobs:
         # contact sheets (which show modifier colors and assembled poses,
         # not export artifacts). Non-blocking while f3d proves itself in
         # this pipeline (issue #22).
-        if: always()
+        if: always() && needs.changes.outputs.gate_designs != ''
         continue-on-error: true
         run: |
           mkdir -p stl-renders
@@ -1020,7 +1147,7 @@ jobs:
               || echo "f3d failed on ${stl} (non-blocking)"
           done
       - name: Upload STL renders
-        if: always()
+        if: always() && needs.changes.outputs.gate_designs != ''
         continue-on-error: true
         uses: actions/upload-artifact@v5
         with:
@@ -1028,7 +1155,10 @@ jobs:
           path: stl-renders/*.png
           if-no-files-found: warn
       - name: Upload STLs
-        if: always()
+        # The gate_designs guard matters here beyond saving seconds: in the
+        # "run but gate nothing" mode no STL exists, and if-no-files-found:
+        # error would fail the job for having correctly done nothing.
+        if: always() && needs.changes.outputs.gate_designs != ''
         uses: actions/upload-artifact@v5
         with:
           name: stls
@@ -1043,9 +1173,14 @@ jobs:
   geo-diff:
     name: Geometric STL diff (argus-diff, non-blocking)
     needs: changes
+    # gate_designs != '' as well as gate: this job is advisory and not a
+    # required context, so unlike render-gate it can honestly skip in the
+    # soft-infra "run but gate nothing" mode instead of rendering base and
+    # head of every part to report no delta.
     if: >-
       github.event_name == 'pull_request' &&
-      needs.changes.outputs.gate == 'true'
+      needs.changes.outputs.gate == 'true' &&
+      needs.changes.outputs.gate_designs != ''
     runs-on: ubuntu-latest
     continue-on-error: true
     permissions:
@@ -1074,16 +1209,9 @@ jobs:
         with:
           packages: xvfb
           version: "2026-08"
-      - name: Install OpenSCAD nightly (OBS repo)
+      - name: Install OpenSCAD nightly (cached)
         # Same engine as render-gate so base and head render identically.
-        run: |
-          echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
-            | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
-          curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
-            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
-          sudo apt-get update
-          sudo apt-get install -y openscad-nightly
-          openscad-nightly --version
+        uses: ./.github/actions/setup-openscad-nightly
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'

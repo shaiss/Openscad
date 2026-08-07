@@ -1,0 +1,59 @@
+name: Install OpenSCAD nightly (cached)
+description: >
+  Install openscad-nightly from the OBS home:t-paul repository, caching the
+  downloaded .deb packages between runs. Five jobs need the nightly engine and
+  each used to pay the OBS repo add + apt update + download on every run
+  (~30s-2min per job); on a cache hit this installs from the cached packages
+  without touching the OBS repo at all. The cache key pins the package set
+  until `cache-version` is bumped — the same convention as ci.yml's apt cache
+  keys — which has a side benefit: every job in a run installs the SAME
+  nightly build, instead of whatever OBS happens to serve each job.
+inputs:
+  cache-version:
+    description: >
+      Cache key epoch; bump to re-download the current OBS packages (e.g.
+      monthly, or when a nightly fix is needed). Keep it in sync with the
+      value ci.yml passes so all five jobs share one cache entry.
+    required: false
+    default: "2026-08"
+runs:
+  using: composite
+  steps:
+    - name: Restore cached openscad-nightly packages
+      id: debs
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/openscad-nightly-debs
+        # No restore-keys on purpose: a partial match could mix packages from
+        # two different OBS snapshots, and dpkg would install the pair without
+        # complaint.
+        key: openscad-nightly-debs-${{ runner.os }}-${{ inputs.cache-version }}
+    - name: Download openscad-nightly from OBS (cache miss)
+      if: steps.debs.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo 'deb https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/ /' \
+          | sudo tee /etc/apt/sources.list.d/openscad-nightly.list
+        curl -fsSL 'https://download.opensuse.org/repositories/home:/t-paul/xUbuntu_24.04/Release.key' \
+          | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/openscad-nightly.gpg
+        sudo apt-get update
+        # --download-only into the cache dir: this fetches openscad-nightly
+        # AND every dependency the runner image is missing, so the install
+        # step below can work from the cache alone on the next run.
+        mkdir -p "$HOME/.cache/openscad-nightly-debs/partial"
+        sudo apt-get install -y --download-only \
+          -o "Dir::Cache::archives=$HOME/.cache/openscad-nightly-debs" \
+          openscad-nightly
+        # apt downloads as root; the cache action tars as the runner user.
+        sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/openscad-nightly-debs"
+    - name: Install openscad-nightly from the cached packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        # dpkg -i over the whole set resolves the install order itself; the
+        # apt -f fallback pulls any residual dependency from the stock Ubuntu
+        # archives (never from OBS, which on a cache hit was never added).
+        sudo dpkg -i "$HOME"/.cache/openscad-nightly-debs/*.deb \
+          || sudo apt-get install -y -f
+        openscad-nightly --version
