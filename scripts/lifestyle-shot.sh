@@ -35,9 +35,12 @@ if [[ -z "$design" ]]; then
 fi
 # The design name is interpolated into paths (designs/<design>/...); pin it to
 # the repo's kebab-case convention so a stray "../" or a space can't write or
-# edit outside the design directory.
-if [[ ! "$design" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
-  echo "invalid design name '${design}' — must be kebab-case ([a-z0-9-])" >&2
+# edit outside the design directory. Strict kebab-case (no leading/trailing
+# or doubled hyphens) — the SAME pattern lifestyle-shot.yml's dispatch path
+# validates against, so the workflow and the generator accept and reject
+# identical names (CodeRabbit review on #90).
+if [[ ! "$design" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+  echo "invalid design name '${design}' — must be lowercase kebab-case (e.g. sushi-battleship)" >&2
   exit 2
 fi
 
