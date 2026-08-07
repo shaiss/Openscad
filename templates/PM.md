@@ -39,6 +39,34 @@ necessary, not sufficient).
 
 - [ ] 
 
+## Product page & shots (art direction)
+
+How the product page should sell this design — the PM's creative brief, in
+plain language. The `/art-direction` skill turns this into the shot manifests
+(`shots.conf`, `lifestyle.conf`) and README embeds via `scripts/shot-spec.sh`,
+so write *intent* here, not manifest syntax. Two standards bound the freedom,
+and they are why the two tables are separate: the studio shot (tier 1) is
+geometry-true with a **fixed** studio scene, so its only levers are pose, color,
+finish and framing; **scenery and staging live in the AI lifestyle shot
+(tier 2)**, which is cosmetic and always ships the "geometry is approximate"
+disclosure. Run `./scripts/shot-spec.sh views` and `… palette` for the named
+framing and color vocabularies (or give a hex / a raw `rotz,elev,zoom`).
+
+**Page promise.** The one thing a stranger must take away from the page.
+
+**Shot list — tier 1 (real studio renders).** Ranked; the first is the hero.
+Shots are frozen once reviewed — add a row, never repurpose one.
+
+| Shot | What it sells | View | Look (color / finish) | Pose (`-D`, if any) |
+|---|---|---|---|---|
+| product-hero | | hero | | |
+
+**Lifestyle scenes — tier 2 (AI, cosmetic, disclosed).** Optional. Describe the
+*setting*, not fake detail; the geometry is only an impression.
+
+| Shot | Scene |
+|---|---|
+
 ## Backlog, ranked by user value
 
 Ranked by what a real user hits most often, not by what is interesting to
