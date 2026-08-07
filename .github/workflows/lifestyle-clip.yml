@@ -54,9 +54,10 @@ on:
         required: false
         default: 1280x720
 
+# Read-only by default; the write grants live on the one job that pushes a
+# branch and opens the PR — detect only diffs a checkout.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   detect:
@@ -143,6 +144,9 @@ jobs:
   generate:
     name: Generate and open a draft PR
     needs: detect
+    permissions:
+      contents: write
+      pull-requests: write
     if: needs.detect.outputs.designs != '[]'
     strategy:
       # One PR per design, and one failure does not cancel the others.
@@ -172,7 +176,7 @@ jobs:
         # is the package that check exists to keep out of the cache).
         run: |
           sudo apt-get update
-          sudo apt-get install -y imagemagick ffmpeg gifsicle || { sleep 5; sudo apt-get install -y imagemagick ffmpeg gifsicle; }
+          sudo apt-get install -y imagemagick ffmpeg gifsicle file || { sleep 5; sudo apt-get install -y imagemagick ffmpeg gifsicle file; }
 
       - name: Generate the motion clip and embed its disclosure
         env:

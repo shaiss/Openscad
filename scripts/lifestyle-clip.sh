@@ -84,7 +84,7 @@ fi
 # animate.sh: an optional shrinking pass is exactly how local GIFs came out
 # bigger than CI's, and a budget the generator enforces must be enforced the
 # same way everywhere.
-for tool in ffmpeg gifsicle convert; do
+for tool in ffmpeg gifsicle convert file; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "missing ${tool} — run .claude/hooks/session-start.sh --force to install the toolchain" >&2
     exit 1
@@ -105,7 +105,10 @@ trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]
 # per-clip palette; gifsicle then shrinks the frame stream in place.
 encode_gif() {
   local src="$1" out="$2" fps="$3" w="$4" colors="$5"
-  ffmpeg -v error -y -f 'mov,mp4,m4a,3gp,3g2,mj2' -i "$src" \
+  # -nostdin: this runs inside the while-read loop over motion.conf, and an
+  # ffmpeg left interactive would eat the remaining manifest lines off the
+  # shared stdin — a multi-shot manifest would silently generate one clip.
+  ffmpeg -nostdin -v error -y -f 'mov,mp4,m4a,3gp,3g2,mj2' -i "$src" \
     -vf "fps=${fps},scale=${w}:-2:flags=lanczos,split[a][b];[a]palettegen=max_colors=${colors}[p];[b][p]paletteuse=dither=bayer" \
     -loop 0 "$out"
   gifsicle -O3 --colors "$colors" --batch "$out"
@@ -229,7 +232,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
         -annotate "+$((20 + i * 40))+0" "MOCK clip\n${design} / ${shot}\n(not for commit)" \
         "$(printf '%s/f%02d.png' "$tmp" "$i")"
     done
-    ffmpeg -v error -y -framerate 4 -i "$tmp/f%02d.png" -pix_fmt yuv420p "$tmp/gen.mp4"
+    ffmpeg -nostdin -v error -y -framerate 4 -i "$tmp/f%02d.png" -pix_fmt yuv420p "$tmp/gen.mp4"
   else
     if [[ -z "${ZAI_KEY:-}" ]]; then
       echo "ZAI_KEY is not set — export it (CI: repo secret) or pass --mock" >&2

@@ -54,7 +54,9 @@
 // SACRIFICIAL MEMBRANE (sacrificial_membrane) under each opening catches the
 // door's drooped first-layer strands during the print. pip_hinge is the same
 // print-in-place philosophy for a rotating joint, built on printability.scad's
-// teardrop_hole so the bore roof prints supportless.
+// teardrop profile so the bore roof prints supportless — with the bore grown
+// from the pin's profile by a true 2D offset, for a reason worth reading
+// before touching it (see pip_hinge).
 
 use <printability.scad>
 
@@ -200,42 +202,73 @@ module end_stop(door_w, gap = 0.5, side_inset = 2.8, ridge_w = 0.8,
 // printing.
 module sacrificial_membrane(h = 0.2, cut_h = 3) {
     assert(h >= 0, "membrane thickness must not be negative");
+    assert(cut_h > 0,
+           "membrane cut height must be positive — a zero-height cutter leaves the plate uncut");
     translate([0, 0, h])
         linear_extrude(cut_h)
             children();
 }
 
+// The teardrop 2D profile — textually the same profile printability.scad's
+// teardrop_hole() extrudes (circle + 45-degree roof, point +Y in 2D). Kept
+// here so the hinge BORE can be built as a true 2D offset of the pin's
+// profile, which a 3D module cannot express. If the printability profile
+// ever drifts from this copy the hinge pair's fit drifts with it — and
+// print-in-place-mates.conf's hinge cases measure that fit on the exported
+// mesh, so the drift fails check.sh. That manifest is the declared guard
+// binding the two copies.
+module _pip_teardrop2d(d) {
+    circle(d = d);
+    intersection() {
+        rotate(45) square(d * 0.72, center = false);
+        circle(d = d * 1.6);
+    }
+}
+
 // Print-in-place hinge knuckle: a barrel with a teardrop bore (axis along Y,
 // point +Z — printability.scad's teardrop_hole orientation), sized so the
-// pin printed captive inside it clears by `clear` radially and both the bore
-// roof and the pin top print supportless with the axis horizontal. The outer
-// radius is derived from the teardrop's APEX (0.8 x bore diameter), not the
-// bore circle, so the promised `wall` holds at the knuckle's thinnest point
-// — the teardrop point — not just at the circular sides.
+// pin printed captive inside it clears by `clear` on EVERY surface and both
+// the bore roof and the pin top print supportless with the axis horizontal.
 //
-// The pin IS the bore's generator solid used positively (pip_hinge_pin), the
-// threads-fdm one-generator rule: one profile serves both sides of the fit,
-// so male and female cannot drift apart. The bore is $fn-sensitive — pin
-// $fn >= 64 in any design that renders one (the demo does).
-// `clear` is an acoustic clearance like the rail's — 0.25 is the weld floor,
-// and tuning it far upward buys a rattling joint (see the header).
+// The bore is the pin's own 2D profile grown by offset(r = clear) — a true
+// uniform clearance — and NOT a scaled-up teardrop_hole(pin_d + 2*clear).
+// That obvious construction is wrong in a way no still render shows: the
+// teardrop's 45-degree flank planes pass through its origin, so scaling the
+// profile about that origin leaves the flank planes FIXED — the pin's flanks
+// end up exactly coplanar with the bore's, i.e. zero clearance along both
+// flanks, a welded print. CGAL renders the coincident planes as a clean
+// kissing mate (0 facets of interference), which is how it survived the
+// stable gate; CI's Manifold pass exported the same kiss as an 8-facet
+// sliver, which is what caught it. The offset bore restores `clear` on the
+// flanks and everywhere else by construction (Minkowski property), and the
+// hinge-pin-play mate case pins the flank clearance under CGAL too.
+//
+// The outer radius is derived from the OFFSET bore's apex (0.8*pin_d +
+// clear), not the bore circle, so the promised `wall` holds at the knuckle's
+// thinnest point — the teardrop point — not just at the circular sides.
+// The bore is $fn-sensitive — pin $fn >= 64 in any design that renders one
+// (the demo does). `clear` is an acoustic clearance like the rail's — 0.25
+// is the weld floor, and tuning it far upward buys a rattling joint (see
+// the header).
 module pip_hinge(pin_d = 4, clear = 0.5, wall = 2.4, l = 8) {
     assert(clear >= 0.25,
            "print-in-place hinge clearance under 0.25 mm welds at typical layer heights");
     assert(wall >= 1.2,
            "knuckle wall under 1.2 mm (3 perimeters at a 0.4 mm nozzle)");
-    bore = pin_d + 2*clear;
     difference() {
         rotate([-90, 0, 0])
-            cylinder(r = 0.8*bore + wall, h = l, center = true);
-        teardrop_hole(d = bore, l = l + 0.02);
+            cylinder(r = 0.8*pin_d + clear + wall, h = l, center = true);
+        rotate([-90, 0, 0])
+            linear_extrude(l + 0.02, center = true)
+                offset(r = clear)
+                    _pip_teardrop2d(pin_d);
     }
 }
 
-// The matching pin: the bore's generator profile at the pin's own diameter,
-// so the radial clearance delivered is exactly pip_hinge's `clear` on every
-// ray. Print it captive (same teardrop orientation) or as a separate part
-// pushed in after.
+// The matching pin: printability.scad's teardrop_hole solid at the pin's own
+// diameter — the same profile the bore is offset from, so the clearance
+// delivered is exactly pip_hinge's `clear` on every surface. Print it
+// captive (same teardrop orientation) or as a separate part pushed in after.
 module pip_hinge_pin(pin_d = 4, l = 8) {
     teardrop_hole(d = pin_d, l = l);
 }

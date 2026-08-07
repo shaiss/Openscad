@@ -642,6 +642,15 @@ run_selftest() {
   } >>"$d/README.md"
   _check motion-uppercase-ext 1 "AI-styled scene"
 
+  # motion-uppercase-gif-budget: a disclosed .GIF over the PNG budget but
+  # under the GIF budget must PASS — pins the lowercasing that routes an
+  # uppercase extension to the GIF budget (dropping it would judge this
+  # file against MAX_SHOT_BYTES and fail it).
+  d="$(_fixture motion-uppercase-gif-budget)"
+  truncate -s "$((MAX_SHOT_BYTES + 1))" "$d/previews/lifestyle-turntable.GIF"
+  _disclosed "$d" previews/lifestyle-turntable.GIF
+  _check motion-uppercase-gif-budget 0 ""
+
   if [[ "$pass" == 1 ]]; then
     echo "ok    readme-gate --selftest: every lifestyle-disclosure guard fires"
     return 0
