@@ -16,10 +16,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readdirSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { readDesigns } from "../lib/content.mjs";
 
 import {
   PROFILE_KEYS,
@@ -226,12 +228,18 @@ test("a missing mandate source is an error naming the profile that points at it"
     "people/bot.md": AGENT.replace("mandate: charter.md", "mandate: docs/gone.md"),
     "people/esc.md": AGENT.replace("name: Bot", "name: Esc")
       .replace("mandate: charter.md", "mandate: ../outside.md"),
+    // Backslash traversal: on Windows this resolves outside the repo (the
+    // containment check rejects it); on POSIX it is a literal filename
+    // that does not exist. Rejected either way — the build must fail.
+    "people/esc2.md": AGENT.replace("name: Bot", "name: Esc Two")
+      .replace("mandate: charter.md", "mandate: ..\\outside.md"),
   });
   try {
     const { errors } = collect(root);
-    assert.equal(errors.length, 2);
+    assert.equal(errors.length, 3);
     assert.match(errors.find((e) => e.includes("bot.md")), /'docs\/gone\.md', which does not exist/);
     assert.match(errors.find((e) => e.includes("esc.md")), /no '\.\.'/);
+    assert.match(errors.find((e) => e.includes("esc2.md")), /no '\.\.'|does not exist/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -293,11 +301,10 @@ test("a missing people directory is quiet until a roster needs it", () => {
 });
 
 test("the real repo agrees with the team resolver", () => {
-  const designNames = new Set(
-    readdirSync(join(REPO_ROOT, "designs")).filter((d) =>
-      existsSync(join(REPO_ROOT, "designs", d, `${d}.scad`)),
-    ),
-  );
+  // The same discovery build.mjs uses — not a re-derived predicate, so the
+  // test cannot disagree with production about which directories are
+  // published designs.
+  const designNames = new Set(readDesigns(REPO_ROOT).map((d) => d.name));
   const { team, errors } = collect(REPO_ROOT, designNames);
   assert.deepEqual(errors, []);
 

@@ -44,7 +44,7 @@
 // single page is written.
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 /** The only keys a profile header may carry. */
 export const PROFILE_KEYS = ["name", "kind", "role", "initials", "mandate", "shared"];
@@ -268,12 +268,16 @@ export function readTeam(repoRoot, { onError = () => {}, designNames } = {}) {
     if (header.kind === "human") {
       mandate = { source: profilePath, summary: null, text: body };
     } else {
+      // Containment is checked on the RESOLVED path, not by scanning for
+      // '..' segments — a '..\' would slip past a '/'-split on Windows,
+      // where backslash is also a separator.
       const source = header.mandate;
-      if (isAbsolute(source) || source.split("/").includes("..")) {
+      const abs = resolve(repoRoot, source);
+      const rel = relative(repoRoot, abs);
+      if (isAbsolute(source) || rel.startsWith("..") || isAbsolute(rel)) {
         onError(`${profilePath}: mandate path '${source}' must be repo-relative with no '..'`);
         continue;
       }
-      const abs = join(repoRoot, source);
       if (!existsSync(abs) || !statSync(abs).isFile()) {
         onError(`${profilePath}: mandate points at '${source}', which does not exist — fix the path or commit the charter`);
         continue;
