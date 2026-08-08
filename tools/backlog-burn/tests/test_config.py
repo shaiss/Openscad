@@ -99,7 +99,7 @@ def test_get_renders_strings(tmp_path):
 def test_get_unknown_key_raises(tmp_path):
     path = write(tmp_path, "enabled: true\n")
     with pytest.raises(KeyError):
-        cfg.get("cadence", path)
+        cfg.get("notakey", path)
 
 
 def test_committed_repo_config_is_wellformed():
@@ -111,3 +111,124 @@ def test_committed_repo_config_is_wellformed():
     assert isinstance(c.enabled, bool)
     assert isinstance(c.label, str) and c.label.strip()
     assert c.provider in cfg.KNOWN_PROVIDERS
+    # cadence may be absent (empty string) or a known preset or a cron literal
+    assert isinstance(c.cadence, str)
+
+
+# ---------------------------------------------------------------------------
+# cadence key
+# ---------------------------------------------------------------------------
+
+def test_cadence_preset_accepted(tmp_path):
+    for preset in cfg.CADENCE_PRESETS:
+        path = write(tmp_path, f"cadence: {preset}\n")
+        c = cfg.load(path)
+        assert c.cadence == preset
+
+
+def test_cadence_raw_cron_accepted(tmp_path):
+    path = write(tmp_path, "cadence: 17 0,6,12,18 * * *\n")
+    c = cfg.load(path)
+    assert c.cadence == "17 0,6,12,18 * * *"
+
+
+def test_cadence_bad_value_fails(tmp_path):
+    path = write(tmp_path, "cadence: everyhour\n")
+    with pytest.raises(ValueError, match="'cadence' must be a preset"):
+        cfg.load(path)
+
+
+def test_cadence_defaults_to_empty(tmp_path):
+    path = write(tmp_path, "enabled: true\n")
+    assert cfg.load(path).cadence == ""
+
+
+def test_get_cadence(tmp_path):
+    path = write(tmp_path, "cadence: weekly\n")
+    assert cfg.get("cadence", path) == "weekly"
+
+
+# ---------------------------------------------------------------------------
+# set_value — round-trip write
+# ---------------------------------------------------------------------------
+
+def test_set_value_updates_existing_key(tmp_path):
+    path = write(tmp_path, "enabled: true\nlabel: autonomy-ok\n")
+    cfg.set_value("enabled", "false", path=path)
+    assert cfg.load(path).enabled is False
+    # other key preserved
+    assert cfg.load(path).label == "autonomy-ok"
+
+
+def test_set_value_appends_missing_key(tmp_path):
+    path = write(tmp_path, "enabled: true\n")
+    cfg.set_value("label", "my-label", path=path)
+    assert cfg.load(path).label == "my-label"
+
+
+def test_set_value_unknown_key_rejected(tmp_path):
+    path = write(tmp_path, "enabled: true\n")
+    with pytest.raises(ValueError, match="unknown config key"):
+        cfg.set_value("notakey", "x", path=path)
+
+
+def test_set_value_bad_bool_rejected(tmp_path):
+    path = write(tmp_path, "enabled: true\n")
+    with pytest.raises(ValueError, match="must be 'true' or 'false'"):
+        cfg.set_value("enabled", "yes", path=path)
+
+
+def test_set_value_empty_label_rejected(tmp_path):
+    path = write(tmp_path, "label: autonomy-ok\n")
+    with pytest.raises(ValueError, match="'label' must not be empty"):
+        cfg.set_value("label", "", path=path)
+
+
+def test_set_value_cadence_preset_returns_cron(tmp_path):
+    path = write(tmp_path, "cadence: daily\n")
+    cron = cfg.set_value("cadence", "weekly", path=path)
+    assert cron == cfg.CADENCE_PRESETS["weekly"]
+    assert cfg.load(path).cadence == "weekly"
+
+
+def test_set_value_cadence_raw_cron(tmp_path):
+    path = write(tmp_path, "cadence: daily\n")
+    raw = "5 */4 * * *"
+    cron = cfg.set_value("cadence", raw, path=path)
+    assert cron == raw
+    assert cfg.load(path).cadence == raw
+
+
+def test_set_value_bad_cadence_rejected(tmp_path):
+    path = write(tmp_path, "cadence: daily\n")
+    with pytest.raises(ValueError, match="'cadence' must be a preset"):
+        cfg.set_value("cadence", "hourly", path=path)
+
+
+def test_set_value_preserves_comments(tmp_path):
+    path = write(tmp_path, "# header\nenabled: true\n# footer\n")
+    cfg.set_value("enabled", "false", path=path)
+    content = (tmp_path / "backlog-burn.conf").read_text()
+    assert "# header" in content
+    assert "# footer" in content
+
+
+# ---------------------------------------------------------------------------
+# patch_workflow_cron
+# ---------------------------------------------------------------------------
+
+def test_patch_workflow_cron(tmp_path):
+    wf = tmp_path / "backlog-burn.yml"
+    wf.write_text(
+        "on:\n  schedule:\n    - cron: '17 6 * * 1'\njobs:\n  burn:\n    runs-on: ubuntu-latest\n",
+        encoding="utf-8",
+    )
+    cfg.patch_workflow_cron("17 0,6,12,18 * * *", path=str(wf))
+    assert "- cron: '17 0,6,12,18 * * *'" in wf.read_text()
+
+
+def test_patch_workflow_cron_no_cron_line_raises(tmp_path):
+    wf = tmp_path / "backlog-burn.yml"
+    wf.write_text("on:\n  push:\njobs:\n  burn:\n    runs-on: ubuntu-latest\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="could not find"):
+        cfg.patch_workflow_cron("17 6 * * 1", path=str(wf))

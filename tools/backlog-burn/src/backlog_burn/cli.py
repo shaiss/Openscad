@@ -89,14 +89,38 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_config(args: argparse.Namespace) -> int:
-    """`config`: print one value from the committed policy file.
+    """`config`: read or write a value in the committed policy file.
 
-    The workflow reads `enabled` and `label` from `.github/backlog-burn.conf`
-    this way, so the policy lives in git rather than in the YAML.
+    Sub-commands:
+      ``--get <key>``          print one value (existing behaviour)
+      ``set <key> <value>``    update a key and print the resolved cron (for cadence)
+
+    The workflow reads `enabled`, `label`, and `provider` from
+    `.github/backlog-burn.conf` this way, so the policy lives in git rather
+    than in the YAML.  The ``set`` sub-command is what the
+    ``backlog-burn-config`` workflow invokes to apply a ``/backlog-burn set``
+    command to the branch's config file without a full checkout.
     """
     from . import config as config_mod
 
     path = args.path or config_mod.DEFAULT_PATH
+
+    if hasattr(args, "set_key"):  # `config set <key> <value>`
+        workflow_path = args.workflow_path or config_mod.WORKFLOW_PATH
+        cron = config_mod.set_value(args.set_key, args.set_value, path=path)
+        if cron:
+            # cadence change: also patch the workflow's cron literal
+            config_mod.patch_workflow_cron(cron, path=workflow_path)
+            sys.stdout.write(f"cadence={args.set_value}\ncron={cron}\n")
+        else:
+            sys.stdout.write(f"{args.set_key}={args.set_value}\n")
+        return 0
+
+    # --get (existing behaviour)
+    if not args.get:
+        import argparse as _ap
+        sys.stderr.write("error: one of --get KEY or sub-command 'set' is required\n")
+        return 2
     sys.stdout.write(config_mod.get(args.get, path=path) + "\n")
     return 0
 
@@ -128,12 +152,27 @@ def build_parser() -> argparse.ArgumentParser:
     _add_output_flags(p_run)
     p_run.set_defaults(func=cmd_run)
 
-    p_config = sub.add_parser("config", help="read the committed policy file")
-    p_config.add_argument("--get", required=True, choices=["enabled", "label", "provider"],
+    p_config = sub.add_parser("config", help="read or write the committed policy file")
+    p_config.add_argument("--get", choices=["enabled", "label", "provider", "cadence"],
                           help="which config value to print")
     p_config.add_argument("--path", default=None,
                           help="config file (default: .github/backlog-burn.conf)")
     p_config.set_defaults(func=cmd_config)
+
+    # `config set <key> <value>` — the sub-subcommand the /backlog-burn set
+    # workflow uses.  Kept as positional args so the workflow step is a clean
+    # one-liner: `backlog-burn config set enabled false`.
+    config_sub = p_config.add_subparsers(dest="config_sub")
+    p_config_set = config_sub.add_parser("set", help="update a config key")
+    p_config_set.add_argument("set_key", choices=["enabled", "label", "provider", "cadence"],
+                              metavar="key", help="key to update")
+    p_config_set.add_argument("set_value", metavar="value", help="new value")
+    p_config_set.add_argument("--path", default=None,
+                              help="config file (default: .github/backlog-burn.conf)")
+    p_config_set.add_argument("--workflow-path", default=None,
+                              help="workflow file to patch for cadence changes "
+                                   "(default: .github/workflows/backlog-burn.yml)")
+    p_config_set.set_defaults(func=cmd_config)
 
     return parser
 
