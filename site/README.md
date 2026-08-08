@@ -97,8 +97,8 @@ Change them at your peril:
    marker just vanishes while the render still reports success. DejaVu Sans
    ships for this reason (20 triangles without it, 1300 with).
 
-The runtime is ~13 MB and is fetched only when a visitor opens a configurator,
-never with the page.
+The runtime is ~13 MB and is fetched only when a visitor opens a configurator
+or the 3D viewer, never with the page.
 
 **Licence.** OpenSCAD is GPL-2.0, so serving this build is distribution. The
 build writes `/assets/openscad/README.txt` next to the binary naming the exact
@@ -114,6 +114,37 @@ gets streaming compilation and independent caching, instead of base64-inlining
 it into a 13 MB JS bundle. It was unreachable from the environment this was
 built in, so it could not be verified or pinned here.
 
+## The 3D viewer
+
+Every product page also carries a **"View in 3D"** viewer
+([issue #100](https://github.com/shaiss/print-bench/issues/100)): press it and
+the design's own `<name>.scad` is rendered at its **default parameters** by the
+same OpenSCAD-WASM worker the configurator uses — so the geometry on screen is
+the geometry the gate exports — and drawn with [three.js](https://threejs.org/)
+(WebGL): drag to rotate, scroll to zoom.
+
+It is on *every* design, including those with no tunable parameters (which get
+no configurator), because every design has geometry to inspect. The model
+bundle it renders — entry, source, and the include closure — is built once by
+`lib/model.mjs` and written to `/designs/<name>/model.json`; the configurator
+reads the same bundle for its controls.
+
+Three things make it consistent with the rest of the site:
+
+- **No committed meshes, no new render pipeline.** The viewer reuses the WASM
+  runtime already shipped; nothing renders STLs at build time (the deploy has no
+  OpenSCAD), and no `.stl` is committed. It shows the real geometry by rendering
+  the real source, client-side.
+- **Nothing external.** three.js (the ~676 KB minified module build plus
+  `STLLoader` and `OrbitControls`) is vendored under `/assets/three/`. The two
+  addons import the bare specifier `three`, which each product page resolves
+  with an inline import map — no CDN, same no-external-reference rule as the rest
+  of the deploy.
+- **Lazy and progressive.** The module script is deferred and imports nothing
+  until the button is pressed; the 14 MB runtime loads only then. Without
+  JavaScript the panel's `<noscript>` fallback points at the previews already on
+  the page, and nothing else on the page depends on it.
+
 ## Layout
 
 - `build.mjs` — the generator; discovery, render, asset copy, link check
@@ -121,21 +152,24 @@ built in, so it could not be verified or pinned here.
 - `lib/lineage.mjs` — `derives.conf` → gallery order and parentage, ported from `tools/lineage`
 - `lib/markdown.mjs` — markdown → HTML, link resolution and rewriting
 - `lib/scadparams.mjs` — Customizer parameters and include closure from a `.scad`
+- `lib/model.mjs` — the per-design model bundle (entry, source, files, parameters) the configurator and viewer share
 - `lib/templates.mjs` — the page shells
 - `test/` — `npm --prefix site test`; run by `./scripts/site.sh` and CI
 - `assets/` — `site.css` (the design system), `site.js` (theme toggle),
-  `configurator.js` (the panel) and `openscad-worker.js` (the renderer),
-  copied to `/assets/` verbatim
+  `configurator.js` (the panel), `viewer.js` (the 3D viewer) and
+  `openscad-worker.js` (the renderer), copied to `/assets/` verbatim; the
+  vendored `three/` build is copied there by `build.mjs`
 
 ## Dependencies
 
-Three, all pinned in `package-lock.json`:
+Four, all pinned in `package-lock.json`:
 
 | Package | Why | Size |
 |---|---|---|
 | `marked` | markdown → HTML | ~470 KB, no transitive deps |
-| `openscad-wasm` | the configurator's renderer (GPL-2.0) | ~13 MB, lazy-loaded |
+| `openscad-wasm` | the configurator's and viewer's renderer (GPL-2.0) | ~13 MB, lazy-loaded |
 | `dejavu-fonts-ttf` | a font for `text()`, without which glyphs vanish | one 750 KB TTF is shipped |
+| `three` | the 3D viewer's WebGL renderer (MIT) | ~676 KB minified module, vendored + lazy-loaded |
 
 Everything else is Node's standard library. There is no framework and no
 bundler.
