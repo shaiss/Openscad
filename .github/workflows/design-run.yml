@@ -37,7 +37,7 @@ name: Design run (scheduled idea→PR pipeline)
 #   * One issue per firing: a hard cap in the selector means a bad day costs one
 #     stalled PR, not five.
 #
-# Auth: the agentic run uses the existing ANTHROPIC_API_KEY secret (a plain API
+# Auth: the agentic run uses the CLAUDE_KEY secret (a plain API
 # key is the right fit for an unattended bot — pay-per-token, no subscription
 # seat). With that secret unset the job still selects and logs its pick, then
 # emits a ::notice:: and stops — exactly how ci.yml skips product-page drafting
@@ -73,7 +73,7 @@ on:
 # reads, but permissions are per-job not per-step, and this single job both
 # selects and runs. The job is off unless DESIGN_RUN_ENABLED is set AND the
 # committed config says enabled, and the writing step is skipped entirely
-# without the ANTHROPIC_API_KEY secret, so these grants sit idle until the
+# without the CLAUDE_KEY secret, so these grants sit idle until the
 # routine is deliberately switched on.
 permissions:
   contents: write
@@ -117,7 +117,7 @@ jobs:
       # provider's key presence as a plain string and gate on it below. The
       # "Read policy" step turns these + the configured provider into a single
       # `key_present` output.
-      HAS_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+      HAS_ANTHROPIC_KEY: ${{ secrets.CLAUDE_KEY != '' }}
       HAS_ZAI_KEY: ${{ secrets.ZAI_KEY != '' }}
     steps:
       - uses: actions/checkout@v5
@@ -188,13 +188,14 @@ jobs:
       # committed `provider:` label picks which one runs; adding a provider is a
       # new step here. Both share the pin, the write permissions, the
       # `github_token` that authenticates the action's own git push / PR
-      # creation, and the same /design-run prompt. NOTE for enabling — and it
-      # matters MORE here than for the backlog burn: a PR opened with the
-      # default GITHUB_TOKEN does not itself trigger CI (the reason regen uses
-      # REGEN_TOKEN), so `regen` will not fire and the design's previews won't
-      # be generated — and a design page WITHOUT its previews fails
-      # readme-gate.sh. So for this pipeline a PAT as `github_token` is
-      # effectively required, not just nice-to-have, if the draft PR is to reach
+      # creation, and the same /design-run prompt. The `github_token` is wired
+      # to the GH_TOKEN secret (a PAT) ON PURPOSE — and it matters MORE here
+      # than for the backlog burn: a PR opened with the default GITHUB_TOKEN does
+      # not itself trigger CI (the reason regen uses REGEN_TOKEN), so `regen`
+      # would not fire and the design's previews wouldn't be generated — and a
+      # design page WITHOUT its previews fails readme-gate.sh. With the PAT the
+      # draft PR triggers CI and the product shots regenerate. So for this
+      # pipeline a PAT as `github_token` is effectively required, to reach
       # a mergeable state unattended: readme-gate needs a preview, and a
       # path-traced product shot only comes from CI regen. Without a PAT,
       # /design-run first generates what it can locally (cameras.conf previews
@@ -218,8 +219,8 @@ jobs:
         # right fit for an unattended bot — no OAuth token / subscription seat.
         uses: anthropics/claude-code-action@7ff6806c8ebd129a7043b947af920074d3819dc8  # v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ github.token }}
+          anthropic_api_key: ${{ secrets.CLAUDE_KEY }}
+          github_token: ${{ secrets.GH_TOKEN }}
           prompt: "/design-run ${{ steps.select.outputs.issue }}"
 
       - name: Run via Z.AI (GLM)
@@ -245,7 +246,7 @@ jobs:
         uses: anthropics/claude-code-action@7ff6806c8ebd129a7043b947af920074d3819dc8  # v1
         with:
           anthropic_api_key: ${{ secrets.ZAI_KEY }}
-          github_token: ${{ github.token }}
+          github_token: ${{ secrets.GH_TOKEN }}
           claude_args: --model glm-4.6
           prompt: "/design-run ${{ steps.select.outputs.issue }}"
 
@@ -263,7 +264,7 @@ jobs:
           if [ "$DRY_RUN" = "true" ]; then
             echo "::notice::dry run — selected #${ISSUE} but did not invoke /design-run"
           else
-            echo "::notice::the configured provider '${PROVIDER}' has no key set (ANTHROPIC_API_KEY for anthropic, ZAI_KEY for zai) — selected #${ISSUE} but skipping the unattended /design-run run"
+            echo "::notice::the configured provider '${PROVIDER}' has no key set (CLAUDE_KEY for anthropic, ZAI_KEY for zai) — selected #${ISSUE} but skipping the unattended /design-run run"
           fi
 
       - name: Explain an empty selection
