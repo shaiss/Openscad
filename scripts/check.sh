@@ -10,7 +10,9 @@
 #      describe the graph its entry .scad actually includes
 #   5. Docs-drift check (scripts/docs-check.sh): docs must match the tree
 #   6. readme-gate selftest (scripts/readme-gate.sh --selftest): the
-#      lifestyle-shot disclosure guards still refuse an undisclosed AI shot
+#      lifestyle disclosure guards still refuse an undisclosed AI shot or clip
+#   7. shot-spec selftest (scripts/shot-spec.sh --selftest): the shot-manifest
+#      freeze guard and field validators still refuse a bad line
 # Run before committing. For full STL+PNG output use scripts/render.sh.
 set -euo pipefail
 
@@ -190,13 +192,23 @@ if ! ./scripts/docs-check.sh; then
   fail=1
 fi
 
-# readme-gate carries a negative-test suite for its lifestyle-shot disclosure
-# guards (requirement 9). No lifestyle-*.png exists in the tree yet, so those
-# guards are dormant on the real designs — the selftest is the only thing that
-# proves they still fire. Fast (no render), so it runs here alongside the other
-# negative-test suites even though the product-page gate itself is a CI job.
+# readme-gate carries a negative-test suite for its lifestyle disclosure
+# guards (requirement 9: AI stills and AI motion clips). No lifestyle-*.png or
+# lifestyle-*.gif exists in the tree yet, so those guards are dormant on the
+# real designs — the selftest is the only thing that proves they still fire.
+# Fast (no render), so it runs here alongside the other negative-test suites
+# even though the product-page gate itself is a CI job.
 echo "-- readme-gate selftest: scripts/readme-gate.sh --selftest"
 if ! ./scripts/readme-gate.sh --selftest; then
+  fail=1
+fi
+
+# shot-spec.sh authors the product-shot manifests and validates them; its
+# --selftest proves the freeze guard and every field validator still refuse a
+# bad line. Same rationale as the suites above — a weakened validator would
+# leave every other check green — and it is fast (no render), so it runs here.
+echo "-- shot-spec selftest: scripts/shot-spec.sh --selftest"
+if ! ./scripts/shot-spec.sh --selftest; then
   fail=1
 fi
 
