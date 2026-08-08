@@ -42,6 +42,65 @@ Set `OPENSCADPATH="$PWD/lib:$PWD"` (the scripts do this automatically): `lib/` r
 - **`lib/nuggs-coupling.scad`** — the NUGGS genderless quarter-turn bayonet port, the one interlock standard every NUGGS module shares: `nuggs_cfg()` (the config vector every guard fires inside), `nuggs_port()` (one port face — **not bore-clean**, see below), `nuggs_bore_cut()` (the cut every caller of `nuggs_port()` owes), `nuggs_neck()` (port + full-round shell + the cut, as one bore-clean solid — prefer it), `nuggs_window()` (the longitudinal window that turns a neck-and-tube into an open module), `nuggs_sector()` (the one-swept-polygon primitive), plus the caller's contract values (`nuggs_ri/ro/r_mid/r_out/pitch/z_tip/z_seat/z_top/clockings/tol_deg/rib_in/i_out/bearing_area/web/walk_half_deg`). Two things it does that no other library here does, both deliberate: it **pins its own `$fa`/`$fs`** inside every module body and ignores the caller's, because the fit is split at one radius and every surface is a `rotate_extrude`, so an unpinned clearance moved with the caller's quality preset (measured on the pre-extraction geometry, the insertion clocking left 0.1754 mm³ of interference at `$fn=48`, 0.0717 at 56, 0.0260 at 64 and came out free only from 96 up — and `mate-check.sh` renders at exactly 96, so the harness could never have seen it); and it emits material **inside the bore** on purpose, so a caller that forgets `nuggs_bore_cut()` ships a watertight, sliceable, 100/100-scoring part with plastic standing in the bore. Use it for anything that has to mate with a NUGGS module; it does one joint, so reach for BOSL2 for threads, gears or generic rounding.
 - Each **first-party** library (the `lib/*.scad` files above; not vendored BOSL2 or system-installed MCAD) ships a `lib/<name>-demo.scad` exercising every module; `check.sh` CGAL-renders all of them, so they are those libraries' regression tests. Add one with any new first-party library. A library whose modules carry guards also ships `lib/<name>-guards.conf` — one line per parameter set the library must **refuse**, run by `scripts/guard-check.sh`. That is the half a demo cannot cover: a firing assert aborts the render it lives in, so without those cases a guard can be weakened or deleted and every check in the repo stays green. A library with a **tuned fit** (a mating pair, a clearance) also ships `lib/<name>-mates.conf` — one line per pair that must **assemble**, plus at least one deliberately-interfering case proving the check can fail, run by `scripts/mate-check.sh`. That is the other half a demo cannot cover: a render cannot measure itself, so a demo can only restate the clearance formula, which proves the formula equals itself while the built geometry drifts (issue #37).
 
+## Smart CI (gate selection)
+
+CI has two layers of gate selection. The **deterministic** one is the `changes`
+job in `.github/workflows/ci.yml`: it reads a PR's changed files and picks which
+of the gates that **already exist** run (design-only PRs gate just the designs
+they touch, docs-only PRs skip the render jobs, and so on — see the CAUTION and
+tier notes at the top of that file). The **smart** one is `tools/ci-gates/`, the
+layer on top: it proposes gates that *don't exist yet*.
+
+The mechanism is three parts kept separate on purpose:
+
+- **detectors** (`tools/ci-gates/src/ci_gates/detectors.py`) decide whether a
+  candidate gate *applies* to a PR — pure functions of the changed-file list and
+  the tree. Seeded: `classifier-coverage` (a changed file under a top-level dir
+  the `changes` classifier doesn't mention — the CAUTION footgun as a check),
+  `shellcheck` (a `*.sh` changed), `actionlint` (a workflow changed).
+- **registry** (`.github/ci-gates/registry.conf`) records the *decision* about
+  each candidate — `on` / `proposed` / `off` — and its **tier**. It is the
+  reproducible source of truth: it lives in git, a clone carries it, every run
+  reads it identically. GitHub supplies only the interaction and the auth.
+- **selector** (`ci_gates select`) joins the two into buckets the `smart-ci`
+  job runs and the sticky PR comment reports.
+
+The **auto-approve policy** is the tier: an **advisory** gate (cheap,
+non-blocking) is `on` by default and runs whenever it applies with no human
+step; a **gating** gate (can fail a PR) defaults to `proposed` and stays a
+proposal — surfaced in the comment — until a human crosses it, so a new blocking
+check never lands unannounced. A gate is known to selection only if it has a
+stanza in the registry; within that stanza the `state` field is what may be
+omitted, and it falls back to the tier default — so a gate's decision can be
+left implicit, but the gate (tier, title, run) must be declared.
+
+Crossing a proposal is GitHub-native: a maintainer posts a PR comment with the
+command (note the leading slash):
+
+```text
+/ci-gate approve <id>      # wire the gate in for this and every future run
+/ci-gate decline <id>      # turn it off so it stops being proposed
+/ci-gate list              # show the current selection
+```
+
+The `ci-gate-approve.yml` workflow authorizes them by their real repository
+permission, flips the gate's `state` in the registry, and commits that one-line
+change to the PR branch **via the Contents API** with `REGEN_TOKEN` (same secret
+and reason as `regen` — a PAT-authored commit re-triggers CI so `smart-ci` runs
+the newly-enabled gate; a `GITHUB_TOKEN` commit would not). That workflow is
+privileged (`issue_comment` holds the secret), so it never checks out or runs
+the PR head's code — it edits the head branch's `registry.conf` as data with the
+base repo's trusted tooling. Future runs then enforce the gate by construction,
+because the registry said so. From a fork (uncommittable), the comment says to
+edit `registry.conf` in the PR instead.
+
+`smart-ci` runs on every PR and every push with no early skip (a skippable job
+can't satisfy branch protection — the same PR #50 reason `ci-ok` documents), and
+is one of `ci-ok`'s `needs`. By default it only runs the advisory
+`classifier-coverage` detector, so it cannot start failing PRs on its own until
+someone crosses a gating gate. `tools/ci-gates` has its own pytest suite (the
+`smart-ci selector unit tests` job); a malformed registry stanza fails it.
+
 ## Commands
 
 All commands run from the repo root.
@@ -171,6 +230,7 @@ xvfb-run -a openscad -o build/<name>.stl -D 'wall_thickness=2.4' designs/<name>/
 Workflow skills (`.claude/skills/`):
 
 - **`/preflight`** — before any push: runs the exact checks CI runs (check.sh, gate.sh --slice, printcheck tests), scoped to what changed the same way CI scopes them, and answers "would CI pass?".
+- **`/intake [idea]`** — the front door of a design: turns a one-line idea (or a photo) into a well-formed **design-brief issue** — the measurements asked for or defaulted with stated assumptions, printer constraints, a style from `styles/` (or none), a first-pass part breakdown — labeled `design-brief` so a later design session, human-driven or scheduled, can pick it up cold. Files the issue and stops; the format is `templates/design-brief.md`, which the `Design brief` issue form mirrors so a hand-filed brief arrives in the same shape.
 - **`/new-design <name>`** — scaffolds `designs/<name>/` with everything CI and reviewers expect: entry `.scad` from the template, NOTES.md, `ci.parts` / `printcheck.args` when relevant, then first-renders it.
 - **`/product-shots [name]`** — gives the product page its real-world-looking hero image: writes `shots.conf`, path-traces the studio product shot, embeds it in the README, plus an optional AI-restyled lifestyle scene when the session has an image-generation tool.
 - **`/art-direction [name]`** — the design PM's creative control over the product page: turns the art-direction brief in `designs/<name>/PM.md` into the actual shot manifests and README embeds via `scripts/shot-spec.sh`, so a PM can request a new shot, pose, color or lifestyle scene without hand-writing `shots.conf`/`lifestyle.conf` syntax. Owns the taste (which view sells the part, honest disclosure, framing review); the tool owns the mechanics and the standards it can check (the freeze, a pixel-size sanity cap, the disclosure form), while the rendered-byte budget (`MAX_SHOT_BYTES`) stays enforced by `product-shot.sh` and `readme-gate.sh`. Where `/product-shots` documents the tiers, this drives them from PM intent.
@@ -194,11 +254,12 @@ Workflow skills (`.claude/skills/`):
 - `build/` — generated STLs and PNGs; gitignored. STLs are regenerated from source, never hand-edited or committed.
 - `scripts/` — the full toolchain: `render.sh`, `check.sh`, `gate.sh`, `lineage.sh`, `readme-gate.sh`, `animate.sh`, `product-shot.sh`, `lifestyle-shot.sh`, `lifestyle-clip.sh`, `product-page.sh`, `gallery.sh`, `style-lift.sh`, `style-check.sh`, `lint-scad.sh`, `site.sh` (all described above), plus `docs-check.sh` (docs-drift assertions, run by check.sh), `guard-check.sh` (fires every `lib/*-guards.conf` case and fails if a library guard stops refusing it, run by check.sh), `mate-check.sh` (renders every `lib/*-mates.conf` case and fails if a declared fit stops assembling — or if its negative control stops interfering, run by check.sh), `gate-summary.py` (turns a gate.sh log into the markdown table CI posts as the job summary and sticky PR comment), `shot-spec.sh` (authors a design's `shots.conf`/`lifestyle.conf` from a PM's art-direction brief — named views and colors instead of camera tuples and hex, the freeze and disclosure standards enforced mechanically; the mechanics behind `/art-direction`, with a `--selftest` run by check.sh), `preview-budget.sh` (sourced helper defining the GIF and product-shot size budgets) and `regen-stamp.sh` (prints a design's regeneration input fingerprint; CI's regen job compares it against the committed `designs/<name>/previews/.regen-stamp` and skips re-rendering a design whose inputs have not moved). `docs-check.sh` asserts this bullet names every file in `scripts/`, so keep it exhaustive.
 - `styles/<name>/` — a **design language** lifted from a reference model, so a user can choose how a new design looks instead of getting whatever the session felt like. `STYLE.md` is the spec a modelling session reads; `style.json` is the hand-edited source of truth (measured evidence, tokens, conformance rules); `style.scad` and STYLE.md's tables are **generated** from it (`stylelift sync`); `swatch.scad` is a small part written in the style that the gate holds to the style's own rules. Designs opt in with `designs/<name>/style.conf` naming the style, and build from the tokens: `include <styles/<name>/style.scad>`. `styles/README.md` is the catalog — docs-check.sh requires every pack to be listed. Never hand-edit `style.scad`; `style-check.sh` fails on drift.
-- `templates/design.scad` — starting point for new designs; demonstrates the parameter conventions below. `templates/README.md` and `templates/PM.md` are the product-page and product-charter starting points.
+- `templates/design.scad` — starting point for new designs; demonstrates the parameter conventions below. `templates/README.md` and `templates/PM.md` are the product-page and product-charter starting points. `templates/design-brief.md` is the design-brief format `/intake` files as an issue and the `.github/ISSUE_TEMPLATE/design-brief.yml` issue form mirrors — its section headings and the form's field labels must stay identical.
 - `tools/printcheck/` — the STL printability analyzer gate.sh runs on every rendered part; has its own README and pytest suite (CI runs it when the tool changes).
 - `tools/photoshot/` — the STL → Blender/Cycles studio renderer behind `product-shot.sh`; has its own README. CI's `regen` job is what actually runs it — it installs `bpy` only when a design in the blast radius ships a `shots.conf` — and commits the PNGs. Installing `bpy` locally is optional, for judging framing before you push.
 - `tools/lineage/` — the resolver behind `scripts/lineage.sh`: parses `derives.conf`, answers who derives from whom, and validates each record against the include lines the entry `.scad` actually carries. Has its own README and pytest suite (CI runs it when the tool changes). Stdlib-only on purpose — CI's classifier job calls it to decide what to gate, before anything is installed. It never renders: proving an override took needs a mesh, so that half lives in `gate.sh`.
 - `tools/stylelift/` — measures how a mesh is *shaped* (edge softness, the rounding vocabulary, chamfer grammar, feature sizes, proportion) and turns that into a style pack; `stylelift check` holds a new part to one. Has its own README and pytest suite (CI runs it when the tool changes). It deliberately does not judge printability — that stays printcheck's job.
+- `tools/ci-gates/` — the **Smart CI** gate selector: the layer above the `changes` classifier. The classifier picks which *existing* gates run; this proposes gates that don't exist yet. From a PR's changed files it detects candidate checks (a new top-level dir the classifier doesn't cover, a shell script with no shellcheck gate, a workflow with no actionlint gate), runs the ones already approved, and posts a sticky comment proposing the rest, each crossable with one PR comment — `ci-gate approve <id>`, posted with the leading slash. The decision lives in `.github/ci-gates/registry.conf` — a committed, reproducible source of truth read every run — while GitHub supplies only the interaction and the authorization. Stdlib-only (CI runs it before installing anything, like `tools/lineage`), with its own README and pytest suite of negative controls. See "Smart CI" below.
 - `site/` — the static **product site** built from what the repo already commits (product pages, previews, product shots, style specs) and deployed on Vercel; `vercel.json` at the repo root pins the install and build commands so the deploy runs the same generator `./scripts/site.sh` does. It publishes no content of its own, and a local reference that does not resolve fails the build rather than 404ing in production. See its [README](site/README.md).
 - `docs/` — repo-level research and reference notes: `oss-libraries-research.md` (the OSS-library evaluation behind the adoption backlog), `vercel-hosted-tooling.md` (the evaluation behind the site) and `derivative-designs.md` (what a derivative is here, the four silent failure modes of OpenSCAD's override mechanism with the measurements behind them, and what each gate proves) — read that last one before building on another design.
 - `audits/` — preserved before/after render comparisons from design review rounds (e.g. `audits/pr3/`). Review history: keep it, never treat it as disposable scratch.

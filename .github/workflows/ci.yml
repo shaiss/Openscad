@@ -60,6 +60,7 @@ jobs:
       printcheck_tests: ${{ steps.filter.outputs.printcheck_tests }}
       stylelift_tests: ${{ steps.filter.outputs.stylelift_tests }}
       lineage_tests: ${{ steps.filter.outputs.lineage_tests }}
+      ci_gates_tests: ${{ steps.filter.outputs.ci_gates_tests }}
       styles: ${{ steps.filter.outputs.styles }}
       gate: ${{ steps.filter.outputs.gate }}
       gate_designs: ${{ steps.filter.outputs.gate_designs }}
@@ -77,12 +78,14 @@ jobs:
         run: |
           set -euo pipefail
           scad=false; ptests=false; stests=false; ltests=false; styles=false
+          cgtests=false
           gate=false; designs=""
           regen=false; regen_designs=""
           if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
             # Default-branch push: run everything, gate and regenerate every
             # design.
             scad=true; ptests=true; stests=true; ltests=true; styles=true
+            cgtests=true
             gate=true; designs=ALL
             regen=true; regen_designs=ALL
           else
@@ -209,6 +212,13 @@ jobs:
               esac
               case "$f" in
                 tools/lineage/*|.github/workflows/ci.yml) ltests=true ;;
+              esac
+              case "$f" in
+                # The smart-ci selector's own unit tests. The registry is data
+                # the selector reads, so a registry edit re-runs them too — it
+                # is the file a malformed stanza would break.
+                tools/ci-gates/*|.github/ci-gates/*|\
+                .github/workflows/ci.yml) cgtests=true ;;
               esac
               case "$f" in
                 # tools/lineage is here and tools/printcheck is not:
@@ -339,6 +349,7 @@ jobs:
             echo "printcheck_tests=$ptests"
             echo "stylelift_tests=$stests"
             echo "lineage_tests=$ltests"
+            echo "ci_gates_tests=$cgtests"
             echo "styles=$styles"
             echo "gate=$gate"
             echo "gate_designs=$designs"
@@ -845,6 +856,27 @@ jobs:
         run: pip install -e 'tools/lineage[test]'
       - name: Run tests
         run: python -m pytest tools/lineage/tests -q
+
+  ci-gates-tests:
+    name: smart-ci selector unit tests
+    needs: changes
+    if: needs.changes.outputs.ci_gates_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install ci-gates
+        # Same contract as lineage above: the [test] extra pulls pytest and
+        # nothing else, because the smart-ci job runs the selector (stdlib
+        # only) before anything is installed.
+        run: pip install -e 'tools/ci-gates[test]'
+      - name: Run tests
+        run: python -m pytest tools/ci-gates/tests -q
 
   style-gate:
     # Every style pack must stay internally consistent (style.scad and
@@ -1442,6 +1474,116 @@ jobs:
               });
             }
 
+  # Smart CI, layer two. The `changes` classifier above selects which of the
+  # EXISTING gates run. This job selects gates that do NOT exist yet: it reads
+  # the PR's changed files, asks the registry (.github/ci-gates/registry.conf)
+  # which candidate gates apply, RUNS the ones already approved, and posts a
+  # sticky comment proposing the rest with the one command each takes to cross.
+  #
+  # Runs on every PR and every push, with no `changes` gate and no early
+  # skip, for the required-context reason spelled out for ci-ok: a job that
+  # can be skipped cannot satisfy branch protection. It is cheap by
+  # construction — stdlib-only selector, and by default the only active gate
+  # is the advisory classifier-coverage detector (pure Python, never blocks).
+  # A gating gate runs only once a human has crossed it (state=on), so this
+  # job cannot start failing PRs on its own.
+  smart-ci:
+    name: Smart CI gate selection
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # upsert the sticky selection comment
+    env:
+      # The selector is stdlib-only precisely so it runs before any install —
+      # point Python at src/ instead of pip-installing it, exactly as the
+      # classifier calls tools/lineage uninstalled.
+      PYTHONPATH: ${{ github.workspace }}/tools/ci-gates/src
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # need the merge base (PR) / previous commit (push)
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Compute the changed-file list
+        # Same merge-base diff the classifier and geo-diff use on a PR; on a
+        # push, the range the push actually moved. Written to changed.txt for
+        # the selector and for the gates it runs (exported as CI_GATES_CHANGED).
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = pull_request ]; then
+            git diff --name-only "origin/${BASE_REF}...HEAD" > changed.txt
+          elif [ -n "${BEFORE:-}" ] \
+               && [ "$BEFORE" != 0000000000000000000000000000000000000000 ] \
+               && git cat-file -e "$BEFORE" 2>/dev/null; then
+            git diff --name-only "${BEFORE}...${GITHUB_SHA}" > changed.txt
+          else
+            # New branch or unreachable before-sha: fall back to the last commit.
+            git diff --name-only 'HEAD~1...HEAD' > changed.txt || : > changed.txt
+          fi
+          echo "changed files:"; sed 's/^/  /' changed.txt
+      - name: Select gates
+        run: |
+          python -m ci_gates select \
+            --changed-from changed.txt \
+            --sha "$(git rev-parse --short HEAD)" \
+            --plan plan.json --comment comment.md
+      - name: Upsert sticky selection comment
+        # Same-repo PRs only (fork tokens are read-only), and the same
+        # supersede-guarded upsert render-gate uses. Posted BEFORE the gates
+        # run, so the selection is reported whether or not a gating gate then
+        # fails.
+        if: >-
+          !cancelled() && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- smart-ci-gate-selection -->';
+            let body;
+            try {
+              body = fs.readFileSync('comment.md', 'utf8');
+            } catch {
+              body = `${marker}\n_smart-ci produced no selection (job failed before select ran)_`;
+            }
+            const built = context.payload.pull_request.head.sha;
+            const stillCurrent = async () => {
+              const { data: pr } = await github.rest.pulls.get({
+                ...context.repo, pull_number: context.issue.number,
+              });
+              if (pr.head.sha === built) return true;
+              core.info(`superseded: PR head is ${pr.head.sha.slice(0, 7)}, `
+                + `this run built ${built.slice(0, 7)} — leaving the comment alone`);
+              return false;
+            };
+            if (!await stillCurrent()) return;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo, issue_number: context.issue.number, per_page: 100,
+            });
+            const prev = comments.find(c => c.body && c.body.startsWith(marker));
+            if (!await stillCurrent()) return;
+            if (prev) {
+              await github.rest.issues.updateComment({
+                ...context.repo, comment_id: prev.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: context.issue.number, body,
+              });
+            }
+      - name: Run the approved gates
+        # Blocking (gating, state=on) failures fail this job; advisory gates
+        # only warn. run-plan runs each gate's own `setup` first, so a gate
+        # that needs a tool the runner lacks installs it on demand.
+        run: |
+          python -m ci_gates run-plan plan.json --changed-from changed.txt
+
   # Single summary context, so branch protection can require ONE check
   # ("CI OK") instead of matching five job names. The point: a required
   # context must actually RUN to satisfy protection (PR #50), which is why
@@ -1473,12 +1615,14 @@ jobs:
       - printcheck-tests
       - stylelift-tests
       - lineage-tests
+      - ci-gates-tests
       - style-gate
       - design-docs
       - site-build
       - scad-check
       - scad-check-nightly
       - render-gate
+      - smart-ci
     # !cancelled(): run and report even when a needed job failed or was
     # skipped — the default would skip this job the moment any dependency
     # was, which as a required context is exactly the PR #50 trap.
