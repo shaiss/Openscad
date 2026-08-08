@@ -170,6 +170,15 @@ if ! ./scripts/mate-check.sh; then
   fail=1
 fi
 
+# And this proves the printer.conf mechanism still resolves the default when
+# nothing is measured and the profile's value when one is — reaching the
+# exported geometry, not just an echo. Same family as the two checks above: a
+# thing a demo render cannot measure about itself (lib/printer-conf.scad, #101).
+echo "-- printer-conf check: scripts/printer-conf-check.sh"
+if ! ./scripts/printer-conf-check.sh; then
+  fail=1
+fi
+
 # Lineage check: derives.conf parses, its parents exist, the declared parent
 # order still matches the entry .scad's include order, and every diamond is
 # explicitly asserted. All static, all milliseconds, so it runs unconditionally
@@ -209,6 +218,15 @@ fi
 # leave every other check green — and it is fast (no render), so it runs here.
 echo "-- shot-spec selftest: scripts/shot-spec.sh --selftest"
 if ! ./scripts/shot-spec.sh --selftest; then
+  fail=1
+fi
+
+# field-test.sh is the tested core of the "Log a print result" Action
+# (issue #101): its --selftest proves the FIELD-TEST entry formatting, the
+# section-creation, and the design-name/required-field refusals still hold.
+# Fast (no render), so it runs here with the other negative-test suites.
+echo "-- field-test selftest: scripts/field-test.sh --selftest"
+if ! ./scripts/field-test.sh --selftest; then
   fail=1
 fi
 
