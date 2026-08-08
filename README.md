@@ -184,6 +184,10 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
 - `tools/lineage/` — the lineage resolver: reads each design's
   `derives.conf` and its include lines, and answers who derives from whom —
   see its [README](tools/lineage/README.md)
+- `tools/backlog-burn/` — the selection engine behind the scheduled backlog
+  burn (`.github/workflows/backlog-burn.yml`): picks one unclaimed,
+  `autonomy-ok`-labelled issue for a nightly unattended `/ship-issue` run —
+  see its [README](tools/backlog-burn/README.md)
 - `tools/stylelift/` — measures how a model is *shaped* (edge treatment,
   rounding vocabulary, proportion) and turns it into a checkable style
   spec — see its [README](tools/stylelift/README.md)

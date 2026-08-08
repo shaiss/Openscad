@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "backlog-burn"
+version = "0.1.0"
+description = "Pick one unclaimed, autonomy-eligible issue for a scheduled unattended /ship-issue run"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "CC-BY-4.0" }
+# Deliberately empty, and it must stay that way: the selection tool runs in a
+# scheduled CI job on the system Python, and the live read is plain urllib.
+# A single third-party import would mean a pip-install step in front of the
+# routine that decides what to ship — the same rule tools/lineage keeps.
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+backlog-burn = "backlog_burn.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

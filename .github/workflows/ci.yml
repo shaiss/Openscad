@@ -60,6 +60,7 @@ jobs:
       printcheck_tests: ${{ steps.filter.outputs.printcheck_tests }}
       stylelift_tests: ${{ steps.filter.outputs.stylelift_tests }}
       lineage_tests: ${{ steps.filter.outputs.lineage_tests }}
+      backlog_burn_tests: ${{ steps.filter.outputs.backlog_burn_tests }}
       ci_gates_tests: ${{ steps.filter.outputs.ci_gates_tests }}
       styles: ${{ steps.filter.outputs.styles }}
       gate: ${{ steps.filter.outputs.gate }}
@@ -78,6 +79,7 @@ jobs:
         run: |
           set -euo pipefail
           scad=false; ptests=false; stests=false; ltests=false; styles=false
+          bbtests=false
           cgtests=false
           gate=false; designs=""
           regen=false; regen_designs=""
@@ -85,6 +87,7 @@ jobs:
             # Default-branch push: run everything, gate and regenerate every
             # design.
             scad=true; ptests=true; stests=true; ltests=true; styles=true
+            bbtests=true
             cgtests=true
             gate=true; designs=ALL
             regen=true; regen_designs=ALL
@@ -155,8 +158,13 @@ jobs:
                 # run the job that runs it — without this rule the lint would
                 # only fire one push late, on the next full-catalog run
                 # (ci.yml matched the geo tier above already).
+                # tools/backlog-burn is soft for the same reason as
+                # tools/photoshot: it selects issues, so it cannot move a mesh
+                # or a gate verdict, but a PR touching only it must still run
+                # the required geometry contexts to be mergeable at all (the
+                # PR #50 trap) — and its own pytest wiring below matches on it.
                 scripts/*|site/*|vercel.json|tools/photoshot/*|\
-                .github/workflows/*)
+                tools/backlog-burn/*|.github/workflows/*)
                   soft_infra=true ;;
               esac
               case "$f" in
@@ -214,6 +222,9 @@ jobs:
                 tools/lineage/*|.github/workflows/ci.yml) ltests=true ;;
               esac
               case "$f" in
+                tools/backlog-burn/*|.github/workflows/ci.yml) bbtests=true ;;
+              esac
+              case "$f" in
                 # The smart-ci selector's own unit tests. The registry is data
                 # the selector reads, so a registry edit re-runs them too — it
                 # is the file a malformed stanza would break.
@@ -237,7 +248,7 @@ jobs:
                 # all.
                 designs/*|lib/*|templates/*|scripts/*|styles/*|site/*|\
                 vercel.json|tools/lineage/*|tools/photoshot/*|\
-                .github/workflows/*|.github/actions/*)
+                tools/backlog-burn/*|.github/workflows/*|.github/actions/*)
                   scad=true ;;
               esac
             done
@@ -349,6 +360,7 @@ jobs:
             echo "printcheck_tests=$ptests"
             echo "stylelift_tests=$stests"
             echo "lineage_tests=$ltests"
+            echo "backlog_burn_tests=$bbtests"
             echo "ci_gates_tests=$cgtests"
             echo "styles=$styles"
             echo "gate=$gate"
@@ -856,6 +868,26 @@ jobs:
         run: pip install -e 'tools/lineage[test]'
       - name: Run tests
         run: python -m pytest tools/lineage/tests -q
+
+  backlog-burn-tests:
+    name: backlog-burn unit tests
+    needs: changes
+    if: needs.changes.outputs.backlog_burn_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install backlog-burn
+        # Stdlib-only like lineage — the [test] extra is just pytest, since
+        # the scheduled routine runs on the system Python with no install step.
+        run: pip install -e 'tools/backlog-burn[test]'
+      - name: Run tests
+        run: python -m pytest tools/backlog-burn/tests -q
 
   ci-gates-tests:
     name: smart-ci selector unit tests
@@ -1615,6 +1647,7 @@ jobs:
       - printcheck-tests
       - stylelift-tests
       - lineage-tests
+      - backlog-burn-tests
       - ci-gates-tests
       - style-gate
       - design-docs
