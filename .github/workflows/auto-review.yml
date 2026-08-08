@@ -1,0 +1,275 @@
+name: Auto design review (Jane / Drik / coach)
+
+# Fires once per review round — on PR open, ready-for-review, or a subsequent
+# push that materially changes design files — and runs the three reviewer
+# personas (/jane-review, /drik-review, /design-coach) as unattended Claude
+# sessions.
+#
+# Scope guard (prevents spurious runs on backend/infra-only PRs):
+#   * The `design-changes` job checks whether the PR diff contains any file
+#     under `designs/`. If it does not, every downstream review job is skipped.
+#   * The `no-auto-review` label suppresses the whole workflow for trivial or
+#     WIP PRs a human has already decided don't need it.
+#
+# Round deduplication:
+#   * `opened` and `ready_for_review` always fire (first-round review).
+#   * `synchronize` (new push) only fires when one or more design files changed
+#     since the last reviewed commit; pure fixup pushes that touch only docs or
+#     CI config are ignored.  The "last reviewed commit" is tracked by a sticky
+#     comment the first round leaves on the PR (see `review-stamp` step).
+#   * `/design-coach` uses its own COACH-LOCK comment marker (documented in the
+#     skill) to prevent a second coach session on the same PR regardless of how
+#     many times this workflow fires.
+#
+# Safety properties mirror backlog-burn.yml:
+#   * Off without the CLAUDE_CODE_OAUTH_TOKEN secret — the jobs degrade to a
+#     ::notice:: log and exit 0 so the PR is not blocked.
+#   * The `no-auto-review` label is the human escape hatch; add it to any PR
+#     that should not be auto-reviewed.
+#
+# Required secrets:
+#   CLAUDE_CODE_OAUTH_TOKEN — the same OAuth token used by backlog-burn and
+#   ship-issue.  Without it the review sessions are skipped (graceful
+#   degradation), never fail-hard.
+
+on:
+  pull_request:
+    types:
+      - opened
+      - ready_for_review
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+# Never run two review rounds on the same PR concurrently; if a new push lands
+# while review is in flight, wait for it to finish — don't cancel.
+concurrency:
+  group: auto-review-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 1. Scope guard: decide whether any design file changed in this PR.
+  #    All downstream jobs gate on the `designs_changed` output.
+  # ─────────────────────────────────────────────────────────────────────────────
+  design-changes:
+    name: Check for design file changes
+    runs-on: ubuntu-latest
+    # Honour the opt-out label before doing any work.
+    if: >-
+      !contains(github.event.pull_request.labels.*.name, 'no-auto-review')
+      && !github.event.pull_request.draft
+    outputs:
+      designs_changed: ${{ steps.check.outputs.designs_changed }}
+      changed_designs: ${{ steps.check.outputs.changed_designs }}
+      is_new_round: ${{ steps.round.outputs.is_new_round }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Detect design file changes
+        id: check
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+          designs_changed=false
+          changed_designs=""
+          if echo "$changed" | grep -q '^designs/'; then
+            designs_changed=true
+            changed_designs="$(echo "$changed" | grep '^designs/' \
+              | sed 's|^designs/||' | cut -d/ -f1 | sort -u | tr '\n' ' ' | sed 's/ $//')"
+          fi
+          echo "designs_changed=$designs_changed" >> "$GITHUB_OUTPUT"
+          echo "changed_designs=$changed_designs" >> "$GITHUB_OUTPUT"
+          echo "PR touches designs: $designs_changed"
+          [ -n "$changed_designs" ] && echo "Designs: $changed_designs"
+
+      # For `synchronize` events we only want to fire a new review round when
+      # design files actually changed since the last round, not on every push.
+      # We track rounds with a sticky comment whose body starts with
+      # AUTO_REVIEW_STAMP followed by the last-reviewed HEAD SHA.  If that SHA
+      # matches HEAD we skip the round (already reviewed this commit).
+      - name: Check whether this is a new round
+        id: round
+        if: steps.check.outputs.designs_changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          set -euo pipefail
+          # opened / ready_for_review / reopened → always a new round
+          if [[ "$ACTION" =~ ^(opened|ready_for_review|reopened)$ ]]; then
+            echo "is_new_round=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # synchronize → new round only when design files changed since the
+          # last stamp.  Find the stamp comment and extract the stamped SHA.
+          stamp_sha="$(gh api \
+            "/repos/$GITHUB_REPOSITORY/issues/${PR_NUMBER}/comments" \
+            --jq '[.[] | select(.body | startswith("<!-- AUTO_REVIEW_STAMP"))] | last | .body' \
+            2>/dev/null \
+            | grep -oP '(?<=sha=)[0-9a-f]{40}' || true)"
+          if [ -z "$stamp_sha" ]; then
+            echo "is_new_round=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Compare design files between stamp_sha and HEAD
+          if git diff --name-only "${stamp_sha}..HEAD" | grep -q '^designs/'; then
+            echo "is_new_round=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_new_round=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::no design files changed since last review round — skipping"
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 2. Jane review (printability)
+  # ─────────────────────────────────────────────────────────────────────────────
+  jane-review:
+    name: Jane review (printability)
+    needs: design-changes
+    if: >-
+      needs.design-changes.outputs.designs_changed == 'true'
+      && needs.design-changes.outputs.is_new_round == 'true'
+    runs-on: ubuntu-latest
+    env:
+      HAS_CLAUDE_SECRET: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Run /jane-review (unattended)
+        if: env.HAS_CLAUDE_SECRET == 'true'
+        uses: anthropics/claude-code-action@7ff6806c8ebd129a7043b947af920074d3819dc8  # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: >-
+            /jane-review ${{ github.event.pull_request.number }}
+
+      - name: Explain skipped run
+        if: env.HAS_CLAUDE_SECRET != 'true'
+        run: |
+          echo "::notice::CLAUDE_CODE_OAUTH_TOKEN is not set — skipping /jane-review for PR #${{ github.event.pull_request.number }}"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3. Drik review (fitness-for-purpose / customer)
+  # ─────────────────────────────────────────────────────────────────────────────
+  drik-review:
+    name: Drik review (fitness for purpose)
+    needs: design-changes
+    if: >-
+      needs.design-changes.outputs.designs_changed == 'true'
+      && needs.design-changes.outputs.is_new_round == 'true'
+    runs-on: ubuntu-latest
+    env:
+      HAS_CLAUDE_SECRET: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Run /drik-review (unattended)
+        if: env.HAS_CLAUDE_SECRET == 'true'
+        uses: anthropics/claude-code-action@7ff6806c8ebd129a7043b947af920074d3819dc8  # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: >-
+            /drik-review ${{ github.event.pull_request.number }}
+
+      - name: Explain skipped run
+        if: env.HAS_CLAUDE_SECRET != 'true'
+        run: |
+          echo "::notice::CLAUDE_CODE_OAUTH_TOKEN is not set — skipping /drik-review for PR #${{ github.event.pull_request.number }}"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 4. Design coach (verification-first rounds until merge)
+  #    Runs after Jane and Drik so it can synthesise their findings.
+  #    Fires only on opened/ready_for_review — subsequent rounds are driven by
+  #    the coach's own COACH-LOCK loop inside the skill.
+  # ─────────────────────────────────────────────────────────────────────────────
+  design-coach:
+    name: Design coach
+    needs: [design-changes, jane-review, drik-review]
+    if: >-
+      needs.design-changes.outputs.designs_changed == 'true'
+      && (github.event.action == 'opened'
+          || github.event.action == 'ready_for_review'
+          || github.event.action == 'reopened')
+    runs-on: ubuntu-latest
+    env:
+      HAS_CLAUDE_SECRET: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Run /design-coach (unattended)
+        if: env.HAS_CLAUDE_SECRET == 'true'
+        uses: anthropics/claude-code-action@7ff6806c8ebd129a7043b947af920074d3819dc8  # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: >-
+            /design-coach ${{ github.event.pull_request.number }}
+
+      - name: Explain skipped run
+        if: env.HAS_CLAUDE_SECRET != 'true'
+        run: |
+          echo "::notice::CLAUDE_CODE_OAUTH_TOKEN is not set — skipping /design-coach for PR #${{ github.event.pull_request.number }}"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 5. Stamp this review round so future synchronize events can tell
+  #    whether any design files changed since we last reviewed.
+  # ─────────────────────────────────────────────────────────────────────────────
+  review-stamp:
+    name: Stamp review round
+    needs: [design-changes, jane-review, drik-review, design-coach]
+    # Run whenever we did a new round (design-coach is conditional so use
+    # always() + check the designs_changed output ourselves).
+    if: >-
+      always()
+      && needs.design-changes.outputs.designs_changed == 'true'
+      && needs.design-changes.outputs.is_new_round == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post / update stamp comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DESIGNS: ${{ needs.design-changes.outputs.changed_designs }}
+        run: |
+          set -euo pipefail
+          body="<!-- AUTO_REVIEW_STAMP sha=${HEAD_SHA} -->
+          🔍 **Auto-review round complete** — reviewed commit \`${HEAD_SHA:0:8}\` (designs: \`${DESIGNS}\`).
+          A new round fires automatically on the next push that changes a \`designs/\` file.
+          Add the \`no-auto-review\` label to suppress future rounds."
+
+          # Find an existing stamp comment to update rather than accumulating
+          existing_id="$(gh api \
+            "/repos/$GITHUB_REPOSITORY/issues/${PR_NUMBER}/comments" \
+            --jq '[.[] | select(.body | contains("AUTO_REVIEW_STAMP"))] | last | .id' \
+            2>/dev/null || true)"
+
+          if [ -n "$existing_id" ] && [ "$existing_id" != "null" ]; then
+            gh api --method PATCH \
+              "/repos/$GITHUB_REPOSITORY/issues/comments/${existing_id}" \
+              -f body="$body"
+          else
+            gh api --method POST \
+              "/repos/$GITHUB_REPOSITORY/issues/${PR_NUMBER}/comments" \
+              -f body="$body"
+          fi
