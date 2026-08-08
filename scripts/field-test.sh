@@ -37,18 +37,38 @@ format_entry() {  # date printer parts settings result deviations carry
   printf -- '- **Carry forward:** %s\n' "${7:-none}"
 }
 
-# Append an entry to a NOTES.md, creating the section header once if needed.
+# Append an entry to a NOTES.md. When the "## Field test log" section is absent,
+# create it at the end of the file. When it already exists, insert the entry at
+# the END of that section — immediately before the next level-2 heading, or at
+# EOF if the section is last — so an entry is never misfiled outside the section
+# when the log is not the last thing in the file (Copilot review on #110). The
+# convention still asks for the section to be kept last; this just stops the
+# tool from placing an entry in the wrong place when it is not.
 append_entry() {  # notes date printer parts settings result deviations carry
   local notes="$1"; shift
   [ -f "$notes" ] || die "no such NOTES.md: $notes"
+  local entry; entry="$(format_entry "$@")"
+
   if ! grep -qF '## Field test log' "$notes"; then
     {
       printf '\n## Field test log\n\n'
       printf '_Real prints of this design, newest at the bottom. See '
       printf 'templates/FIELD-TEST.md and docs/print-feedback.md._\n'
+      printf '\n%s\n' "$entry"
     } >> "$notes"
+    return
   fi
-  printf '\n%s\n' "$(format_entry "$@")" >> "$notes"
+
+  # Insert into the existing section. A level-3 "### " entry header never
+  # matches "^## ", so only a real level-2 heading after the log ends it.
+  local tmp; tmp="$(mktemp)"
+  awk -v entry="$entry" '
+    /^## Field test log[[:space:]]*$/ { print; in_sec=1; next }
+    in_sec && /^## / && !inserted { printf "\n%s\n\n", entry; inserted=1; in_sec=0 }
+    { print }
+    END { if (in_sec && !inserted) printf "\n%s\n", entry }
+  ' "$notes" > "$tmp"
+  mv "$tmp" "$notes"
 }
 
 # Validate a design name (path safety) and that it exists.
@@ -93,6 +113,15 @@ selftest() {
   # 5. A nonexistent design is refused.
   rc=0; "$SELF" --design no-such-design-xyz --printer p --result r >/dev/null 2>&1 || rc=$?
   [ "$rc" -ne 0 ] || die "selftest: nonexistent design was accepted"
+
+  # 6. When the log is NOT the last section, the entry lands INSIDE it (before
+  #    the following heading), not at EOF (Copilot review on #110).
+  printf '# d\n\n## Field test log\n\n_intro_\n\n### 2026-01-01 — old\n\n## Later section\n\ntail\n' > "$notes"
+  "$SELF" --notes-file "$notes" --printer "Ender 3" --result "ok" --date 2026-02-02 >/dev/null \
+    || die "selftest: append into a non-last section failed"
+  awk '/^### 2026-02-02 — Ender 3/{seen=1} /^## Later section/{if(!seen) exit 1}' "$notes" \
+    || die "selftest: entry was placed after a later section instead of inside the log"
+  grep -qF 'tail' "$notes" || die "selftest: content after the section was lost"
 
   echo "ok    field-test.sh selftest passed"
 }
