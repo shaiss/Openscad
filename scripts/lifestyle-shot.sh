@@ -70,6 +70,42 @@ sanitize_url() {
   printf '%s' "${scheme}://${authority##*@}${path}"       # drop any userinfo
 }
 
+# Log-safe one-line summary of an error-response body. Structured-first: a
+# JSON body — the shape the Z.AI CDN actually returns on the issue-#128
+# failure, e.g. {"RetCode":-148654, "ErrMsg":"file not exist"} — yields ONLY
+# a whitelist of non-sensitive fields, so no unexpected key (an echoed signed
+# URL, an S3-style SignatureProvided) can carry a credential into a public
+# log. Anything else falls back to a 300-byte snippet with non-printables
+# dotted, query strings inside the body stripped (an echoed request URL is
+# the classic leak), and token-length runs masked.
+body_summary() {
+  local f="$1" out
+  if out="$(python3 - "$f" <<'PY' 2>/dev/null
+import json, sys
+obj = json.load(open(sys.argv[1], "rb"))
+if not isinstance(obj, dict): raise SystemExit(1)
+parts = []
+for k in ("RetCode", "ErrMsg", "code", "message", "msg", "error", "status"):
+    v = obj.get(k)
+    if isinstance(v, (str, int, float, bool)):
+        parts.append("%s=%s" % (k, str(v)[:120]))
+    elif isinstance(v, dict):
+        for k2 in ("code", "message", "msg"):
+            v2 = v.get(k2)
+            if isinstance(v2, (str, int, float, bool)):
+                parts.append("%s.%s=%s" % (k, k2, str(v2)[:120]))
+if not parts: raise SystemExit(1)
+print("; ".join(parts))
+PY
+)"; then
+    printf '%s' "$out"
+    return
+  fi
+  head -c 300 "$f" | tr -c '[:print:]' '.' \
+    | sed -E -e 's|\?[^[:space:]"<>]*|?[query-stripped]|g' \
+             -e 's|[A-Za-z0-9+/=_-]{40,}|[masked]|g'
+}
+
 # Shrink an image (any format) to a stripped PNG that fits MAX_SHOT_BYTES,
 # stepping the width down until it does. Photoreal 1280-wide PNGs can blow the
 # 3 MiB budget, so this is not optional. The ">" on -resize means "only shrink,
@@ -201,18 +237,30 @@ except Exception:
       # the TOCTOU property: each connection is pinned to an address vetted in
       # that same attempt, never a stale one.
       #
-      # Policy: 404/408/425/429/5xx and curl transport errors retry — 5
-      # attempts with 3/6/12/24s sleeps between them (45s of sleep total,
-      # bounded well inside the workflow's 20-minute timeout even after the
-      # ~2-minute generation call). A 3xx is refused immediately and
+      # Policy: 404/408/425/429/5xx and transient curl transport errors retry
+      # — 5 attempts with 3/6/12/24s sleeps between them, under a 900-second
+      # elapsed-time deadline that also clamps the final attempt's --max-time.
+      # The sleeps alone are trivial, but five attempts against a CDN that
+      # dribbles bytes for the full per-attempt --max-time would outlive the
+      # workflow's 20-minute timeout and die with no final diagnostic — the
+      # deadline guarantees the loop always fails inside the job with its
+      # per-attempt lines printed. A 3xx is refused immediately and
       # permanently — following or retrying a redirect is the SSRF hole
       # --max-redirs 0 exists to close. Any other 4xx (401/403 — a bad or
       # expired credential) fails immediately with diagnostics, because
-      # retrying an auth failure only burns the clock.
+      # retrying an auth failure only burns the clock; deterministic curl
+      # errors (unsupported scheme, TLS verification, --max-filesize) fail
+      # immediately for the same reason.
+      dl_deadline=$(( SECONDS + 900 ))
       dl_ok=0
       for dl_attempt in 1 2 3 4 5; do
         if (( dl_attempt > 1 )); then
           sleep $(( 3 * (1 << (dl_attempt - 2)) ))   # 3, 6, 12, 24
+        fi
+        dl_left=$(( dl_deadline - SECONDS ))
+        if (( dl_left <= 0 )); then
+          echo "image download attempt ${dl_attempt}/5: skipped — 900s retry time budget exhausted" >&2
+          break
         fi
         # Resolve + validate FRESH each attempt and capture the vetted IP, so
         # curl connects to that exact address via --resolve rather than doing
@@ -253,7 +301,7 @@ PY
         # before it hits ImageMagick. No Authorization header here, ever: the
         # signed URL is the credential, and the API key must not be handed to
         # a third-party CDN.
-        dl_flags=(--proto '=https' --max-redirs 0 --connect-timeout 15 --max-time 300 --max-filesize 20000000)
+        dl_flags=(--proto '=https' --max-redirs 0 --connect-timeout 15 --max-time "$(( dl_left < 300 ? dl_left : 300 ))" --max-filesize 20000000)
         resolve_args=()
         if [[ "${vet%%$'\n'*}" == "name" ]]; then
           resolve_host="${host#[}"; resolve_host="${resolve_host%]}"
@@ -270,6 +318,13 @@ PY
           -o "$tmp/gen.img" -w '%{http_code}\t%{content_type}' "$value")" || curl_rc=$?
         if (( curl_rc != 0 )); then
           echo "image download attempt ${dl_attempt}/5: curl transport error ${curl_rc} for $(sanitize_url "$value")" >&2
+          case "$curl_rc" in
+            # Deterministic, not transient: an unsupported/refused scheme (1),
+            # a TLS certificate that does not verify (60 — a security stop,
+            # not a blip), or a payload over --max-filesize (63) fails
+            # identically on every attempt. Retrying only burns the clock.
+            1|60|63) echo "image download failed (curl error ${curl_rc} is not retryable)" >&2; exit 1 ;;
+          esac
           continue
         fi
         dl_code="${dl_meta%%$'\t'*}"
@@ -279,15 +334,11 @@ PY
           break
         fi
         # Failed attempt: log the status, the sanitized URL (scheme + host +
-        # path — never the query string), the Content-Type, and the first
-        # ~300 bytes of the body (non-printables dotted so a binary partial
-        # can't garble the log) — enough for the CI log to name the cause.
-        # Token-length base64-ish runs in the body are masked: an S3-style
-        # SignatureDoesNotMatch error echoes the request's own signature back
-        # (SignatureProvided/StringToSign), and that must not land in a public
-        # log; short cause codes (NoSuchKey, AccessDenied) stay readable.
+        # path — never the query string), the Content-Type, and a log-safe
+        # structured summary of the body (see body_summary above) — enough for
+        # the CI log to name the cause without echoing credential-shaped bytes.
         echo "image download attempt ${dl_attempt}/5: HTTP ${dl_code} from $(sanitize_url "$value") (Content-Type: ${dl_ctype:-unknown})" >&2
-        echo "  response body (first 300 bytes): $(head -c 300 "$tmp/gen.img" | tr -c '[:print:]' '.' | sed -E 's|[A-Za-z0-9+/=_-]{40,}|[masked]|g')" >&2
+        echo "  response body: $(body_summary "$tmp/gen.img")" >&2
         if [[ "$dl_code" == 3?? ]]; then
           echo "refusing image URL: it returned a redirect (HTTP ${dl_code}); not following it (SSRF guard, never retried)" >&2
           exit 1
@@ -299,7 +350,7 @@ PY
         esac
       done
       if (( ! dl_ok )); then
-        echo "image download failed after 5 attempts — the per-attempt lines above carry the diagnosis (issue #128)" >&2
+        echo "image download failed (${dl_attempt} attempt(s) made) — the per-attempt lines above carry the diagnosis (issue #128)" >&2
         exit 1
       fi
     else
