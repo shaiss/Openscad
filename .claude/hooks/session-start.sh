@@ -3,7 +3,10 @@
 # The repo needs: openscad (renderer), xvfb (headless display), imagemagick
 # (montage, for multi-view preview sheets), prusa-slicer + printcheck (so
 # ./scripts/gate.sh --slice — the exact gate CI runs — works locally before
-# a push). Idempotent — exits fast when everything is already present
+# a push), plus ffmpeg + gifsicle (the clip pipeline behind
+# scripts/lifestyle-clip.sh; gifsicle also closes the local/CI GIF-size
+# asymmetry — animate.sh only shrinks when it is present, and CI always has
+# it). Idempotent — exits fast when everything is already present
 # (e.g. cached container state).
 #
 # bpy (Blender as a Python module, behind ./scripts/product-shot.sh) is NOT
@@ -42,6 +45,8 @@ has_bpy() {
 if command -v openscad >/dev/null 2>&1 \
   && command -v xvfb-run >/dev/null 2>&1 \
   && command -v montage >/dev/null 2>&1 \
+  && command -v ffmpeg >/dev/null 2>&1 \
+  && command -v gifsicle >/dev/null 2>&1 \
   && { [ "$WITH_BPY" != 1 ] || has_bpy; } \
   && command -v prusa-slicer >/dev/null 2>&1 \
   && command -v printcheck >/dev/null 2>&1 \
@@ -60,7 +65,7 @@ export DEBIAN_FRONTEND=noninteractive
 # Package indexes in the base image can be stale (404s on install); refresh
 # first and tolerate unrelated repo failures (e.g. blocked PPAs).
 $SUDO apt-get update -qq 2>/dev/null || true
-$SUDO apt-get install -y -qq openscad xvfb imagemagick prusa-slicer
+$SUDO apt-get install -y -qq openscad xvfb imagemagick prusa-slicer ffmpeg gifsicle
 
 # Blender ships on PyPI as `bpy`, a self-contained Python module — no apt
 # package, no X display. Pinned to the 4.5 LTS series: product shots are

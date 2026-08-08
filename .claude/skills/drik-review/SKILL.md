@@ -89,22 +89,30 @@ Check the design against its **real contents and real stakes**:
 - Frame failure cost in user terms, not millimeters: "sixteen welded doors
   over $60 of omakase while everyone's chopsticks hover" — that's what a
   0.2 mm decision actually buys or costs.
-- **AI-styled lifestyle shots** (`previews/lifestyle-*.png`) are a product-page
+- **AI-styled lifestyle shots and motion clips** (`previews/lifestyle-*.png`,
+  `previews/lifestyle-*.gif`) are a product-page
   honesty question, and it's the customer you speak for who gets misled. They
   are cosmetic and *assumed geometrically off* — so don't ding a lifestyle
   shot for geometry that drifts from the studio render; that drift is expected
   and out of scope. What **is** a blocking finding is the customer being
-  fooled about what actually ships: a `lifestyle-*.png` missing its
+  fooled about what actually ships: a `lifestyle-*.png` or `lifestyle-*.gif`
+  missing its
   `AI-styled scene` alt label, missing the visible "AI-generated, geometry
   approximate" note directly below it, or dressed up as a real photo of the
   print (used as the hero/only image). The studio render and the STL are the
   truth about the shape; the lifestyle shot is set dressing, and the page has
   to *say so* where the customer can see it — not bury the disclosure in alt
-  text nobody reads. The gate only knows a shot is AI by its `lifestyle-*.png`
+  text nobody reads. The gate only knows a shot is AI by its `lifestyle-*`
   filename, so an AI image slipped in under an innocent name (`hero.png`) is
   invisible to it — you are the backstop: treat any real-world/photo-like
   image the customer would read as "this is what ships" as needing the same
-  disclosure, whatever the file is called.
+  disclosure, whatever the file is called. A motion clip is worse than a
+  still here, not equal to it: a customer who watches a part *move* reads it
+  as a demo of the real mechanism, not an illustration. So an AI clip
+  standing in for — or sitting above — the deterministic `animations.conf`
+  GIF is a blocking finding even when the disclosure is present, and a clip
+  whose motion the printed part cannot perform is a false claim about the
+  product regardless of what the caption says.
 
 ## 5. Zero-headroom flags
 
