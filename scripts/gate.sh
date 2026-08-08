@@ -305,6 +305,11 @@ derivative_gate() {
 # results of the designs after it — gate_one always returns 0.
 gate_one() {
   local name="$1"
+  # Wall time for the whole of gate_one — render, printcheck, slice and the
+  # derivative checks. The line shape is machine-read by scripts/telemetry.sh
+  # (capture); gate-summary.py's patterns cannot match it, so the sticky PR
+  # comment is unaffected. Keep the "time  <name>: gated in <N>s" shape.
+  local gate_t0="$SECONDS"
   local src="designs/${name}/${name}.scad"
   if [[ ! -f "$src" ]]; then
     echo "FAIL  ${name}: ${src} not found"
@@ -385,6 +390,8 @@ gate_one() {
   # Last, so the printcheck rows above stay one contiguous block in the log
   # and in the summary table. A no-op for every design without a derives.conf.
   derivative_gate "$name"
+
+  echo "time  ${name}: gated in $((SECONDS - gate_t0))s"
 }
 
 if [[ ${#names[@]} -ge 1 ]]; then

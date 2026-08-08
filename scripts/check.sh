@@ -230,4 +230,14 @@ if ! ./scripts/field-test.sh --selftest; then
   fail=1
 fi
 
+# telemetry.sh is the capture/report entry for the repo's self-measurement
+# (issue #93): its --selftest proves the shell glue — the budgets sourced
+# from preview-budget.sh reach the record, capture refuses a missing gate
+# log, report refuses a corrupt one. The parsing itself has its own pytest
+# suite in tools/telemetry. Fast (no render), so it runs here.
+echo "-- telemetry selftest: scripts/telemetry.sh --selftest"
+if ! ./scripts/telemetry.sh --selftest; then
+  fail=1
+fi
+
 exit "$fail"
