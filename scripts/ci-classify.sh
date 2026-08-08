@@ -31,6 +31,16 @@ set -euo pipefail
 
 DEFAULT_BRANCH="${CI_CLASSIFY_BASE:-main}"
 
+# The repo holds every locally-run script to the stock-macOS Bash 3.2 floor
+# (scripts/check.sh runs this one, and shot-spec.sh documents the same rule), so
+# no Bash 4 associative arrays. The three "sets" this classifier needs (design
+# names, directly-touched names, touched styles) are newline-delimited strings
+# of kebab-case names that never contain a space or newline, with a pure-Bash
+# membership test and a deterministic (sorted) space-join for the output list.
+NL=$'\n'
+_set_has() { case "$NL$1$NL" in *"$NL$2$NL"*) return 0 ;; *) return 1 ;; esac; }
+_join() { printf '%s' "$1" | sed '/^$/d' | sort | tr "$NL" ' ' | sed 's/ *$//'; }
+
 # --- classify: the shared decision -------------------------------------------
 # Reads the changed-file list from stdin (one path per line), reads the working
 # tree for existence/ARCHIVED/style.conf facts, and prints the 12 outputs.
@@ -51,11 +61,20 @@ classify() {
   else
     local files=()
     local line
-    while IFS= read -r line; do
+    # `|| [ -n "$line" ]` so a final path with no trailing newline is not
+    # silently dropped (that would fail open — a changed design left ungated).
+    while IFS= read -r line || [ -n "$line" ]; do
       [ -n "$line" ] && files+=("$line")
     done
     echo "changed files:" >&2
-    printf '  %s\n' "${files[@]}" >&2
+    # Guard the empty-array expansion: "${files[@]}" on an empty array aborts
+    # under `set -u` on Bash < 4.4 (the 3.2 floor included). A clean tree at the
+    # merge base reaches this on a `--local` run.
+    if [ "${#files[@]}" -gt 0 ]; then
+      printf '  %s\n' "${files[@]}" >&2
+    else
+      echo "  (none)" >&2
+    fi
 
     # Two infra tiers, where there used to be one. The old single `infra`
     # treated every file under scripts/ as able to move any design's geometry,
@@ -83,10 +102,10 @@ classify() {
     # gate.sh and printcheck change verdicts, not pixels; the preview/GIF/
     # product-shot generators change pixels, not verdicts.
     local geo_infra=false soft_infra=false regen_all=false
-    local -A names=()
-    local -A touched=()
-    local -A touched_styles=()
+    local names="" touched="" touched_styles=""
     local f n s
+    # The empty-array guard again — see the printf above.
+    if [ "${#files[@]}" -gt 0 ]; then
     for f in "${files[@]}"; do
       case "$f" in
         lib/*|scripts/gate.sh|scripts/lineage.sh|\
@@ -120,7 +139,9 @@ classify() {
         # A style's tokens compile into every design that declares it, so
         # editing style.json/style.scad moves that design's geometry. Remember
         # which styles moved and map them back to designs after the loop.
-        styles/*) s=${f#styles/}; touched_styles[${s%%/*}]=1 ;;
+        styles/*)
+          s=${f#styles/}; s=${s%%/*}
+          _set_has "$touched_styles" "$s" || touched_styles="${touched_styles:+$touched_styles$NL}$s" ;;
       esac
       case "$f" in
         designs/*/*)
@@ -129,7 +150,10 @@ classify() {
           # designs the PR edited DIRECTLY (their own files), as distinct from
           # ones pulled in later by blast radius or a shared style — the
           # archived filter below needs that split.
-          [ -f "designs/$n/$n.scad" ] && { names[$n]=1; touched[$n]=1; } ;;
+          if [ -f "designs/$n/$n.scad" ]; then
+            _set_has "$names" "$n"   || names="${names:+$names$NL}$n"
+            _set_has "$touched" "$n" || touched="${touched:+$touched$NL}$n"
+          fi ;;
       esac
       case "$f" in
         tools/printcheck/*|.github/workflows/ci.yml) ptests=true ;;
@@ -168,6 +192,7 @@ classify() {
           scad=true ;;
       esac
     done
+    fi  # end empty-files guard
 
     # The other direction: a design that declares a style the PR touched gets
     # gated as if the design itself had changed.
@@ -177,7 +202,9 @@ classify() {
       [ -f "designs/$n/$n.scad" ] || continue
       s="$(grep -vE '^[[:space:]]*(#|$)' "$conf" | head -1 \
            | tr -d '[:space:]' || true)"
-      [ -n "${touched_styles[${s:-_none_}]:-}" ] && names[$n]=1
+      if [ -n "$s" ] && _set_has "$touched_styles" "$s"; then
+        _set_has "$names" "$n" || names="${names:+$names$NL}$n"
+      fi
     done
 
     # Blast radius. A derivative includes its parent's .scad and redefines part
@@ -190,36 +217,47 @@ classify() {
     # fails the step, which is the point. A `|| true` here would fail open.
     # $geo_infra already means designs=ALL, and an empty names would expand to
     # zero arguments the resolver rejects — so both are skipped.
-    if ! $geo_infra && [ "${#names[@]}" -gt 0 ]; then
+    if ! $geo_infra && [ -n "$names" ]; then
       local radius
-      radius="$(./scripts/lineage.sh blast-radius "${!names[@]}")"
+      # Unquoted expansion is intentional: the names are space-free kebab-case,
+      # so word-splitting hands the resolver one argument per design.
+      # shellcheck disable=SC2046
+      radius="$(./scripts/lineage.sh blast-radius $(_join "$names"))"
       while IFS= read -r n; do
-        [ -n "$n" ] && [ -f "designs/$n/$n.scad" ] && names[$n]=1
+        if [ -n "$n" ] && [ -f "designs/$n/$n.scad" ]; then
+          _set_has "$names" "$n" || names="${names:+$names$NL}$n"
+        fi
       done <<<"$radius"
     fi
 
     # A changed design that claims a style has to be re-checked against it.
-    for n in "${!names[@]}"; do
-      [ -f "designs/$n/style.conf" ] && styles=true
-    done
+    while IFS= read -r n; do
+      [ -n "$n" ] || continue
+      if [ -f "designs/$n/style.conf" ]; then styles=true; fi
+    done <<<"$names"
 
     # Archived designs (designs/<n>/ARCHIVED) are frozen at v0.1. Gate them
     # ONLY when the PR edits their own files (a revival), never when pulled in
     # indirectly by blast radius or a shared style. Mirrors the ALL skip in
-    # gate.sh, regen and geo-diff.
-    for n in "${!names[@]}"; do
-      if [ -f "designs/$n/ARCHIVED" ] && [ -z "${touched[$n]:-}" ]; then
-        unset 'names[$n]'
+    # gate.sh, regen and geo-diff. Rebuild the set from a snapshot (also
+    # dedupes) rather than removing in place.
+    local kept=""
+    while IFS= read -r n; do
+      [ -n "$n" ] || continue
+      if [ -f "designs/$n/ARCHIVED" ] && ! _set_has "$touched" "$n"; then
+        continue
       fi
-    done
+      _set_has "$kept" "$n" || kept="${kept:+$kept$NL}$n"
+    done <<<"$names"
+    names="$kept"
 
     if $geo_infra; then
       gate=true; designs=ALL
       # A geo-infra change gates every design THROUGH printcheck, so the
       # analyzer is on the critical path and its own tests belong in the run.
       ptests=true
-    elif [ "${#names[@]}" -gt 0 ]; then
-      gate=true; designs="${!names[*]}"
+    elif [ -n "$names" ]; then
+      gate=true; designs="$(_join "$names")"
     fi
     # Required contexts must actually RUN (PR #50): a scripts/- or site/-only
     # PR must still report gate and printcheck tests, so soft_infra widens both
@@ -230,8 +268,8 @@ classify() {
     # regen scope, decoupled from gate scope.
     if $regen_all; then
       regen=true; regen_designs=ALL
-    elif [ "${#names[@]}" -gt 0 ]; then
-      regen=true; regen_designs="${!names[*]}"
+    elif [ -n "$names" ]; then
+      regen=true; regen_designs="$(_join "$names")"
     fi
   fi
 
@@ -250,9 +288,9 @@ classify() {
 }
 
 # --- --local: compute the changed-file list the way /preflight scopes --------
-# Merge-base diff against the default branch, plus uncommitted work (staged and
-# unstaged), deduped. This is the diff /preflight's §1 describes; classify()
-# then makes it identical to CI's decision.
+# Merge-base diff against the default branch, plus untracked work, deduped. This
+# is the diff /preflight's §1 describes; classify() then makes it identical to
+# CI's decision.
 local_changed_files() {
   local base merge
   base="origin/${DEFAULT_BRANCH}"
@@ -260,9 +298,17 @@ local_changed_files() {
     base="$DEFAULT_BRANCH"
   fi
   merge="$(git merge-base "$base" HEAD 2>/dev/null || true)"
+  # `git diff <merge>` compares the merge base to the WORKING TREE, so it
+  # already covers committed-since-base, staged and unstaged tracked changes in
+  # one pass — only untracked files need a second command. Both emit one clean
+  # path per line, so there is no `git status --porcelain` text to parse (its
+  # rename records — `R old -> new` — and quoted paths would mis-scope).
+  # --no-renames lists a rename's old and new path separately; over-listing the
+  # vanished old path is harmless (classify drops any name whose entry .scad no
+  # longer exists), whereas missing the new one would under-scope.
   {
-    [ -n "$merge" ] && git diff --name-only "$merge"
-    git status --porcelain | sed 's/^...//'
+    [ -n "$merge" ] && git diff --name-only --no-renames "$merge"
+    git ls-files --others --exclude-standard
   } | sort -u | sed '/^$/d'
 }
 

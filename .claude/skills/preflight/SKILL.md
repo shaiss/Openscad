@@ -23,8 +23,8 @@ Don't reason about scope by hand — **run the classifier CI runs**:
 ```
 
 It computes the same diff this section used to describe (merge-base with the
-default branch, plus uncommitted work via `git status --porcelain`) and prints
-CI's decision as `key=value` lines. It is the *same* `scripts/ci-classify.sh`
+default branch — which already covers committed, staged and unstaged tracked
+work — plus untracked files) and prints CI's decision as `key=value` lines. It is the *same* `scripts/ci-classify.sh`
 that ci.yml's `changes` job pipes its diff to on the server — so what it says
 here is what CI does there, by construction rather than by a prose copy that
 drifts. Read the outputs and run §2 accordingly:
@@ -65,7 +65,7 @@ actionlint .github/workflows/*.yml   # if missing: install pinned, same as ci.ym
 ./scripts/readme-gate.sh                             # product pages + committed GIFs + configured product shots (every PR)
 ./scripts/check.sh                                   # if scad=true
 ./scripts/lineage.sh selftest                        # before any gate run: proves the derivative check still fires
-./scripts/gate.sh --slice <gate_designs...>          # if gate=true; pass the gate_designs list, or no args when it is ALL
+./scripts/gate.sh --slice <gate_designs...>          # if gate=true: pass the gate_designs list; no args when it is ALL; skip entirely when it is empty ("run but gate nothing")
 ./scripts/style-check.sh                             # if styles=true
 python -m pytest tools/printcheck/tests -q           # if printcheck_tests=true
 python -m pytest tools/stylelift/tests -q            # if stylelift_tests=true
