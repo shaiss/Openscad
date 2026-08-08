@@ -187,5 +187,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
 - `tools/stylelift/` — measures how a model is *shaped* (edge treatment,
   rounding vocabulary, proportion) and turns it into a checkable style
   spec — see its [README](tools/stylelift/README.md)
+- `tools/ci-gates/` — Smart CI gate selector: proposes CI gates a PR's
+  changes call for but that don't exist yet, runs the approved ones, and
+  comments the command to cross the rest (registry:
+  `.github/ci-gates/registry.conf`) — see its [README](tools/ci-gates/README.md)
 - `audits/` — preserved before/after render comparisons from design
   reviews (review history — don't delete)
