@@ -1,10 +1,10 @@
 name: Backlog burn (scheduled /ship-issue)
 
-# The scheduled heartbeat for /ship-issue (issue #95). Weekly it picks ONE
-# open issue and runs /ship-issue on it unattended, leaving a draft PR for
-# human review. The skill already runs the same attended or unattended and
-# declines when an issue needs a human's taste — this workflow just gives it
-# a cadence.
+# The scheduled heartbeat for /ship-issue (issue #95). Four times a day it
+# picks ONE open issue and runs /ship-issue on it unattended, leaving a draft
+# PR for human review. The skill already runs the same attended or unattended
+# and declines when an issue needs a human's taste — this workflow just gives
+# it a cadence.
 #
 # WHERE THE CONFIG LIVES (deliberate split):
 #   * Policy → committed, git-tracked: .github/backlog-burn.conf holds
@@ -37,12 +37,17 @@ name: Backlog burn (scheduled /ship-issue)
 
 on:
   schedule:
-    # Weekly, Mondays 06:17 UTC. An off-peak minute (not :00) to avoid the
-    # Actions scheduler's on-the-hour congestion. Cron must be a literal —
-    # Actions evaluates no variables here — so change the cadence by editing
-    # this line in a PR (e.g. daily '17 6 * * *', or twice weekly
-    # '17 6 * * 1,4').
-    - cron: '17 6 * * 1'
+    # 4× per day, every 6 hours at :17 past the hour. An off-peak minute
+    # (not :00) to avoid Actions scheduler congestion. Cron must be a
+    # literal — Actions evaluates no files or variables for on.schedule —
+    # so change the cadence by editing this line in a one-line PR, e.g.:
+    #   daily once:   '17 6 * * *'
+    #   twice daily:  '17 6,18 * * *'
+    #   weekly:       '17 6 * * 1'
+    # The two-key guard (BACKLOG_BURN_ENABLED + committed `enabled: true`)
+    # ensures the schedule is harmless until deliberately armed, so firing
+    # more often is safe: idle firings cost nothing.
+    - cron: '17 0,6,12,18 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
