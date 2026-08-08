@@ -1,0 +1,3 @@
+# Same bed target as the parent sushi-battleship: 256 mm (Bambu X1/P1,
+# Prusa CORE One) — the board footprint is inherited unchanged.
+--build-volume 256x256x256

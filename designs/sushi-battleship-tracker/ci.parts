@@ -1,0 +1,7 @@
+# Printable parts to render and gate in CI (the default render is the
+# assembled preview, which is not a printable deliverable).  Must cover the
+# parent's list — bottom, top, door — since part lists are per-design and an
+# uncovered parent part would ship ungated (lineage check enforces the union).
+bottom
+top
+door
