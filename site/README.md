@@ -152,7 +152,7 @@ Three things make it consistent with the rest of the site:
 - `lib/lineage.mjs` — `derives.conf` → gallery order and parentage, ported from `tools/lineage`
 - `lib/markdown.mjs` — markdown → HTML, link resolution and rewriting
 - `lib/scadparams.mjs` — Customizer parameters and include closure from a `.scad`
-- `lib/model.mjs` — the per-design model bundle (entry, source, files, parameters) the configurator and viewer share
+- `lib/model.mjs` — the per-design model bundle (entry, source, files, sections, asserts) the configurator and viewer share
 - `lib/templates.mjs` — the page shells
 - `test/` — `npm --prefix site test`; run by `./scripts/site.sh` and CI
 - `assets/` — `site.css` (the design system), `site.js` (theme toggle),

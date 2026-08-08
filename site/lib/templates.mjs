@@ -2,6 +2,7 @@
 // which is well under the weight where a framework starts paying for itself.
 
 import { escapeHtml, inlineMarkdown, plainText } from "./markdown.mjs";
+import { hasConfigurator } from "./model.mjs";
 
 const SITE_NAME = "print-bench";
 const TAGLINE = "Parametric 3D-printable designs, gated before they ship.";
@@ -210,7 +211,7 @@ function viewerPanel(design) {
   <button class="btn btn-primary" type="button" data-view-open>View in 3D</button>
   <div class="viewer-stage" data-stage hidden>
     <div class="viewer-canvas" data-canvas></div>
-    <p class="viewer-status" data-view-status></p>
+    <p class="viewer-status" data-view-status role="status" aria-live="polite"></p>
     <p class="viewer-foot muted">Rendered on your machine by
       <a href="/assets/openscad/README.txt">OpenSCAD compiled to WebAssembly</a>
       (GPL-2.0, about 14 MB on first use) and drawn with
@@ -225,7 +226,7 @@ function viewerPanel(design) {
 }
 
 export function designPage(design, { html, toc, githubBase, model }) {
-  const showConfigurator = !!(model && model.sections && model.sections.length);
+  const showConfigurator = hasConfigurator(model);
   const src = `${githubBase}/${design.relDir}`;
   const rail = `<aside class="rail">
   ${toc ? `<div class="rail-block"><h3>On this page</h3>${toc}</div>` : ""}

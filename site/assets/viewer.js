@@ -4,15 +4,12 @@
 // OpenSCAD-WASM worker the site already ships — the same geometry the gate
 // exports — then draws the resulting STL with three.js. Rotate, zoom, pan.
 //
-// Everything is lazy. The OpenSCAD runtime is ~14 MB and three.js is fetched by
-// this module's own imports, so nothing loads until the visitor presses
-// "View in 3D". A product page that is only being read stays light, and a page
-// with no JavaScript is complete without this file (the <noscript> fallback in
-// the panel points at the previews already rendered above).
-
-import * as THREE from "three";
-import { STLLoader } from "/assets/three/STLLoader.js";
-import { OrbitControls } from "/assets/three/OrbitControls.js";
+// Everything is lazy. three.js and its addons are imported dynamically inside
+// the click handler, not at the top level, so shipping this module on every
+// product page fetches nothing heavy until the visitor presses "View in 3D";
+// the ~14 MB OpenSCAD runtime is fetched only then too (by the worker). A page
+// with no JavaScript is complete without this file — the <noscript> fallback in
+// the panel points at the previews already rendered above.
 
 const root = document.querySelector("[data-viewer]");
 if (root) init(root);
@@ -35,6 +32,23 @@ function init(root) {
     statusEl.classList.toggle("viewer-error", !!isError);
   }
 
+  // three.js is heavy, so it is not a top-level import: bringing it in here
+  // means the page-load module graph is just this file, and three (plus the
+  // vendored addons) is fetched only on the first "View in 3D". The bare
+  // `three` specifier resolves through the page's import map.
+  let deps = null;
+  async function loadDeps() {
+    if (!deps) {
+      const [THREE, stl, orbit] = await Promise.all([
+        import("three"),
+        import("/assets/three/STLLoader.js"),
+        import("/assets/three/OrbitControls.js"),
+      ]);
+      deps = { THREE, STLLoader: stl.STLLoader, OrbitControls: orbit.OrbitControls };
+    }
+    return deps;
+  }
+
   openBtn.addEventListener("click", async () => {
     if (started) return;
     started = true;
@@ -45,9 +59,10 @@ function init(root) {
       const res = await fetch(modelUrl);
       if (!res.ok) throw new Error(`model ${res.status}`);
       const model = await res.json();
-      const stl = await renderStl(model);
+      // Load three in parallel with the render — the two are independent.
+      const [three, stl] = await Promise.all([loadDeps(), renderStl(model)]);
       setStatus("drawing…");
-      draw(stl);
+      draw(three, stl);
       setStatus("");
     } catch (err) {
       setStatus(`Could not display this model: ${err && err.message ? err.message : err}`, true);
@@ -99,7 +114,7 @@ function init(root) {
     });
   }
 
-  function draw(arrayBuffer) {
+  function draw({ THREE, STLLoader, OrbitControls }, arrayBuffer) {
     const geometry = new STLLoader().parse(arrayBuffer);
     geometry.computeVertexNormals();
     geometry.computeBoundingBox();
@@ -148,18 +163,38 @@ function init(root) {
     controls.target.set(0, 0, 0);
     camera.lookAt(0, 0, 0);
 
-    const resize = () => {
+    // Render on demand rather than a perpetual rAF loop: a frame is drawn when
+    // the camera changes, and the loop keeps itself alive only while damping is
+    // still settling. An IntersectionObserver pauses it entirely while the
+    // viewer is scrolled out of view, so an opened viewer costs no GPU when it
+    // is off screen.
+    let queued = false;
+    let visible = true;
+    const request = () => {
+      if (!queued && visible) {
+        queued = true;
+        requestAnimationFrame(frame);
+      }
+    };
+    const frame = () => {
+      queued = false;
+      const moving = controls.update();
+      renderer.render(scene, camera);
+      if (moving) request();
+    };
+    controls.addEventListener("change", request);
+    new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting;
+      if (visible) request();
+    }).observe(canvasHost);
+
+    window.addEventListener("resize", () => {
       camera.aspect = width() / height();
       camera.updateProjectionMatrix();
       renderer.setSize(width(), height());
-    };
-    window.addEventListener("resize", resize);
+      request();
+    });
 
-    const tick = () => {
-      requestAnimationFrame(tick);
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    tick();
+    request();
   }
 }

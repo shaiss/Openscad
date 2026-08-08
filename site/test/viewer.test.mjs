@@ -12,9 +12,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { readDesigns } from "../lib/content.mjs";
@@ -22,6 +23,7 @@ import { buildModel, hasConfigurator } from "../lib/model.mjs";
 import { designPage } from "../lib/templates.mjs";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
+const SITE_DIR = fileURLToPath(new URL("..", import.meta.url));
 
 /** A throwaway tree of `path → contents`. */
 function fixture(files) {
@@ -116,12 +118,15 @@ test("the viewer never loads its heavy runtime eagerly, and refers only to vendo
     // <link rel=preload> — opening the viewer is what fetches it.
     assert.doesNotMatch(html, /<script[^>]+openscad\.js/, "runtime must not be an eager script");
     assert.doesNotMatch(html, /<link[^>]+openscad\.js/, "runtime must not be preloaded");
-    // three.js is resolved to the vendored copy, not a CDN.
+    // three.js is resolved to the vendored copy, not a CDN — and the import
+    // map's own contents reference no external origin.
     assert.match(
       html,
       /<script type="importmap">\{"imports":\{"three":"\/assets\/three\/three\.module\.min\.js"\}\}<\/script>/
     );
-    assert.doesNotMatch(html, /import\s+map[^]*https?:\/\//);
+    const importMap = html.match(/<script type="importmap">(.*?)<\/script>/s);
+    assert.ok(importMap, "import map missing");
+    assert.doesNotMatch(importMap[1], /https?:\/\//, "import map must reference no external origin");
     // The viewer block itself introduces no external origin.
     const viewer = html.slice(html.indexOf('class="viewer"'), html.indexOf("</section>", html.indexOf('class="viewer"')));
     assert.doesNotMatch(viewer, /https?:\/\//, "viewer markup must reference no external origin");
@@ -169,5 +174,46 @@ test("the real repo: every design has a viewer and a bundle of its own source", 
     if (hasConfigurator(model)) {
       assert.match(html, /class="cfg"/, `${design.name}: has parameters but no configurator`);
     }
+  }
+});
+
+test("viewer.js loads three.js lazily — no top-level static import", () => {
+  // three.js (~730 KB) must not be pulled into the page-load module graph: the
+  // module ships on every product page, so a static `import ... from "three"`
+  // would fetch it whether or not the visitor ever opens the viewer. It must be
+  // brought in with a dynamic import inside the handler instead.
+  const src = readFileSync(join(SITE_DIR, "assets", "viewer.js"), "utf8");
+  assert.doesNotMatch(
+    src,
+    /^\s*import\b[^\n]*\bfrom\s+["'](three|\/assets\/three\/)/m,
+    "viewer.js must not statically import three.js at the top level"
+  );
+  assert.match(src, /import\(\s*["']three["']\s*\)/, "viewer.js must dynamic-import three");
+  assert.match(src, /import\(\s*["']\/assets\/three\/STLLoader\.js["']\s*\)/);
+  assert.match(src, /import\(\s*["']\/assets\/three\/OrbitControls\.js["']\s*\)/);
+});
+
+test("the build actually writes model.json and vendors three into the output", () => {
+  // The template/bundle tests above never run build.mjs, so a renamed or
+  // dropped vendored file would pass them and fail only in the browser. Run the
+  // real build into a temp dir and check the assets the viewer depends on land.
+  const out = mkdtempSync(join(tmpdir(), "print-bench-build-"));
+  try {
+    const res = spawnSync("node", [join(SITE_DIR, "build.mjs"), "--out", out], {
+      encoding: "utf8",
+    });
+    assert.equal(res.status, 0, `build.mjs failed: ${res.stderr || res.stdout}`);
+
+    for (const design of readDesigns(REPO_ROOT)) {
+      assert.ok(
+        existsSync(join(out, "designs", design.name, "model.json")),
+        `${design.name}: build did not write model.json`
+      );
+    }
+    for (const f of ["three.module.min.js", "STLLoader.js", "OrbitControls.js", "LICENSE.txt"]) {
+      assert.ok(existsSync(join(out, "assets", "three", f)), `build did not vendor assets/three/${f}`);
+    }
+  } finally {
+    rmSync(out, { recursive: true, force: true });
   }
 });
