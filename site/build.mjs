@@ -25,6 +25,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readDesigns, readStyles } from "./lib/content.mjs";
+import { readTeam } from "./lib/team.mjs";
 import { renderMarkdown, tocHtml } from "./lib/markdown.mjs";
 import { buildModel } from "./lib/model.mjs";
 import {
@@ -190,6 +191,12 @@ function main() {
     }
   }
 
+  // Team data is structured the same way (#123): rosters and mandate
+  // pointers never pass through the markdown checker, so resolve them here
+  // — an unresolvable handle or mandate source must stop the deploy, not
+  // render a hole in a future team page.
+  const team = readTeam(REPO_ROOT, { onError, designNames });
+
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
 
@@ -330,6 +337,9 @@ function main() {
   );
   console.log(
     `      ${designs.length} designs, ${styles.length} styles, every local reference resolved`
+  );
+  console.log(
+    `      ${team.members.length} people, ${team.rosters.size} team rosters, every handle resolved`
   );
   console.log(
     `      ${models} model bundles, OpenSCAD runtime ` +

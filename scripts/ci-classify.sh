@@ -95,7 +95,9 @@ classify() {
     #
     #   soft_infra — everything else under scripts/, plus site/ and
     #   vercel.json, tools/photoshot, tools/backlog-burn, printer.conf,
-    #   telemetry/ and tools/telemetry, and the non-ci.yml workflows: cannot
+    #   telemetry/ and tools/telemetry, people/ (the team registry, #123 —
+    #   read only by the site build, it can never move a mesh or a gate
+    #   verdict), and the non-ci.yml workflows: cannot
     #   move geometry, but three of the five required contexts are geometry
     #   jobs and a job skipped via `if:` does NOT satisfy a required context
     #   (PR #50) — so the jobs must RUN. gate=true with an EMPTY design list is
@@ -120,7 +122,7 @@ classify() {
         scripts/*|site/*|vercel.json|tools/photoshot/*|\
         tools/backlog-burn/*|.github/backlog-burn.conf|\
         .github/workflows/*|printer.conf|\
-        telemetry/*|tools/telemetry/*)
+        telemetry/*|tools/telemetry/*|people/*)
           soft_infra=true ;;
       esac
       case "$f" in
@@ -192,7 +194,7 @@ classify() {
         designs/*|lib/*|templates/*|scripts/*|styles/*|site/*|\
         vercel.json|printer.conf|tools/lineage/*|tools/photoshot/*|\
         tools/backlog-burn/*|.github/backlog-burn.conf|\
-        telemetry/*|tools/telemetry/*|\
+        telemetry/*|tools/telemetry/*|people/*|\
         .github/workflows/*|.github/actions/*)
           scad=true ;;
       esac
@@ -374,6 +376,14 @@ selftest() {
   out="$(run "scripts/readme-gate.sh")"
   check "soft-infra" "$out" \
     "gate=true" "gate_designs=" "printcheck_tests=true" "scad=true"
+
+  # 4a. people/ (the team registry, #123) is soft-infra for the same reason as
+  #     telemetry/: only the site build reads it, but a people-only PR must
+  #     still RUN the required contexts to be mergeable (the ci.yml CAUTION).
+  out="$(run "people/vera.md")"
+  check "people-only" "$out" \
+    "gate=true" "gate_designs=" "printcheck_tests=true" "scad=true" \
+    "regen=false"
 
   # 4b. This script IS the scope decider, so editing it must gate ALL (geo-infra),
   #     not fall through to the scripts/* soft-infra "gate nothing" — otherwise a
