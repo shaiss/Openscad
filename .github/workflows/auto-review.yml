@@ -90,7 +90,10 @@ jobs:
           echo "designs_changed=$designs_changed" >> "$GITHUB_OUTPUT"
           echo "changed_designs=$changed_designs" >> "$GITHUB_OUTPUT"
           echo "PR touches designs: $designs_changed"
-          [ -n "$changed_designs" ] && echo "Designs: $changed_designs"
+          # if-block, not `[ -n ... ] && echo`: as the step's last command the
+          # latter exits 1 when changed_designs is empty (no designs touched),
+          # failing the scope-guard job on exactly the PRs it should pass.
+          if [ -n "$changed_designs" ]; then echo "Designs: $changed_designs"; fi
 
       # For `synchronize` events we only want to fire a new review round when
       # design files actually changed since the last round, not on every push.
