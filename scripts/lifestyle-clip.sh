@@ -111,6 +111,42 @@ sanitize_url() {
   printf '%s' "${scheme}://${authority##*@}${path}"       # drop any userinfo
 }
 
+# Log-safe one-line summary of an error-response body. Structured-first: a
+# JSON body — the shape the Z.AI CDN actually returns on the issue-#128
+# failure, e.g. {"RetCode":-148654, "ErrMsg":"file not exist"} — yields ONLY
+# a whitelist of non-sensitive fields, so no unexpected key (an echoed signed
+# URL, an S3-style SignatureProvided) can carry a credential into a public
+# log. Anything else falls back to a 300-byte snippet with non-printables
+# dotted, query strings inside the body stripped (an echoed request URL is
+# the classic leak), and token-length runs masked.
+body_summary() {
+  local f="$1" out
+  if out="$(python3 - "$f" <<'PY' 2>/dev/null
+import json, sys
+obj = json.load(open(sys.argv[1], "rb"))
+if not isinstance(obj, dict): raise SystemExit(1)
+parts = []
+for k in ("RetCode", "ErrMsg", "code", "message", "msg", "error", "status"):
+    v = obj.get(k)
+    if isinstance(v, (str, int, float, bool)):
+        parts.append("%s=%s" % (k, str(v)[:120]))
+    elif isinstance(v, dict):
+        for k2 in ("code", "message", "msg"):
+            v2 = v.get(k2)
+            if isinstance(v2, (str, int, float, bool)):
+                parts.append("%s.%s=%s" % (k, k2, str(v2)[:120]))
+if not parts: raise SystemExit(1)
+print("; ".join(parts))
+PY
+)"; then
+    printf '%s' "$out"
+    return
+  fi
+  head -c 300 "$f" | tr -c '[:print:]' '.' \
+    | sed -E -e 's|\?[^[:space:]"<>]*|?[query-stripped]|g' \
+             -e 's|[A-Za-z0-9+/=_-]{40,}|[masked]|g'
+}
+
 # Encode the source video to a GIF at the given fps/width/colors. The -f pins
 # ffmpeg's input demuxer (the QuickTime/MP4 family's registered name is the
 # full comma list — a bare "mp4" is not a demuxer name) so it can't pick a
@@ -480,15 +516,11 @@ PY
         break
       fi
       # Failed attempt: log the status, the sanitized URL (scheme + host +
-      # path — never the query string), the Content-Type, and the first
-      # ~300 bytes of the body (non-printables dotted so a binary partial
-      # can't garble the log) — enough for the CI log to name the cause.
-      # Token-length base64-ish runs in the body are masked: an S3-style
-      # SignatureDoesNotMatch error echoes the request's own signature back
-      # (SignatureProvided/StringToSign), and that must not land in a public
-      # log; short cause codes (NoSuchKey, AccessDenied) stay readable.
+      # path — never the query string), the Content-Type, and a log-safe
+      # structured summary of the body (see body_summary above) — enough for
+      # the CI log to name the cause without echoing credential-shaped bytes.
       echo "video download attempt ${dl_attempt}/5: HTTP ${dl_code} from $(sanitize_url "$value") (Content-Type: ${dl_ctype:-unknown})" >&2
-      echo "  response body (first 300 bytes): $(head -c 300 "$tmp/gen.mp4" | tr -c '[:print:]' '.' | sed -E 's|[A-Za-z0-9+/=_-]{40,}|[masked]|g')" >&2
+      echo "  response body: $(body_summary "$tmp/gen.mp4")" >&2
       if [[ "$dl_code" == 3?? ]]; then
         echo "refusing video URL: it returned a redirect (HTTP ${dl_code}); not following it (SSRF guard, never retried)" >&2
         exit 1
