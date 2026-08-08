@@ -1,0 +1,66 @@
+# The hand-filed twin of /intake: same shape, same label, same consumer.
+# Field labels below must stay identical to the `## ` headings in
+# templates/design-brief.md — that file is the canonical format.
+name: Design brief
+description: File a well-formed design brief a design session can pick up cold — the same shape /intake produces.
+title: "Design brief: "
+labels: ["design-brief"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A brief is the input contract of a design session: everything the
+        co-design loop's Brief step owes, captured up front. Canonical
+        format (with fuller guidance per section): `templates/design-brief.md`.
+        Mark every number **given** (measured, with source) or **assumed**
+        (a default a session may challenge) — and park what nobody can
+        supply yet in Open questions rather than guessing silently.
+  - type: textarea
+    id: what-it-is
+    attributes:
+      label: What it is
+      description: One paragraph — what the part does, where it lives, what it must interact with.
+      placeholder: A wall bracket that holds the shop vacuum's 60 mm hose next to the bench, screwed to a plywood wall.
+    validations:
+      required: true
+  - type: textarea
+    id: must-fit-hold
+    attributes:
+      label: Must fit / hold
+      description: "The measurements that decide the geometry. One row per dimension: value in mm, given or assumed, source."
+      value: |
+        | Dimension | Value (mm) | Given / assumed | Source |
+        |---|---|---|---|
+        | | | | |
+    validations:
+      required: true
+  - type: textarea
+    id: printer-material
+    attributes:
+      label: Printer & material
+      description: Printer, nozzle, material, anything build-specific. "Don't care" is fine — the repo's FDM defaults apply — but say so, so a blank never reads as an oversight.
+    validations:
+      required: true
+  - type: input
+    id: style
+    attributes:
+      label: Style
+      description: "A pack name from styles/ (see styles/README.md), `none`, or `new — lift from <reference> with /style-spec`."
+      placeholder: none
+    validations:
+      required: true
+  - type: textarea
+    id: part-breakdown
+    attributes:
+      label: First-pass part breakdown
+      description: The parts a session would scaffold, likely print orientation, and any tuned fit (each one means a printed coupon).
+  - type: textarea
+    id: assumptions-defaults
+    attributes:
+      label: Assumptions & defaults
+      description: Everything defaulted above, restated in one list so each can be challenged.
+  - type: textarea
+    id: open-questions
+    attributes:
+      label: Open questions
+      description: What must be asked before modeling starts, marked blocking or not. Empty claims a session can start from this brief alone.
