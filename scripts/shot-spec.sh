@@ -91,11 +91,13 @@ require_design() {
   is_kebab "$1" || die "design name '$1' must be kebab-case ([a-z0-9-]) — no path separators"
 }
 
-lookup() {  # lookup <name> <table-array-name...> ; echoes value or empty
+lookup() {  # lookup <name> <"name:value"...> ; echoes value or empty
+  # Takes the table's "key:value" entries as arguments rather than by nameref
+  # (bash 4.3's `local -n`), so this script stays Bash 3.2-compatible and
+  # doesn't raise check.sh's interpreter floor — call as `lookup x "${TBL[@]}"`.
   local want="$1"; shift
-  local -n tbl="$1"
   local kv
-  for kv in "${tbl[@]}"; do
+  for kv in "$@"; do
     [[ "${kv%%:*}" == "$want" ]] && { printf '%s' "${kv#*:}"; return 0; }
   done
   return 1
@@ -103,7 +105,7 @@ lookup() {  # lookup <name> <table-array-name...> ; echoes value or empty
 
 resolve_color() {  # name or #rrggbb / rrggbb -> rrggbb (no '#'), or die
   local c="$1" hex
-  if hex="$(lookup "$c" PALETTE)"; then printf '%s' "$hex"; return; fi
+  if hex="$(lookup "$c" "${PALETTE[@]}")"; then printf '%s' "$hex"; return; fi
   c="${c#\#}"
   [[ "$c" =~ ^[0-9a-fA-F]{6}$ ]] || die "unknown color '$1' — see 'palette', or pass a #rrggbb"
   printf '%s' "$c"
@@ -111,7 +113,7 @@ resolve_color() {  # name or #rrggbb / rrggbb -> rrggbb (no '#'), or die
 
 resolve_view() {  # view name -> rotz,elev,zoom, or die
   local cam
-  cam="$(lookup "$1" VIEWS)" || die "unknown view '$1' — see 'views', or pass --camera rotz,elev,zoom"
+  cam="$(lookup "$1" "${VIEWS[@]}")" || die "unknown view '$1' — see 'views', or pass --camera rotz,elev,zoom"
   printf '%s' "$cam"
 }
 
@@ -129,7 +131,9 @@ valid_camera() {  # rotz,elev,zoom, each a finite number
 
 valid_size() {  # WxH, both positive ints within a sane ceiling
   local w h rest
-  IFS='x' read -r w h rest <<<"${1,,}"
+  # normalize only the separator (accept 1280X960) — ${1//X/x} is a plain
+  # pattern substitution (Bash 3.2-safe), unlike ${1,,} case conversion.
+  IFS='x' read -r w h rest <<<"${1//X/x}"
   [[ -z "$rest" && "$w" =~ ^[0-9]+$ && "$h" =~ ^[0-9]+$ ]] || return 1
   (( w >= 4 && h >= 4 && w <= MAX_DIM && h <= MAX_DIM ))
 }
@@ -149,12 +153,14 @@ cmd_palette() {
   echo "Pass --color '#rrggbb' for a custom color."
 }
 
-# Print the tier-1 README embed for a shot. Alt text names the color/finish so
-# the page is descriptive (readme-gate wants the embed present; the alt is the
-# skill's to refine).
-embed_tier1() {  # <design> <shot> <color-name-or-hex> <finish>
-  printf '![Product shot: %s in %s %s](previews/%s.png)\n' \
-    "$1" "$3" "$4" "$2"
+# Print the tier-1 README embed for a shot. Alt text names finish, color AND
+# material (e.g. "in satin forest PLA") — the descriptive form every existing
+# product-shot alt in the repo follows, so the tool's default output matches the
+# convention rather than emitting an alt a reviewer has to flag. The skill still
+# refines wording; readme-gate only checks the embed is present.
+embed_tier1() {  # <design> <shot> <color-name-or-hex> <finish> <material>
+  printf '![Product shot: %s in %s %s %s](previews/%s.png)\n' \
+    "$1" "$4" "$3" "$5" "$2"
 }
 
 # Print the canonical tier-2 disclosure block VERBATIM — the exact structure
@@ -187,19 +193,23 @@ manifest_has() {  # <conf> <shot>
 cmd_add() {
   local design="${1:-}" shot="${2:-}"; shift $(( $# >= 2 ? 2 : $# ))
   [[ -n "$design" && -n "$shot" ]] || die "usage: add <design> <shot> [--view N|--camera R,E,Z] [--color C] [--finish F] [--pose 'def'] [--size WxH] [--dry-run]"
-  local view="hero" camera="" color="orange" finish="satin" pose="" size="1280x960" dry=0
+  local view="hero" camera="" color="orange" finish="satin" pose="" size="1280x960" material="PLA" dry=0
   while (( $# )); do
     case "$1" in
-      --view)    view="${2:?}"; shift 2;;
-      --camera)  camera="${2:?}"; shift 2;;
-      --color)   color="${2:?}"; shift 2;;
-      --finish)  finish="${2:?}"; shift 2;;
-      --pose)    pose="${2:?}"; shift 2;;
-      --size)    size="${2:?}"; shift 2;;
-      --dry-run) dry=1; shift;;
+      --view)     view="${2:?}"; shift 2;;
+      --camera)   camera="${2:?}"; shift 2;;
+      --color)    color="${2:?}"; shift 2;;
+      --finish)   finish="${2:?}"; shift 2;;
+      --pose)     pose="${2:?}"; shift 2;;
+      --size)     size="${2:?}"; shift 2;;
+      --material) material="${2:?}"; shift 2;;
+      --dry-run)  dry=1; shift;;
       *) die "unknown option '$1' to add";;
     esac
   done
+  # Material is descriptive alt text only (not a manifest field); keep it to one
+  # line so the printed embed stays a single markdown image.
+  [[ "$material" != *$'\n'* ]] || die "material must be a single line"
 
   require_design "$design"
   [[ -d "$ROOT/$design" ]] || die "no $ROOT/$design"
@@ -248,7 +258,7 @@ cmd_add() {
   fi
   echo
   echo "Embed this near the top of $ROOT/$design/README.md (above the contact sheet):"
-  embed_tier1 "$design" "$shot" "$color" "$finish"
+  embed_tier1 "$design" "$shot" "$color" "$finish" "$material"
 }
 
 cmd_lifestyle() {
@@ -316,7 +326,8 @@ cmd_embed() {
         break
       done <"$conf"
     fi
-    embed_tier1 "$design" "$shot" "$col" "$fin"
+    # material isn't stored in the manifest; default to the repo's usual PLA.
+    embed_tier1 "$design" "$shot" "$col" "$fin" "PLA"
   fi
 }
 
@@ -325,20 +336,26 @@ cmd_embed() {
 # it catches a malformed line while it is still cheap to fix, and it is what the
 # --selftest exercises.
 check_shots() {  # <conf> ; sets rc via `bad`
-  local conf="$1" line name color finish camera size
+  local conf="$1" line name color finish camera size extra
   [[ -f "$conf" ]] || return 0
   local n=0
   while IFS= read -r line || [[ -n "$line" ]]; do
     n=$((n+1))
     line="${line%%#*}"; [[ "$line" =~ [^[:space:]] ]] || continue
-    # trailing `_` absorbs the optional defines field; it is not validated here
-    # (product-shot.sh owns -D parsing), so it is intentionally unused.
-    IFS='|' read -r name color finish camera size _ <<<"$line"
+    # `_` absorbs the optional 6th (defines) field — not validated here,
+    # product-shot.sh owns -D parsing — while `extra` catches a 7th field and
+    # beyond. product-shot.sh reads exactly six fields, so a stray '|' after
+    # defines would be folded into the defines value and emitted as a malformed
+    # -D; reject it here rather than let `check` pass a line the render fails on.
+    IFS='|' read -r name color finish camera size _ extra <<<"$line"
     name="${name//[[:space:]]/}"; color="${color//[[:space:]]/}"
     finish="${finish//[[:space:]]/}"; camera="${camera//[[:space:]]/}"
     size="${size//[[:space:]]/}"
     if [[ -z "$name" || -z "$color" || -z "$finish" || -z "$camera" || -z "$size" ]]; then
       echo "  FAIL $conf:$n — need 'name | color | finish | camera | size [| defines]'"; bad=1; continue
+    fi
+    if [[ -n "${extra//[[:space:]]/}" ]]; then
+      echo "  FAIL $conf:$n — too many fields (a '|' after defines; product-shot.sh reads six)"; bad=1; continue
     fi
     is_kebab "$name"                || { echo "  FAIL $conf:$n — shot name '$name' not kebab-case"; bad=1; }
     [[ "$color" =~ ^[0-9a-fA-F]{6}$ ]] || { echo "  FAIL $conf:$n — color '$color' is not rrggbb (no '#')"; bad=1; }
@@ -450,6 +467,14 @@ run_selftest() {
   # check: fails on a hand-corrupted line (bad finish, bad camera)
   printf 'busted | 3a6b46 | neon | 35,x,0.9 | 1280x960\n' >>"$tmp/designs/gadget/shots.conf"
   _run 1 "FAIL" -- check gadget
+
+  # check: a valid 6-field line (with defines) passes, but a 7th field is
+  # rejected — product-shot.sh reads exactly six fields.
+  mkdir -p "$root/widget"
+  printf 'hero | 3a6b46 | satin | 35,18,0.9 | 1280x960 | part="a"\n' >"$root/widget/shots.conf"
+  _run 0 "well-formed" -- check widget
+  printf 'hero | 3a6b46 | satin | 35,18,0.9 | 1280x960 | part="a" | oops\n' >"$root/widget/shots.conf"
+  _run 1 "too many fields" -- check widget
 
   if (( pass )); then echo "ok    shot-spec --selftest: every validator and the freeze guard fire"; return 0; fi
   echo "FAIL  shot-spec --selftest"; return 1
