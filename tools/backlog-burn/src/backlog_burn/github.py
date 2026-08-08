@@ -1,0 +1,117 @@
+"""Live GitHub read: assemble the snapshot :mod:`backlog_burn.select` consumes.
+
+Deliberately stdlib-only (``urllib``), like ``tools/lineage``: the routine
+runs in CI where the only guaranteed interpreter is the system Python, and a
+selection tool that pulled in ``requests`` would need a pip step in front of
+the step that decides what to ship. This module is thin I/O — it does no
+policy — so the interesting logic all sits behind unit tests in ``select``.
+"""
+
+from __future__ import annotations
+
+import json
+import urllib.error
+import urllib.request
+from typing import Any
+
+from .select import SHIP_LOCK_MARKER, _first_line
+
+_API = "https://api.github.com"
+
+
+def _get(url: str, token: str) -> tuple[Any, dict[str, str]]:
+    req = urllib.request.Request(url)
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", "2022-11-28")
+    req.add_header("User-Agent", "print-bench-backlog-burn")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 (fixed host)
+        body = json.loads(resp.read().decode("utf-8"))
+        headers = {k.lower(): v for k, v in resp.headers.items()}
+    return body, headers
+
+
+def _paginate(path: str, token: str) -> list[dict[str, Any]]:
+    """Follow ``Link: rel="next"`` until the collection is exhausted."""
+    url = f"{_API}{path}"
+    if "?" not in url:
+        url += "?per_page=100"
+    elif "per_page=" not in url:
+        url += "&per_page=100"
+    out: list[dict[str, Any]] = []
+    seen = 0
+    # A generous page cap so a pathological Link loop cannot spin forever;
+    # 100 pages is 10k items, far beyond any real backlog.
+    while url and seen < 100:
+        body, headers = _get(url, token)
+        if isinstance(body, list):
+            out.extend(body)
+        seen += 1
+        url = _next_link(headers.get("link", ""))
+    return out
+
+
+def _next_link(link_header: str) -> str:
+    for part in link_header.split(","):
+        section = part.split(";")
+        if len(section) < 2:
+            continue
+        url = section[0].strip().lstrip("<").rstrip(">")
+        for param in section[1:]:
+            if param.strip() == 'rel="next"':
+                return url
+    return ""
+
+
+def _ship_lock_comments(repo: str, number: int, token: str) -> list[dict[str, str]]:
+    comments = _paginate(f"/repos/{repo}/issues/{number}/comments", token)
+    return [
+        {"body": c.get("body", ""), "createdAt": c.get("created_at", "")}
+        for c in comments
+        if _first_line(c.get("body", "")).startswith(SHIP_LOCK_MARKER)
+    ]
+
+
+def gather_snapshot(repo: str, token: str) -> dict[str, Any]:
+    """Build the snapshot for ``repo`` (``owner/name``) via the REST API.
+
+    Only issues carrying at least one SHIP-LOCK comment cost an extra request
+    (their comment thread); the common case — a fresh issue — is read from the
+    list call alone.
+    """
+    raw_issues = _paginate(f"/repos/{repo}/issues?state=open", token)
+    issues: list[dict[str, Any]] = []
+    for it in raw_issues:
+        # The issues endpoint returns PRs too; a PR carries a "pull_request"
+        # key. Drop them — the backlog is issues only.
+        if "pull_request" in it:
+            continue
+        number = it["number"]
+        # `comments` is a count on the list payload; fetch the thread only
+        # when there is one, and keep just the SHIP-LOCK comments.
+        lock_comments: list[dict[str, str]] = []
+        if it.get("comments", 0):
+            lock_comments = _ship_lock_comments(repo, number, token)
+        issues.append({
+            "number": number,
+            "title": it.get("title", ""),
+            "createdAt": it.get("created_at", ""),
+            "labels": [lbl.get("name", "") for lbl in it.get("labels", [])],
+            "shipLockComments": lock_comments,
+        })
+
+    raw_prs = _paginate(f"/repos/{repo}/pulls?state=open", token)
+    open_prs = [
+        {
+            "number": pr["number"],
+            "headRefName": (pr.get("head") or {}).get("ref", ""),
+            "body": pr.get("body") or "",
+        }
+        for pr in raw_prs
+    ]
+
+    raw_branches = _paginate(f"/repos/{repo}/branches", token)
+    branches = [b.get("name", "") for b in raw_branches]
+
+    return {"issues": issues, "openPRs": open_prs, "branches": branches}

@@ -1,0 +1,117 @@
+name: Backlog burn (scheduled /ship-issue)
+
+# The scheduled heartbeat for /ship-issue (issue #95). Nightly it picks ONE
+# open issue and runs /ship-issue on it unattended, leaving a draft PR for
+# human review. The skill already runs the same attended or unattended and
+# declines when an issue needs a human's taste — this workflow just gives it
+# a cadence.
+#
+# Three deliberate safety properties:
+#
+#   * Off by default. The whole job is gated on the repo variable
+#     BACKLOG_BURN_ENABLED; unset (or anything but 'true') pauses the routine
+#     without deleting it. Set it in Settings → Secrets and variables →
+#     Actions → Variables.
+#
+#   * Opt-in per issue. The selector (tools/backlog-burn) only ever picks an
+#     issue labelled `autonomy-ok`, so nothing ships until a human curates the
+#     backlog — the routine selects nothing on the day it lands.
+#
+#   * One issue per firing. A hard cap in the selector means a bad night costs
+#     one PR, not five.
+#
+# The agentic run degrades gracefully: with no CLAUDE_CODE_OAUTH_TOKEN secret
+# the job still selects and logs its pick, then emits a ::notice:: and stops
+# — exactly how ci.yml skips product-page drafting when ANTHROPIC_API_KEY is
+# unset. So this workflow is useful (and testable) before any secret exists.
+
+on:
+  schedule:
+    # Nightly at 06:17 UTC. An off-peak minute, not on the hour, to avoid the
+    # Actions scheduler's :00 congestion.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Select and log an issue, but do not invoke /ship-issue'
+        type: boolean
+        default: false
+
+# Read-only plus the two writes the routine needs: issues:write so the
+# selected /ship-issue run can post its SHIP-LOCK claim and outcome, and it
+# reads pulls to see what is already claimed.
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+# Never run two burns at once; a second nightly firing while one is still
+# working would risk two runs racing for the same issue. Do not cancel an
+# in-flight burn — it may be mid-ship.
+concurrency:
+  group: backlog-burn
+  cancel-in-progress: false
+
+jobs:
+  burn:
+    name: Pick one issue and run /ship-issue
+    # The off-switch. Unset/false pauses the routine without deleting it.
+    if: vars.BACKLOG_BURN_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    env:
+      # Secrets cannot be read in a step `if:` directly, so surface presence
+      # as a plain string here and gate on it below.
+      HAS_CLAUDE_SECRET: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install the selector
+        run: pip install -e tools/backlog-burn
+
+      - name: Select one autonomy-ok issue
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # `run` gathers the live snapshot (open issues + their SHIP-LOCK
+          # comments, open PRs, remote branches) and applies the policy. It
+          # writes `issue=<n>` (empty when nothing is eligible) to
+          # $GITHUB_OUTPUT and a markdown block to $GITHUB_STEP_SUMMARY.
+          backlog-burn run --repo "$GITHUB_REPOSITORY"
+
+      - name: Ship the selected issue (unattended /ship-issue)
+        if: >-
+          steps.select.outputs.issue != ''
+          && env.HAS_CLAUDE_SECRET == 'true'
+          && github.event.inputs.dry_run != 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: "/ship-issue ${{ steps.select.outputs.issue }}"
+
+      - name: Explain a skipped agentic run
+        if: >-
+          steps.select.outputs.issue != ''
+          && (env.HAS_CLAUDE_SECRET != 'true'
+              || github.event.inputs.dry_run == 'true')
+        env:
+          ISSUE: ${{ steps.select.outputs.issue }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "::notice::dry run — selected #${ISSUE} but did not invoke /ship-issue"
+          else
+            echo "::notice::CLAUDE_CODE_OAUTH_TOKEN is not set — selected #${ISSUE} but skipping the unattended /ship-issue run"
+          fi
+
+      - name: Explain an empty selection
+        if: steps.select.outputs.issue == ''
+        run: echo "::notice::no issue is currently eligible (nothing labelled autonomy-ok is unclaimed) — nothing to ship"
