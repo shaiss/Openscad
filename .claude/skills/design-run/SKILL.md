@@ -154,7 +154,10 @@ you react to, because the human isn't in the loop yet:
 
 Each iteration:
 1. `render.sh <name>` → **look at the bottom-iso view yourself** for overhang /
-   bed-contact problems, and check the shape against the brief's numbers.
+   bed-contact problems, and check the shape against the brief's numbers. If
+   `render.sh` itself *fails* (a CGAL/geometry error), that error **is** this
+   iteration's finding: fix the `.scad` and re-render — don't run `gate.sh` or
+   capture telemetry on a render that never produced a mesh to inspect.
 2. `gate.sh --slice <name>` for the printable parts.
 3. **Capture the iteration as telemetry** (this is the #93 consumer #96
    anticipated — it turns "is this converging?" from a vibe into a reading).
@@ -205,19 +208,27 @@ telemetry, rather than forcing green.
   preview. Declare the hero shot in `shots.conf` and the frozen previews in
   `previews/cameras.conf` — **CI renders and commits the images**; you own the
   manifest and the embed, not the pixels (CLAUDE.md: "what CI generates").
-  - **The regen handoff (read this unattended).** "CI renders the images" only
-    holds if the pushed branch actually triggers CI. The scheduled
-    `design-run.yml` runs the agent with the default `github.token`, and a push
-    or PR authored by `github.token` **does not trigger `ci.yml`** (the same
-    reason `regen` itself uses `REGEN_TOKEN` — see CLAUDE.md). So unless the
-    routine is configured with a PAT as `github_token`, `regen` will *not* fire
-    on your draft PR: the previews won't be generated, and `readme-gate.sh`
-    would fail on the PR for a missing embedded image. Do not pretend CI ran.
-    Either the operator wires a PAT (recommended for this pipeline, since a
-    design's page *requires* the regenerated previews), **or** you state plainly
-    in the PR body that the previews are pending a manual CI trigger (a
-    maintainer reopening/pushing the PR), so the handoff is honest rather than a
-    silently image-less page. Never hand-commit product shots to fake the regen.
+  - **The regen handoff (read this unattended) — a preview is a prerequisite,
+    not a nice-to-have.** `readme-gate.sh` requires an embedded preview, and it
+    runs inside `/preflight` (§6), which is a hard stop — so a design with no
+    preview never reaches §7 anyway. Get the preview to exist *before* you ship,
+    in this order:
+    1. **Generate what you can locally.** Frozen `previews/cameras.conf` shots
+       render with `render.sh <name> --previews` (plain OpenSCAD, no `bpy`) —
+       commit those. Most designs can satisfy the gate this way with no CI at
+       all. (Path-traced `shots.conf` product shots need `bpy`/CI; don't
+       hand-fake them.)
+    2. **If a required preview can only come from CI `regen`, it needs a PAT.**
+       The scheduled `design-run.yml` runs the agent with the default
+       `github.token`, and a push/PR authored by `github.token` **does not
+       trigger `ci.yml`** (the same reason `regen` uses `REGEN_TOKEN` — see
+       CLAUDE.md), so `regen` won't fire on your draft PR. With a PAT wired as
+       `github_token`, CI regenerates and commits the shot as usual.
+    3. **No PAT and the gate still needs a CI-only shot?** Then `/preflight` is
+       red and §8's hard stop applies: **do not open an image-less draft PR**
+       that fails its own gate — stop, withdraw the claim (§0.6), and report the
+       credential-gated run on the issue so a maintainer can wire the PAT or run
+       it attended. Never hand-commit product shots to fake the regen.
 - **`/pm` checkpoint.** Run `/pm <name>` against the brief before you push:
   scope not crept past the brief's parts, the named non-negotiables honoured.
   Cheap, and it catches the design drifting off the brief.

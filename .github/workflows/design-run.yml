@@ -195,9 +195,12 @@ jobs:
       # be generated — and a design page WITHOUT its previews fails
       # readme-gate.sh. So for this pipeline a PAT as `github_token` is
       # effectively required, not just nice-to-have, if the draft PR is to reach
-      # a mergeable state unattended. Without one, /design-run says in the PR
-      # body that previews are pending a manual CI trigger (see its §5 regen
-      # handoff) rather than shipping a silently image-less page.
+      # a mergeable state unattended: readme-gate needs a preview, and a
+      # path-traced product shot only comes from CI regen. Without a PAT,
+      # /design-run first generates what it can locally (cameras.conf previews
+      # via `render.sh --previews`); if the gate still needs a CI-only shot it
+      # stops and reports rather than opening an image-less PR that fails its own
+      # gate (see its §5 regen handoff).
       #
       # The pin is the immutable commit behind the v1 tag; a moved tag must not
       # silently change what runs with write perms + a secret. Re-pin
