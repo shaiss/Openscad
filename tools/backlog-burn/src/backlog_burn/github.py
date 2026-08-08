@@ -32,8 +32,20 @@ def _get(url: str, token: str) -> tuple[Any, dict[str, str]]:
     return body, headers
 
 
+# A page cap so a pathological Link loop cannot spin forever; 100 pages is
+# 10k items, far beyond any real backlog. Hitting it is treated as an error,
+# not silently truncated — a partial snapshot could miss the true oldest
+# eligible issue and select the wrong one, with no signal (the repo's "no
+# silent caps" rule).
+_MAX_PAGES = 100
+
+
 def _paginate(path: str, token: str) -> list[dict[str, Any]]:
-    """Follow ``Link: rel="next"`` until the collection is exhausted."""
+    """Follow ``Link: rel="next"`` until the collection is exhausted.
+
+    Raises ``RuntimeError`` rather than returning a truncated list if the page
+    cap is exceeded, so the selector never operates on a partial snapshot.
+    """
     url = f"{_API}{path}"
     if "?" not in url:
         url += "?per_page=100"
@@ -41,9 +53,12 @@ def _paginate(path: str, token: str) -> list[dict[str, Any]]:
         url += "&per_page=100"
     out: list[dict[str, Any]] = []
     seen = 0
-    # A generous page cap so a pathological Link loop cannot spin forever;
-    # 100 pages is 10k items, far beyond any real backlog.
-    while url and seen < 100:
+    while url:
+        if seen >= _MAX_PAGES:
+            raise RuntimeError(
+                f"pagination exceeded {_MAX_PAGES} pages for {path!r} — refusing "
+                "to select on a truncated snapshot"
+            )
         body, headers = _get(url, token)
         if isinstance(body, list):
             out.extend(body)
@@ -76,9 +91,11 @@ def _ship_lock_comments(repo: str, number: int, token: str) -> list[dict[str, st
 def gather_snapshot(repo: str, token: str) -> dict[str, Any]:
     """Build the snapshot for ``repo`` (``owner/name``) via the REST API.
 
-    Only issues carrying at least one SHIP-LOCK comment cost an extra request
-    (their comment thread); the common case — a fresh issue — is read from the
-    list call alone.
+    An issue's comment thread is fetched only when the list payload reports it
+    has any comments (``comments > 0``); that thread is then filtered down to
+    its SHIP-LOCK comments. So a commented-but-unlocked issue still costs one
+    extra request — the SHIP-LOCK filter is applied after the fetch, not before
+    it — while a fresh, comment-free issue is read from the list call alone.
     """
     raw_issues = _paginate(f"/repos/{repo}/issues?state=open", token)
     issues: list[dict[str, Any]] = []

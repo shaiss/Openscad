@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .select import DEFAULT_REQUIRED_LABEL, render_summary, select_issue
@@ -56,7 +57,8 @@ def _token() -> str:
 
 def cmd_select(args: argparse.Namespace) -> int:
     snapshot = _load_snapshot(args.input)
-    record = select_issue(snapshot, required_label=args.label)
+    record = select_issue(snapshot, required_label=args.label,
+                          now=datetime.now(timezone.utc))
     _emit(record, args)
     return 0
 
@@ -74,7 +76,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     from .github import gather_snapshot
 
     snapshot = gather_snapshot(args.repo, _token())
-    record = select_issue(snapshot, required_label=args.label)
+    record = select_issue(snapshot, required_label=args.label,
+                          now=datetime.now(timezone.utc))
     _emit(record, args)
     return 0
 

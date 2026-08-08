@@ -37,13 +37,18 @@ on:
         type: boolean
         default: false
 
-# Read-only plus the two writes the routine needs: issues:write so the
-# selected /ship-issue run can post its SHIP-LOCK claim and outcome, and it
-# reads pulls to see what is already claimed.
+# Scoped to what the unattended /ship-issue run actually does: it pushes a
+# branch (contents:write) and opens a draft PR (pull-requests:write), and
+# posts its SHIP-LOCK claim and outcome (issues:write). Selection alone only
+# needs reads, but permissions are per-job not per-step, and this single job
+# both selects and ships. The job is off unless BACKLOG_BURN_ENABLED is set,
+# and the writing step is skipped entirely without the CLAUDE_CODE_OAUTH_TOKEN
+# secret, so these grants sit idle until the routine is deliberately switched
+# on.
 permissions:
-  contents: read
+  contents: write
   issues: write
-  pull-requests: read
+  pull-requests: write
 
 # Never run two burns at once; a second nightly firing while one is still
 # working would risk two runs racing for the same issue. Do not cancel an

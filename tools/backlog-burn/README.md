@@ -24,7 +24,12 @@ one** issue, applying, in order:
    signals hold: an active `🚢 SHIP-LOCK` marker comment (a `WITHDRAWN` one
    releases it), an open PR that closes the issue (any of GitHub's nine
    closing keywords, or a `claude/issue-<N>-*` head branch), or an existing
-   remote `claude/issue-<N>-*` branch.
+   remote `claude/issue-<N>-*` branch. A SHIP-LOCK more than a few hours old
+   with **no** backing branch and **no** closing PR is a *stale* claim — a run
+   that died between posting its lock and pushing — and, exactly as the skill's
+   §0.3 takeover rule allows, it does **not** block: otherwise a dead run would
+   freeze the issue out of the burn forever, since the skill's own takeover
+   only runs for an issue this selector actually hands it.
 3. **oldest-first** — among what survives, the oldest issue by creation time
    (tie-broken by number, so the pick is deterministic across runs).
 4. **cap of one** — everything past the first eligible issue is deferred to

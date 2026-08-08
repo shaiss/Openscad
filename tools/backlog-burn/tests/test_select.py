@@ -10,12 +10,18 @@ half of the pair fails, so a weakened policy cannot pass silently (the
 from __future__ import annotations
 
 import copy
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from backlog_burn.select import render_summary, select_issue
 
 LABEL = "autonomy-ok"
+NOW = datetime(2026, 8, 8, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def _iso(dt):
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def issue(number, created, *, labels=(LABEL,), locks=()):
@@ -122,6 +128,51 @@ def test_latest_lock_wins_even_if_reclaimed():
         {"body": "🚢 SHIP-LOCK — b.", "createdAt": "2026-08-04T00:00:00Z"},
     ])
     assert select_issue(snap([issue_]))["selected"] is None
+
+
+def test_stale_lock_with_no_branch_or_pr_is_takeable():
+    # An un-withdrawn claim older than the staleness window, with nothing
+    # backing it (no branch, no closing PR), is the skill's takeover case:
+    # the burn must not be frozen out of it.
+    stale = issue(44, "2026-08-01T00:00:00Z", locks=[
+        {"body": "🚢 SHIP-LOCK — shipping.", "createdAt": _iso(NOW - timedelta(hours=9))},
+    ])
+    assert select_issue(snap([stale]), now=NOW)["selected"] == 44
+    # Negative control: the SAME lock, only an hour old, still blocks.
+    fresh = issue(44, "2026-08-01T00:00:00Z", locks=[
+        {"body": "🚢 SHIP-LOCK — shipping.", "createdAt": _iso(NOW - timedelta(hours=1))},
+    ])
+    assert select_issue(snap([fresh]), now=NOW)["selected"] is None
+
+
+def test_stale_lock_still_blocked_when_a_branch_backs_it():
+    # Old lock, but a claude/issue-<N>-* branch exists -> the run is alive /
+    # real; the branch guard fires first and it stays excluded.
+    stale = issue(45, "2026-08-01T00:00:00Z", locks=[
+        {"body": "🚢 SHIP-LOCK — shipping.", "createdAt": _iso(NOW - timedelta(hours=9))},
+    ])
+    assert select_issue(
+        snap([stale], branches=["claude/issue-45-wip"]), now=NOW
+    )["selected"] is None
+
+
+def test_stale_lock_still_blocked_when_a_pr_backs_it():
+    stale = issue(46, "2026-08-01T00:00:00Z", locks=[
+        {"body": "🚢 SHIP-LOCK — shipping.", "createdAt": _iso(NOW - timedelta(hours=9))},
+    ])
+    assert select_issue(
+        snap([stale], open_prs=[{"number": 9, "headRefName": "x", "body": "Closes #46"}]),
+        now=NOW,
+    )["selected"] is None
+
+
+def test_no_now_treats_undated_lock_as_active():
+    # Without a reference time, staleness cannot be judged; a claim is never
+    # selected over (the conservative reading).
+    old = issue(47, "2026-08-01T00:00:00Z", locks=[
+        {"body": "🚢 SHIP-LOCK — shipping.", "createdAt": "2000-01-01T00:00:00Z"},
+    ])
+    assert select_issue(snap([old]))["selected"] is None
 
 
 def test_non_ship_lock_comment_does_not_lock():

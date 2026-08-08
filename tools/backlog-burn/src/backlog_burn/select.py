@@ -22,6 +22,7 @@ network) is what lets every guard below carry a negative-control test.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 # The label a human must add for an issue to be eligible for unattended
@@ -30,6 +31,15 @@ from typing import Any, Optional
 DEFAULT_REQUIRED_LABEL = "autonomy-ok"
 
 SHIP_LOCK_MARKER = "🚢 SHIP-LOCK"
+
+# A SHIP-LOCK this old, with no corroborating branch or closing PR, is a
+# *stale* claim — a run that died between posting its lock and pushing a
+# branch. The /ship-issue skill §0.3 takes such a claim over rather than
+# letting it freeze the issue forever; this pre-filter must do the same, or a
+# dead run's lock would permanently starve the issue from the burn (the skill
+# only gets to run the takeover for an issue this selector actually hands it).
+# "A few hours old" in the skill, made concrete.
+STALE_LOCK_HOURS = 6
 
 # GitHub honours these nine keywords, case-insensitively, each optionally
 # followed by a colon, to auto-close an issue from a PR body. Grepping only
@@ -50,24 +60,60 @@ def _first_line(text: str) -> str:
     return ""
 
 
-def _ship_lock_active(comments: list[dict[str, Any]]) -> bool:
-    """True when the *latest* SHIP-LOCK comment is an active claim.
+def _parse_iso(ts: str) -> Optional[datetime]:
+    """Parse a GitHub ISO-8601 UTC timestamp; ``None`` if unparseable.
+
+    ``datetime.fromisoformat`` only learned to accept a trailing ``Z`` in
+    3.11, and the tool must run on 3.10, so normalise it by hand.
+    """
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _ship_lock_state(
+    comments: list[dict[str, Any]],
+    now: Optional[datetime],
+    stale_after_hours: float,
+) -> str:
+    """Classify the *latest* SHIP-LOCK comment: ``none`` / ``active`` / ``stale``.
 
     A claim is a state, not a flag (the skill's §0.3 rule): read the newest
     ``🚢 SHIP-LOCK`` comment and act on that one. ``🚢 SHIP-LOCK WITHDRAWN``
-    releases the claim and must not block, which is why a withdrawal has to be
-    able to *un*-exclude an issue here — not merely be ignored.
+    releases the claim (``none``), which is why a withdrawal has to be able to
+    *un*-exclude an issue here, not merely be ignored.
+
+    An un-withdrawn claim older than ``stale_after_hours`` is ``stale`` — the
+    caller only asks about the lock once it has already ruled out a
+    corroborating branch or closing PR, so a stale verdict here means exactly
+    the skill's takeover condition. With ``now`` unknown (``None``) staleness
+    cannot be judged, so the safe reading is ``active``: never select over a
+    claim we cannot date.
     """
     lock_comments = [
         c for c in (comments or [])
         if _first_line(c.get("body", "")).startswith(SHIP_LOCK_MARKER)
     ]
     if not lock_comments:
-        return False
+        return "none"
     # createdAt is ISO-8601 UTC ("2026-08-07T23:35:56Z"), which sorts
     # lexicographically in timestamp order — newest last.
     latest = max(lock_comments, key=lambda c: c.get("createdAt", ""))
-    return "WITHDRAWN" not in _first_line(latest.get("body", "")).upper()
+    if "WITHDRAWN" in _first_line(latest.get("body", "")).upper():
+        return "none"
+    if now is None:
+        return "active"
+    created = _parse_iso(latest.get("createdAt", ""))
+    if created is None:
+        return "active"
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    if now - created > timedelta(hours=stale_after_hours):
+        return "stale"
+    return "active"
 
 
 def _closes_issue(pr_body: str, number: int) -> bool:
@@ -104,28 +150,34 @@ def exclusion_reason(
     open_prs: list[dict[str, Any]],
     branches: list[str],
     required_label: str = DEFAULT_REQUIRED_LABEL,
+    now: Optional[datetime] = None,
+    stale_after_hours: float = STALE_LOCK_HOURS,
 ) -> Optional[str]:
     """Why this issue is *not* eligible, or ``None`` if it is.
 
-    Order matters only for the reported reason, never for correctness — an
-    issue is eligible exactly when none of the four guards fire.
+    The branch and closing-PR guards are checked *before* the SHIP-LOCK guard
+    on purpose: by the time we ask about the lock, a corroborating branch or
+    PR has already been ruled out, so a ``stale`` lock verdict means precisely
+    the skill's takeover condition — an old claim with nothing backing it —
+    and the issue is left eligible rather than frozen forever.
     """
     number = issue["number"]
     labels = issue.get("labels", []) or []
     if required_label not in labels:
         return f"not labelled {required_label!r}"
-    if _ship_lock_active(issue.get("shipLockComments", [])):
-        return "an active 🚢 SHIP-LOCK claim"
-    if _open_pr_claims(open_prs, number):
-        return f"an open PR already closes #{number}"
     if _has_issue_branch(branches, number):
         return f"a claude/issue-{number}-* branch already exists"
+    if _open_pr_claims(open_prs, number):
+        return f"an open PR already closes #{number}"
+    if _ship_lock_state(issue.get("shipLockComments", []), now, stale_after_hours) == "active":
+        return "an active 🚢 SHIP-LOCK claim"
     return None
 
 
 def select_issue(
     snapshot: dict[str, Any],
     required_label: str = DEFAULT_REQUIRED_LABEL,
+    now: Optional[datetime] = None,
 ) -> dict[str, Any]:
     """Pick at most one issue from a snapshot; return a structured record.
 
@@ -133,6 +185,10 @@ def select_issue(
     selected, how many were considered, and — for every issue that was not —
     the reason it was skipped, so a maintainer reading the run can see the
     routine's reasoning without re-deriving it.
+
+    ``now`` (a timezone-aware datetime) dates SHIP-LOCK claims for staleness;
+    the CLI passes the current UTC time. With ``now`` omitted, a claim is
+    never treated as stale — the conservative reading.
     """
     issues = snapshot.get("issues", []) or []
     open_prs = snapshot.get("openPRs", []) or []
@@ -141,7 +197,9 @@ def select_issue(
     eligible: list[dict[str, Any]] = []
     excluded: dict[str, str] = {}
     for issue in issues:
-        reason = exclusion_reason(issue, open_prs, branches, required_label)
+        reason = exclusion_reason(
+            issue, open_prs, branches, required_label, now=now
+        )
         if reason is None:
             eligible.append(issue)
         else:
