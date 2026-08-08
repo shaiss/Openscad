@@ -33,7 +33,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Part of the hash. Bump to force a full regeneration on the next regen run.
-STAMP_FORMAT=1
+STAMP_FORMAT=2
 
 name="${1:?usage: scripts/regen-stamp.sh <design-name>}"
 if [[ ! -f "designs/${name}/${name}.scad" ]]; then
