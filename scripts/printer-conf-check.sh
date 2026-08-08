@@ -43,22 +43,24 @@ echo(resolved_xy_tol = printer_xy_tol);
 cube([10 + printer_xy_tol, 10, 10]);
 EOF
 
-render_echo() {  # scad out.echo [extra OPENSCADPATH prefix dir]
-  local scad="$1" out="$2" prefix="${3:-}"
-  local path="$OPENSCADPATH"
+# Render helpers. Output is captured, not discarded: a successful render stays
+# quiet, but a failure prints the OpenSCAD diagnostics (indented, with a FAIL
+# prefix) before returning non-zero — so a broken render in this check, which
+# scripts/check.sh runs unconditionally, is debuggable instead of a bare abort.
+render() {  # format out scad [extra OPENSCADPATH prefix dir]
+  local fmt="$1" out="$2" scad="$3" prefix="${4:-}"
+  local path="$OPENSCADPATH" log
   [ -n "$prefix" ] && path="$prefix:$OPENSCADPATH"
-  OPENSCADPATH="$path" xvfb-run -a "$OPENSCAD_BIN" \
-    ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
-    -o "$out" --export-format echo "$scad" >/dev/null 2>&1
+  if ! log="$(OPENSCADPATH="$path" xvfb-run -a "$OPENSCAD_BIN" \
+      ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
+      -o "$out" --export-format "$fmt" "$scad" 2>&1)"; then
+    echo "FAIL  printer-conf: ${fmt} render failed for ${scad}" >&2
+    sed 's/^/      /' <<<"$log" >&2
+    return 1
+  fi
 }
-render_stl() {  # scad out.stl [extra OPENSCADPATH prefix dir]
-  local scad="$1" out="$2" prefix="${3:-}"
-  local path="$OPENSCADPATH"
-  [ -n "$prefix" ] && path="$prefix:$OPENSCADPATH"
-  OPENSCADPATH="$path" xvfb-run -a "$OPENSCAD_BIN" \
-    ${OSC_ARGS[@]+"${OSC_ARGS[@]}"} \
-    -o "$out" --export-format binstl "$scad" >/dev/null 2>&1
-}
+render_echo() { render echo   "$2" "$1" "${3:-}"; }  # scad out.echo [prefix]
+render_stl()  { render binstl "$2" "$1" "${3:-}"; }  # scad out.stl  [prefix]
 resolved() {  # out.echo -> the number after "resolved_xy_tol = "
   sed -n 's/.*resolved_xy_tol = \([0-9.][0-9.]*\).*/\1/p' "$1" | head -1
 }
