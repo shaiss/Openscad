@@ -20,6 +20,7 @@ _API = "https://api.github.com"
 
 
 def _get(url: str, token: str) -> tuple[Any, dict[str, str]]:
+    """GET ``url`` and return ``(parsed_json, lowercased_headers)``."""
     req = urllib.request.Request(url)
     req.add_header("Accept", "application/vnd.github+json")
     req.add_header("X-GitHub-Api-Version", "2022-11-28")
@@ -68,6 +69,7 @@ def _paginate(path: str, token: str) -> list[dict[str, Any]]:
 
 
 def _next_link(link_header: str) -> str:
+    """The ``rel="next"`` URL from a ``Link`` header, or ``""``."""
     for part in link_header.split(","):
         section = part.split(";")
         if len(section) < 2:

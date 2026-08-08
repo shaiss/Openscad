@@ -8,8 +8,12 @@ or none.
 Every exclusion here mirrors the ``/ship-issue`` skill's own §0 lock check:
 
 * an active ``🚢 SHIP-LOCK`` marker comment (a ``WITHDRAWN`` one releases it),
-* an open PR that *closes* the issue (any of GitHub's nine closing keywords,
-  or a PR branch named ``claude/issue-<N>-*``),
+* an open PR that *closes* the issue — detected from its body's closing
+  keywords or a ``claude/issue-<N>-*`` head branch. A keyword-free PR linked
+  only through GitHub's Development sidebar is *not* detected here (that needs
+  timeline/GraphQL metadata this stdlib snapshot deliberately does not fetch);
+  the skill's own linked-PR-metadata check is the backstop, so the worst case
+  is one wasted selection the skill then declines, never a wrong ship,
 * an existing remote ``claude/issue-<N>-*`` branch.
 
 The skill re-verifies all of this before it touches a line of code, so this
@@ -53,6 +57,7 @@ _CLOSING_KEYWORDS = (
 
 
 def _first_line(text: str) -> str:
+    """The first non-blank line of ``text``, stripped (``""`` if none)."""
     for line in (text or "").splitlines():
         stripped = line.strip()
         if stripped:
@@ -117,6 +122,7 @@ def _ship_lock_state(
 
 
 def _closes_issue(pr_body: str, number: int) -> bool:
+    """True if ``pr_body`` closes issue ``number`` via any GitHub keyword."""
     for kw in _CLOSING_KEYWORDS:
         # keyword, optional ':', whitespace, '#<number>', not glued to more
         # digits (so "#9" does not match issue 95).
@@ -127,15 +133,18 @@ def _closes_issue(pr_body: str, number: int) -> bool:
 
 
 def _issue_branch_re(number: int) -> re.Pattern[str]:
+    """Matcher for a ``claude/issue-<number>-*`` branch (boundary-safe)."""
     return re.compile(rf"^claude/issue-{number}-")
 
 
 def _has_issue_branch(branches: list[str], number: int) -> bool:
+    """True if any branch is this issue's ``claude/issue-<number>-*``."""
     rx = _issue_branch_re(number)
     return any(rx.match(b or "") for b in (branches or []))
 
 
 def _open_pr_claims(open_prs: list[dict[str, Any]], number: int) -> bool:
+    """True if an open PR closes this issue (by keyword or head branch)."""
     rx = _issue_branch_re(number)
     for pr in open_prs or []:
         if _closes_issue(pr.get("body", ""), number):

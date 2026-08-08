@@ -92,11 +92,23 @@ jobs:
           backlog-burn run --repo "$GITHUB_REPOSITORY"
 
       - name: Ship the selected issue (unattended /ship-issue)
+        id: ship
         if: >-
           steps.select.outputs.issue != ''
           && env.HAS_CLAUDE_SECRET == 'true'
           && github.event.inputs.dry_run != 'true'
-        uses: anthropics/claude-code-action@v1
+        # Pinned to the immutable commit behind the v1 tag, not the mutable
+        # tag: this step receives write permissions and the OAuth secret, so a
+        # moved tag must not silently change what runs. (Re-pin deliberately to
+        # adopt a new release.) The action authenticates its own git push and
+        # PR creation from `github_token` below — the checkout above keeps
+        # persist-credentials:false because this step does not use the
+        # workflow's checked-out remote. NOTE for enabling: a PR opened with
+        # the default GITHUB_TOKEN does not itself trigger CI (the same reason
+        # regen uses REGEN_TOKEN); to have the drafted PR's checks run
+        # automatically, pass a PAT as github_token here when switching the
+        # routine on.
+        uses: anthropics/claude-code-action@7ff6806c8ebd129a7043b947af920074d3819dc8  # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
@@ -120,3 +132,24 @@ jobs:
       - name: Explain an empty selection
         if: steps.select.outputs.issue == ''
         run: echo "::notice::no issue is currently eligible (nothing labelled autonomy-ok is unclaimed) — nothing to ship"
+
+      - name: Record the run outcome
+        # Runs on success, failure or skip so the job summary always shows what
+        # happened. This reports the *run* disposition; the authoritative
+        # shipped/declined verdict and the draft-PR link are posted by
+        # /ship-issue onto the issue thread itself (its §7 — the thread is the
+        # only durable log), which this summary links back to.
+        if: always()
+        env:
+          ISSUE: ${{ steps.select.outputs.issue }}
+          SHIP: ${{ steps.ship.outcome }}
+        run: |
+          {
+            echo "## Backlog burn — run outcome"
+            if [ -z "${ISSUE}" ]; then
+              echo "- selected: none (nothing eligible)"
+            else
+              echo "- selected: #${ISSUE}"
+              echo "- ship step: ${SHIP:-skipped} (see issue #${ISSUE} for the /ship-issue verdict and any draft PR)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
