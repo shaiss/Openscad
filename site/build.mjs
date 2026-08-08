@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 
 import { readDesigns, readStyles } from "./lib/content.mjs";
 import { renderMarkdown, tocHtml } from "./lib/markdown.mjs";
-import { parseParameters, includeClosure } from "./lib/scadparams.mjs";
+import { buildModel } from "./lib/model.mjs";
 import {
   indexPage,
   designPage,
@@ -86,51 +86,19 @@ const RUNTIME_FILE = join(SITE_DIR, "node_modules", RUNTIME_PKG, "openscad.js");
 const FONT_FILE = join(SITE_DIR, "node_modules", "dejavu-fonts-ttf", "ttf", "DejaVuSans.ttf");
 const FONT_LICENSE = join(SITE_DIR, "node_modules", "dejavu-fonts-ttf", "LICENSE");
 
-/**
- * The design's parameters and its complete source bundle, as the browser
- * needs them.
- *
- * Files are keyed by their repo-relative path, and the browser recreates that
- * layout under one root with OPENSCADPATH set to `lib:root` — the same search
- * path every script in this repo exports. Mirroring rather than flattening is
- * what keeps a nested reference (`BOSL2/std.scad`, `styles/<n>/style.scad`)
- * resolvable if a design ever takes one.
- */
-function buildConfigurator(design) {
-  const entry = `${design.relDir}/${design.name}.scad`;
-  const source = readFileSync(join(REPO_ROOT, entry), "utf8");
-  const { sections, asserts } = parseParameters(source);
-  if (!sections.length) return null;
-
-  // Same roots the scripts search: OPENSCADPATH="lib:repo-root", plus the
-  // design's own directory for a sibling include.
-  const resolve = (ref) => {
-    for (const rel of [join("lib", ref), join(design.relDir, ref), ref]) {
-      const candidate = join(REPO_ROOT, rel);
-      try {
-        if (statSync(candidate).isFile()) {
-          return {
-            path: rel.split(sep).join("/"),
-            contents: readFileSync(candidate, "utf8"),
-          };
-        }
-      } catch {
-        /* try the next root */
-      }
-    }
-    return null;
-  };
-
-  return {
-    name: design.name,
-    title: design.title,
-    entry,
-    source,
-    files: includeClosure(source, resolve),
-    sections,
-    asserts,
-  };
-}
+// The 3D viewer's WebGL library (issue #100), vendored the same way as the
+// OpenSCAD runtime and font: pinned npm packages copied into the build, so what
+// ships is reproducible and the deploy needs no external reference. The two
+// addons import from the bare specifier `three`, which the product page resolves
+// with an import map pointing at the module build below.
+const THREE_PKG = "three";
+const THREE_DIR = join(SITE_DIR, "node_modules", THREE_PKG);
+const THREE_FILES = [
+  ["build/three.module.min.js", "three.module.min.js"],
+  ["examples/jsm/loaders/STLLoader.js", "STLLoader.js"],
+  ["examples/jsm/controls/OrbitControls.js", "OrbitControls.js"],
+  ["LICENSE", "LICENSE.txt"],
+];
 
 /**
  * GPL-2.0 requires that whoever receives the binary can get its source and
@@ -237,13 +205,14 @@ function main() {
       pageFor,
     });
 
-    const configurator = buildConfigurator(design);
-    if (configurator) {
-      rendered.push({
-        path: `${design.relDir}/configurator.json`,
-        contents: JSON.stringify(configurator),
-      });
-    }
+    // Every design gets a model bundle: the configurator reads its parameters,
+    // and the 3D viewer renders its geometry (issue #100). A design with no
+    // tunable parameters still has geometry to view, so this is unconditional.
+    const model = buildModel(REPO_ROOT, design);
+    rendered.push({
+      path: `${design.relDir}/model.json`,
+      contents: JSON.stringify(model),
+    });
 
     rendered.push({
       path: `${design.relDir}/index.html`,
@@ -251,7 +220,7 @@ function main() {
         html,
         toc: tocHtml(headings),
         githubBase: GITHUB_BASE,
-        configurator,
+        model,
       }),
     });
   }
@@ -334,8 +303,27 @@ function main() {
     );
   }
 
-  const configurators = rendered.filter((p) => p.path.endsWith("configurator.json")).length;
-  const pageCount = rendered.length - configurators + 1 + (styles.length ? 1 : 0);
+  // three.js for the 3D viewer (issue #100). Served from /assets/three/ and,
+  // like the OpenSCAD runtime, only fetched once a visitor opens a viewer —
+  // the module script is deferred and imports nothing until then. three.js is
+  // MIT; its LICENSE ships beside the artifact.
+  let viewerBytes = 0;
+  mkdirSync(join(out, "assets", "three"), { recursive: true });
+  try {
+    for (const [from, to] of THREE_FILES) {
+      const src = join(THREE_DIR, from);
+      copyFileSync(src, join(out, "assets", "three", to));
+      viewerBytes += statSync(src).size;
+    }
+  } catch (err) {
+    fail(
+      `the 3D viewer library (three.js) is missing (${err.message}).\n` +
+        `Run \`npm --prefix site ci\` first — the viewer cannot be built without it.`
+    );
+  }
+
+  const models = rendered.filter((p) => p.path.endsWith("model.json")).length;
+  const pageCount = rendered.length - models + 1 + (styles.length ? 1 : 0);
   console.log(
     `site: ${pageCount} pages, ${assets.size} assets ` +
       `(${(assetBytes / 1024 / 1024).toFixed(1)} MB) → ${relative(REPO_ROOT, out) || out}`
@@ -344,8 +332,12 @@ function main() {
     `      ${designs.length} designs, ${styles.length} styles, every local reference resolved`
   );
   console.log(
-    `      ${configurators} configurators, OpenSCAD runtime ` +
+    `      ${models} model bundles, OpenSCAD runtime ` +
       `${(runtimeBytes / 1024 / 1024).toFixed(1)} MB (lazy-loaded, GPL notice shipped)`
+  );
+  console.log(
+    `      3D viewer: three.js ${(viewerBytes / 1024 / 1024).toFixed(1)} MB ` +
+      `(vendored, MIT, lazy-loaded)`
   );
 }
 
