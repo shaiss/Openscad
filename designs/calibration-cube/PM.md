@@ -53,6 +53,14 @@ Frozen once reviewed — add a row, never repurpose one.
 |---|---|
 | bench-calipers | the cube on a heated printer bed beside digital calipers, workshop light |
 
+**Motion clips — tier 2 (AI, cosmetic, disclosed).** Only motion the print can
+plausibly perform — for a static part, that means the camera moves, not the
+cube; the deterministic turntable GIF stays the motion-true artifact.
+
+| Shot | Scene/Motion |
+|---|---|
+| turntable | slow camera orbit around the cube on a heated printer bed, light sweeping over the engraved size marker |
+
 ## v1 — definition of done
 
 - [x] Prints supportless, dimensionally true (N1–N3).

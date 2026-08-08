@@ -58,6 +58,14 @@ feature — the marker seat — and understand nothing else moved.
 |---|---|
 | product-hero | the board mid-game on a dinner table, soybeans parked on a few closed shutters, sushi and soy dishes around it |
 
+**Motion clips — tier 2 (AI, cosmetic, disclosed).** Optional; only motion
+the print really performs — shutters slide along their rails, markers settle
+into seats. Nothing that would leak hidden information (N2).
+
+| Shot | Scene/Motion |
+|---|---|
+| product-hero | mid-game on the dinner table: one shutter slides open along its rail, a soybean settles into a closed shutter's seat |
+
 ## Backlog, ranked by user value
 
 | # | Item | Why this rank | Cost |
