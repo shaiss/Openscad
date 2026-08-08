@@ -2,6 +2,7 @@
 // which is well under the weight where a framework starts paying for itself.
 
 import { escapeHtml, inlineMarkdown, plainText } from "./markdown.mjs";
+import { hasConfigurator } from "./model.mjs";
 
 const SITE_NAME = "print-bench";
 const TAGLINE = "Parametric 3D-printable designs, gated before they ship.";
@@ -144,11 +145,11 @@ ${designs.map(card).join("\n")}
  * ~14 MB, so loading it with the page would make every product page
  * expensive to read.
  */
-function configuratorPanel(design, configurator) {
-  const count = configurator.sections.reduce((n, s) => n + s.params.length, 0);
+function configuratorPanel(design, model) {
+  const count = model.sections.reduce((n, s) => n + s.params.length, 0);
   return `
 <section class="cfg" id="configure"
-  data-configurator="/${design.relDir}/configurator.json"
+  data-configurator="/${design.relDir}/model.json"
   data-runtime="/assets/openscad/openscad.js"
   data-worker="/assets/openscad-worker.js"
   data-font="/assets/openscad/design.ttf">
@@ -177,7 +178,55 @@ function configuratorPanel(design, configurator) {
 </section>`;
 }
 
-export function designPage(design, { html, toc, githubBase, configurator }) {
+/**
+ * The in-browser 3D viewer (issue #100).
+ *
+ * Rendered as inert markup, exactly like the configurator: nothing loads until
+ * the visitor presses "View in 3D". On press, viewer.js renders the design's
+ * own source at its default parameters with the OpenSCAD-WASM worker the site
+ * already ships — the same geometry the gate exports — and draws the resulting
+ * STL with three.js. It sits on every product page, including designs with no
+ * tunable parameters (which get no configurator), because every design has
+ * geometry to inspect.
+ *
+ * Progressive enhancement: without JavaScript the <noscript> fallback points at
+ * the rendered previews already shown above, and the rest of the page is
+ * untouched.
+ */
+function viewerPanel(design) {
+  const fallback = design.thumb
+    ? `<img src="/${design.relDir}/previews/${escapeHtml(design.thumb)}" alt="${escapeHtml(design.name)} preview">`
+    : "";
+  return `
+<section class="viewer" id="view-3d"
+  data-viewer
+  data-model="/${design.relDir}/model.json"
+  data-runtime="/assets/openscad/openscad.js"
+  data-worker="/assets/openscad-worker.js"
+  data-font="/assets/openscad/design.ttf">
+  <h2>View in 3D</h2>
+  <p>Inspect the real geometry — drag to rotate, scroll to zoom. The model is
+  rendered from this design's own source at its default settings, right in your
+  browser; nothing is uploaded.</p>
+  <button class="btn btn-primary" type="button" data-view-open>View in 3D</button>
+  <div class="viewer-stage" data-stage hidden>
+    <div class="viewer-canvas" data-canvas></div>
+    <p class="viewer-status" data-view-status role="status" aria-live="polite"></p>
+    <p class="viewer-foot muted">Rendered on your machine by
+      <a href="/assets/openscad/README.txt">OpenSCAD compiled to WebAssembly</a>
+      (GPL-2.0, about 14 MB on first use) and drawn with
+      <a href="/assets/three/LICENSE.txt">three.js</a> (MIT).</p>
+  </div>
+  <noscript>
+    <p class="muted">Enable JavaScript to inspect this design in 3D. A rendered
+    preview is shown above.</p>
+    ${fallback}
+  </noscript>
+</section>`;
+}
+
+export function designPage(design, { html, toc, githubBase, model }) {
+  const showConfigurator = hasConfigurator(model);
   const src = `${githubBase}/${design.relDir}`;
   const rail = `<aside class="rail">
   ${toc ? `<div class="rail-block"><h3>On this page</h3>${toc}</div>` : ""}
@@ -223,18 +272,38 @@ ${design.scads
   <div class="design-layout">
     <article class="prose">
 ${html}
-${configurator ? configuratorPanel(design, configurator) : ""}
+${viewerPanel(design)}
+${showConfigurator ? configuratorPanel(design, model) : ""}
     </article>
 ${rail}
   </div>
 </div>`;
+
+  // The viewer's addons import the bare specifier `three`; an import map on the
+  // page resolves it to the vendored module build. It must precede the module
+  // script, which is why it goes in <head> — viewer.js loads at end of <body>.
+  const importMap =
+    '<script type="importmap">' +
+    JSON.stringify({ imports: { three: "/assets/three/three.module.min.js" } }) +
+    "</script>";
+
+  const scripts = [
+    // A module script is deferred by definition and imports nothing until the
+    // viewer is opened, so shipping it on every product page costs a page load
+    // nothing until a visitor asks to view.
+    '<script type="module" src="/assets/viewer.js"></script>',
+    showConfigurator ? '<script src="/assets/configurator.js" defer></script>' : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   return layout({
     title: `${design.title} — ${SITE_NAME}`,
     description: plainText(design.pitch),
     body,
     canonicalPath: `/${design.relDir}/`,
-    extraScript: configurator ? '<script src="/assets/configurator.js" defer></script>' : "",
+    extraHead: importMap,
+    extraScript: scripts,
   });
 }
 

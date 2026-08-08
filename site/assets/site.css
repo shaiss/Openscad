@@ -22,6 +22,7 @@
   --warn-ink: #6b4c12;
 
   --shadow: 0 1px 2px rgb(20 23 26 / 6%), 0 8px 24px rgb(20 23 26 / 6%);
+  --viewer-bg: #eef0ec;
   --radius: 10px;
 
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
@@ -48,6 +49,7 @@
     --warn-rule: #b58a30;
     --warn-ink: #e3cf9a;
     --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 8px 24px rgb(0 0 0 / 30%);
+    --viewer-bg: #0f1215;
   }
 }
 
@@ -65,6 +67,7 @@
   --warn-rule: #d9a441;
   --warn-ink: #6b4c12;
   --shadow: 0 1px 2px rgb(20 23 26 / 6%), 0 8px 24px rgb(20 23 26 / 6%);
+  --viewer-bg: #eef0ec;
 }
 
 :root[data-theme="dark"] {
@@ -81,6 +84,7 @@
   --warn-rule: #b58a30;
   --warn-ink: #e3cf9a;
   --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 8px 24px rgb(0 0 0 / 30%);
+  --viewer-bg: #0f1215;
 }
 
 * { box-sizing: border-box; }
@@ -658,3 +662,47 @@ pre code { background: none; padding: 0; }
 .cfg-diag-error { background: var(--warn-bg); color: var(--warn-ink); }
 
 .cfg-foot { margin-top: 1rem; font-size: 0.85rem; }
+
+/* In-browser 3D viewer (issue #100). */
+.viewer {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule-soft);
+  max-width: var(--measure);
+}
+
+.viewer h2 { margin-top: 0; border-top: none; padding-top: 0; }
+
+.viewer-stage { margin-top: 1.25rem; }
+
+.viewer-canvas {
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  min-height: 300px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--viewer-bg);
+}
+
+/* The renderer sizes its own <canvas>; keep it filling the host and never
+   overflowing the rounded frame. */
+.viewer-canvas canvas { display: block; width: 100%; height: 100%; }
+
+.viewer-status {
+  margin: 0.9rem 0 0;
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+  min-height: 1.2em;
+}
+.viewer-status.viewer-error { color: var(--warn-ink); font-weight: 500; }
+
+.viewer-foot { margin-top: 1rem; font-size: 0.85rem; }
+
+.viewer noscript img {
+  display: block;
+  max-width: 100%;
+  margin-top: 0.75rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
