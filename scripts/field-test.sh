@@ -26,6 +26,11 @@ cd "$(dirname "$0")/.."
 
 die() { echo "field-test: $*" >&2; exit 1; }
 
+# Guard a value-taking option: called as `need_val "$@"` from inside the parse
+# loop, it fails cleanly when a flag is the final argv token with no value,
+# rather than expanding an unset $2 into a raw "unbound variable" under set -u.
+need_val() { [ "$#" -ge 2 ] || die "$1 requires a value"; }
+
 # One entry block on stdout. Unset optional fields render as an em dash (or
 # "none" for carry-forward) so the shape is always complete.
 format_entry() {  # date printer parts settings result deviations carry
@@ -49,7 +54,11 @@ append_entry() {  # notes date printer parts settings result deviations carry
   [ -f "$notes" ] || die "no such NOTES.md: $notes"
   local entry; entry="$(format_entry "$@")"
 
-  if ! grep -qF '## Field test log' "$notes"; then
+  # Anchored match, the same predicate the awk below uses: a heading that only
+  # CONTAINS "## Field test log" (e.g. "## Field test log notes") must not count
+  # as the section here, or we would skip creating it and then fail to insert —
+  # a silent no-op (CodeRabbit/Qodo review on #110).
+  if ! grep -qE '^## Field test log[[:space:]]*$' "$notes"; then
     {
       printf '\n## Field test log\n\n'
       printf '_Real prints of this design, newest at the bottom. See '
@@ -123,6 +132,21 @@ selftest() {
     || die "selftest: entry was placed after a later section instead of inside the log"
   grep -qF 'tail' "$notes" || die "selftest: content after the section was lost"
 
+  # 7. A heading that only CONTAINS "## Field test log" (trailing text) is not
+  #    the section: a proper section is created and the entry is not lost — the
+  #    existence grep and the insertion awk must agree (review on #110).
+  printf '# d\n\n## Field test log notes\n\nunrelated\n' > "$notes"
+  "$SELF" --notes-file "$notes" --printer "X1C" --result "ok" --date 2026-04-04 >/dev/null \
+    || die "selftest: append against a look-alike heading failed"
+  grep -qF '### 2026-04-04 — X1C' "$notes" || die "selftest: entry lost against a look-alike heading"
+  grep -qE '^## Field test log[[:space:]]*$' "$notes" || die "selftest: exact section not created"
+
+  # 8. A value-taking flag with no value fails cleanly, not with a raw bash
+  #    "unbound variable" under set -u (review on #110).
+  rc=0; out="$("$SELF" --notes-file "$notes" --printer 2>&1)" || rc=$?
+  [ "$rc" -ne 0 ] || die "selftest: --printer with no value was accepted"
+  grep -qi 'requires a value' <<<"$out" || die "selftest: missing-value message unclear: $out"
+
   echo "ok    field-test.sh selftest passed"
 }
 
@@ -132,15 +156,15 @@ date="" notes_override=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --selftest)    selftest; exit 0 ;;
-    --design)      design="$2"; shift 2 ;;
-    --printer)     printer="$2"; shift 2 ;;
-    --result)      result="$2"; shift 2 ;;
-    --settings)    settings="$2"; shift 2 ;;
-    --deviations)  deviations="$2"; shift 2 ;;
-    --carry)       carry="$2"; shift 2 ;;
-    --parts)       parts="$2"; shift 2 ;;
-    --date)        date="$2"; shift 2 ;;
-    --notes-file)  notes_override="$2"; shift 2 ;;
+    --design)      need_val "$@"; design="$2"; shift 2 ;;
+    --printer)     need_val "$@"; printer="$2"; shift 2 ;;
+    --result)      need_val "$@"; result="$2"; shift 2 ;;
+    --settings)    need_val "$@"; settings="$2"; shift 2 ;;
+    --deviations)  need_val "$@"; deviations="$2"; shift 2 ;;
+    --carry)       need_val "$@"; carry="$2"; shift 2 ;;
+    --parts)       need_val "$@"; parts="$2"; shift 2 ;;
+    --date)        need_val "$@"; date="$2"; shift 2 ;;
+    --notes-file)  need_val "$@"; notes_override="$2"; shift 2 ;;
     -h|--help)     grep '^#' "$SELF" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)             die "unknown argument: $1" ;;
   esac

@@ -87,9 +87,8 @@ it into `printer.conf` under **Carry forward** so opted-in designs pick it up.
 `.github/workflows/log-print-result.yml` is a `workflow_dispatch` form in the
 Actions tab: fill in design, printer, result, and the optional fields, and it
 appends a FIELD-TEST entry to that design's NOTES.md and opens a **draft PR**
-for review — so logging a print is a form, not a local ritual. The formatting
-and file-editing half lives in `scripts/field-test.sh` (so it is testable),
-which the workflow calls.
+for review — so logging a print is a form, not a local ritual. The workflow
+calls the testable `scripts/field-test.sh` for the formatting and file editing.
 
 ### The off switch
 
