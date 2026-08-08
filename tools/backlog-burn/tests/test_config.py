@@ -25,6 +25,23 @@ def test_parses_enabled_and_label(tmp_path):
     assert c.label == "autonomy-ok"
 
 
+def test_provider_defaults_to_anthropic(tmp_path):
+    path = write(tmp_path, "enabled: true\n")
+    assert cfg.load(path).provider == "anthropic"
+
+
+def test_provider_zai(tmp_path):
+    path = write(tmp_path, "enabled: true\nprovider: zai\n")
+    assert cfg.load(path).provider == "zai"
+    assert cfg.get("provider", path) == "zai"
+
+
+def test_unknown_provider_fails_loudly(tmp_path):
+    path = write(tmp_path, "provider: openai\n")
+    with pytest.raises(ValueError, match="unknown provider 'openai'"):
+        cfg.load(path)
+
+
 def test_enabled_false(tmp_path):
     path = write(tmp_path, "enabled: false\nlabel: autonomy-ok\n")
     assert cfg.load(path).enabled is False
@@ -93,3 +110,4 @@ def test_committed_repo_config_is_wellformed():
     c = cfg.load(".github/backlog-burn.conf")
     assert isinstance(c.enabled, bool)
     assert isinstance(c.label, str) and c.label.strip()
+    assert c.provider in cfg.KNOWN_PROVIDERS

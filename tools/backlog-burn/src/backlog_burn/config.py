@@ -18,7 +18,13 @@ from dataclasses import dataclass
 DEFAULT_PATH = ".github/backlog-burn.conf"
 
 # The only keys the file may carry. Anything else is a typo and must fail.
-_KNOWN_KEYS = ("enabled", "label")
+_KNOWN_KEYS = ("enabled", "label", "provider")
+
+# The LLM providers the workflow knows how to run /ship-issue against. Each has
+# a matching, explicit ship step in .github/workflows/backlog-burn.yml (secrets
+# must be referenced literally in GitHub Actions, so a provider is a reviewed
+# workflow step, not pure data). The label here just picks among them.
+KNOWN_PROVIDERS = ("anthropic", "zai")
 
 
 @dataclass
@@ -27,6 +33,7 @@ class Config:
 
     enabled: bool
     label: str
+    provider: str
 
 
 def _parse_bool(value: str, where: str) -> bool:
@@ -45,6 +52,7 @@ def load(path: str = DEFAULT_PATH) -> Config:
     """
     enabled = False
     label = "autonomy-ok"
+    provider = "anthropic"
     seen: set[str] = set()
     with open(path, encoding="utf-8") as fh:
         for lineno, raw in enumerate(fh, 1):
@@ -68,7 +76,14 @@ def load(path: str = DEFAULT_PATH) -> Config:
                 if not value:
                     raise ValueError(f"{where}: 'label' must not be empty")
                 label = value
-    return Config(enabled=enabled, label=label)
+            elif key == "provider":
+                if value not in KNOWN_PROVIDERS:
+                    raise ValueError(
+                        f"{where}: unknown provider {value!r} "
+                        f"(known: {list(KNOWN_PROVIDERS)})"
+                    )
+                provider = value
+    return Config(enabled=enabled, label=label, provider=provider)
 
 
 def get(key: str, path: str = DEFAULT_PATH) -> str:
@@ -82,4 +97,6 @@ def get(key: str, path: str = DEFAULT_PATH) -> str:
         return "true" if cfg.enabled else "false"
     if key == "label":
         return cfg.label
+    if key == "provider":
+        return cfg.provider
     raise KeyError(f"unknown config key: {key!r} (known: {list(_KNOWN_KEYS)})")

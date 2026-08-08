@@ -75,16 +75,35 @@ routine's policy — the same idea as `.github/ci-gates/registry.conf`:
 ```
 enabled: true
 label: autonomy-ok
+provider: anthropic   # or: zai
 ```
 
-`config.py` parses it strictly (a typo'd key or bad value fails loudly, so the
-routine never runs on a policy nobody wrote). The workflow reads `enabled` and
-`label` from it, and the routine acts only when **both** the committed
-`enabled: true` **and** the `BACKLOG_BURN_ENABLED` repo variable agree — the
-committed file is the reproducible intent (change it in a reviewed PR); the
-variable is the fast, human-only arming/kill switch (not in git on purpose).
-Cadence is the `cron` literal in the workflow, since Actions can't read a file
-or variable for `on.schedule`.
+`config.py` parses it strictly (a typo'd key, bad value, or unknown provider
+fails loudly, so the routine never runs on a policy nobody wrote). The workflow
+reads `enabled`, `label`, and `provider` from it, and the routine acts only
+when **both** the committed `enabled: true` **and** the `BACKLOG_BURN_ENABLED`
+repo variable agree — the committed file is the reproducible intent (change it
+in a reviewed PR); the variable is the fast, human-only arming/kill switch (not
+in git on purpose). Cadence is the `cron` literal in the workflow, since
+Actions can't read a file or variable for `on.schedule`.
+
+### Choosing the LLM provider
+
+`provider:` selects which model runs `/ship-issue`. Each known provider
+(`KNOWN_PROVIDERS`) has an explicit ship step in the workflow — a provider is a
+reviewed, git-tracked step because GitHub Actions can only reference a secret
+by its literal name, so a runtime label can't pick the secret on its own:
+
+- `anthropic` — Claude via `api.anthropic.com`, secret `ANTHROPIC_API_KEY` (default).
+- `zai` — Z.AI GLM via its Anthropic-compatible endpoint
+  (`ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic`, `--model glm-4.6`),
+  secret `ZAI_KEY`.
+
+Switching is this one line in the config. Adding a new provider is a new ship
+step in the workflow plus its label in `KNOWN_PROVIDERS`. Note: `/ship-issue`
+is a Claude Code skill and Anthropic doesn't officially support routing Claude
+Code to non-Claude models, so non-`anthropic` providers are best-effort and
+quality may vary.
 
 ## Layout
 

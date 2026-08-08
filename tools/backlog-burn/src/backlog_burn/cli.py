@@ -129,7 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.set_defaults(func=cmd_run)
 
     p_config = sub.add_parser("config", help="read the committed policy file")
-    p_config.add_argument("--get", required=True, choices=["enabled", "label"],
+    p_config.add_argument("--get", required=True, choices=["enabled", "label", "provider"],
                           help="which config value to print")
     p_config.add_argument("--path", default=None,
                           help="config file (default: .github/backlog-burn.conf)")
