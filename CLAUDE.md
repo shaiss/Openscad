@@ -41,6 +41,53 @@ Set `OPENSCADPATH="$PWD/lib:$PWD"` (the scripts do this automatically): `lib/` r
 - **`lib/nuggs-coupling.scad`** — the NUGGS genderless quarter-turn bayonet port, the one interlock standard every NUGGS module shares: `nuggs_cfg()` (the config vector every guard fires inside), `nuggs_port()` (one port face — **not bore-clean**, see below), `nuggs_bore_cut()` (the cut every caller of `nuggs_port()` owes), `nuggs_neck()` (port + full-round shell + the cut, as one bore-clean solid — prefer it), `nuggs_window()` (the longitudinal window that turns a neck-and-tube into an open module), `nuggs_sector()` (the one-swept-polygon primitive), plus the caller's contract values (`nuggs_ri/ro/r_mid/r_out/pitch/z_tip/z_seat/z_top/clockings/tol_deg/rib_in/i_out/bearing_area/web/walk_half_deg`). Two things it does that no other library here does, both deliberate: it **pins its own `$fa`/`$fs`** inside every module body and ignores the caller's, because the fit is split at one radius and every surface is a `rotate_extrude`, so an unpinned clearance moved with the caller's quality preset (measured on the pre-extraction geometry, the insertion clocking left 0.1754 mm³ of interference at `$fn=48`, 0.0717 at 56, 0.0260 at 64 and came out free only from 96 up — and `mate-check.sh` renders at exactly 96, so the harness could never have seen it); and it emits material **inside the bore** on purpose, so a caller that forgets `nuggs_bore_cut()` ships a watertight, sliceable, 100/100-scoring part with plastic standing in the bore. Use it for anything that has to mate with a NUGGS module; it does one joint, so reach for BOSL2 for threads, gears or generic rounding.
 - Each **first-party** library (the `lib/*.scad` files above; not vendored BOSL2 or system-installed MCAD) ships a `lib/<name>-demo.scad` exercising every module; `check.sh` CGAL-renders all of them, so they are those libraries' regression tests. Add one with any new first-party library. A library whose modules carry guards also ships `lib/<name>-guards.conf` — one line per parameter set the library must **refuse**, run by `scripts/guard-check.sh`. That is the half a demo cannot cover: a firing assert aborts the render it lives in, so without those cases a guard can be weakened or deleted and every check in the repo stays green. A library with a **tuned fit** (a mating pair, a clearance) also ships `lib/<name>-mates.conf` — one line per pair that must **assemble**, plus at least one deliberately-interfering case proving the check can fail, run by `scripts/mate-check.sh`. That is the other half a demo cannot cover: a render cannot measure itself, so a demo can only restate the clearance formula, which proves the formula equals itself while the built geometry drifts (issue #37).
 
+## Smart CI (gate selection)
+
+CI has two layers of gate selection. The **deterministic** one is the `changes`
+job in `.github/workflows/ci.yml`: it reads a PR's changed files and picks which
+of the gates that **already exist** run (design-only PRs gate just the designs
+they touch, docs-only PRs skip the render jobs, and so on — see the CAUTION and
+tier notes at the top of that file). The **smart** one is `tools/ci-gates/`, the
+layer on top: it proposes gates that *don't exist yet*.
+
+The mechanism is three parts kept separate on purpose:
+
+- **detectors** (`tools/ci-gates/src/ci_gates/detectors.py`) decide whether a
+  candidate gate *applies* to a PR — pure functions of the changed-file list and
+  the tree. Seeded: `classifier-coverage` (a changed file under a top-level dir
+  the `changes` classifier doesn't mention — the CAUTION footgun as a check),
+  `shellcheck` (a `*.sh` changed), `actionlint` (a workflow changed).
+- **registry** (`.github/ci-gates/registry.conf`) records the *decision* about
+  each candidate — `on` / `proposed` / `off` — and its **tier**. It is the
+  reproducible source of truth: it lives in git, a clone carries it, every run
+  reads it identically. GitHub supplies only the interaction and the auth.
+- **selector** (`ci_gates select`) joins the two into buckets the `smart-ci`
+  job runs and the sticky PR comment reports.
+
+The **auto-approve policy** is the tier: an **advisory** gate (cheap,
+non-blocking) is `on` by default and runs whenever it applies with no human
+step; a **gating** gate (can fail a PR) defaults to `proposed` and stays a
+proposal — surfaced in the comment — until a human crosses it, so a new blocking
+check never lands unannounced. A gate with no registry stanza falls back to its
+tier default, so adding an advisory detector needs no registry edit.
+
+Crossing a proposal is GitHub-native: a maintainer posts the PR comment
+**`ci-gate approve <id>`** (with the leading slash — or `decline <id>`, or
+`list`). The `ci-gate-approve.yml`
+workflow authorizes them by their real repository permission, flips the gate's
+`state` in the registry, and pushes that one-line change back to the PR branch
+with `REGEN_TOKEN` (same secret and reason as `regen` — a PAT push re-triggers
+CI so `smart-ci` runs the newly-enabled gate; a `GITHUB_TOKEN` push would not).
+Future runs then enforce it by construction, because the registry said so. From
+a fork (unpushable), the comment says to edit `registry.conf` in the PR instead.
+
+`smart-ci` runs on every PR and every push with no early skip (a skippable job
+can't satisfy branch protection — the same PR #50 reason `ci-ok` documents), and
+is one of `ci-ok`'s `needs`. By default it only runs the advisory
+`classifier-coverage` detector, so it cannot start failing PRs on its own until
+someone crosses a gating gate. `tools/ci-gates` has its own pytest suite (the
+`smart-ci selector unit tests` job); a malformed registry stanza fails it.
+
 ## Commands
 
 All commands run from the repo root.
@@ -185,6 +232,7 @@ Workflow skills (`.claude/skills/`):
 - `tools/photoshot/` — the STL → Blender/Cycles studio renderer behind `product-shot.sh`; has its own README. CI's `regen` job is what actually runs it — it installs `bpy` only when a design in the blast radius ships a `shots.conf` — and commits the PNGs. Installing `bpy` locally is optional, for judging framing before you push.
 - `tools/lineage/` — the resolver behind `scripts/lineage.sh`: parses `derives.conf`, answers who derives from whom, and validates each record against the include lines the entry `.scad` actually carries. Has its own README and pytest suite (CI runs it when the tool changes). Stdlib-only on purpose — CI's classifier job calls it to decide what to gate, before anything is installed. It never renders: proving an override took needs a mesh, so that half lives in `gate.sh`.
 - `tools/stylelift/` — measures how a mesh is *shaped* (edge softness, the rounding vocabulary, chamfer grammar, feature sizes, proportion) and turns that into a style pack; `stylelift check` holds a new part to one. Has its own README and pytest suite (CI runs it when the tool changes). It deliberately does not judge printability — that stays printcheck's job.
+- `tools/ci-gates/` — the **Smart CI** gate selector: the layer above the `changes` classifier. The classifier picks which *existing* gates run; this proposes gates that don't exist yet. From a PR's changed files it detects candidate checks (a new top-level dir the classifier doesn't cover, a shell script with no shellcheck gate, a workflow with no actionlint gate), runs the ones already approved, and posts a sticky comment proposing the rest with the one `ci-gate approve <id>` command (a /ci-gate PR comment) each takes to cross. The decision lives in `.github/ci-gates/registry.conf` — a committed, reproducible source of truth read every run — while GitHub supplies only the interaction and the authorization. Stdlib-only (CI runs it before installing anything, like `tools/lineage`), with its own README and pytest suite of negative controls. See "Smart CI" below.
 - `site/` — the static **product site** built from what the repo already commits (product pages, previews, product shots, style specs) and deployed on Vercel; `vercel.json` at the repo root pins the install and build commands so the deploy runs the same generator `./scripts/site.sh` does. It publishes no content of its own, and a local reference that does not resolve fails the build rather than 404ing in production. See its [README](site/README.md).
 - `docs/` — repo-level research and reference notes: `oss-libraries-research.md` (the OSS-library evaluation behind the adoption backlog), `vercel-hosted-tooling.md` (the evaluation behind the site) and `derivative-designs.md` (what a derivative is here, the four silent failure modes of OpenSCAD's override mechanism with the measurements behind them, and what each gate proves) — read that last one before building on another design.
 - `audits/` — preserved before/after render comparisons from design review rounds (e.g. `audits/pr3/`). Review history: keep it, never treat it as disposable scratch.
