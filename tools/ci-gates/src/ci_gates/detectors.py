@@ -83,9 +83,20 @@ def _any_match(changed: list[str], *, prefix: str = "", suffix: str = "") -> lis
     ]
 
 
+# The directories the shellcheck gate actually lints. The detector fires only
+# for scripts under these, so applicability matches execution — a .sh elsewhere
+# does not advertise a gate that would not check it (and these are the same two
+# trees the always-on lint job shellchecks).
+_SHELLCHECK_DIRS = ("scripts/", ".claude/hooks/")
+
+
 def detect_shellcheck(changed: list[str], root: Path) -> Applicability:
-    """Fire when the PR adds or edits a shell script."""
-    hits = [f for f in (c.strip() for c in changed) if f.endswith(".sh")]
+    """Fire when the PR adds or edits a shell script the gate lints."""
+    hits = [
+        f
+        for f in (c.strip() for c in changed)
+        if f.endswith(".sh") and f.startswith(_SHELLCHECK_DIRS)
+    ]
     if hits:
         return Applicability(
             True, f"{len(hits)} shell script(s) changed: {', '.join(sorted(hits)[:5])}"

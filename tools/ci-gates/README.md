@@ -41,7 +41,7 @@ but the gate itself (tier, title, run) must be declared.
 | id | tier | fires when | out of the box |
 | --- | --- | --- | --- |
 | `classifier-coverage` | advisory | a changed file lives under a top-level dir the `changes` classifier does not mention | **on** — the CAUTION at the top of ci.yml, made into a check |
-| `shellcheck` | gating | a `*.sh` file changed | **proposed** — cross with `/ci-gate approve shellcheck` |
+| `shellcheck` | gating | a `scripts/` or `.claude/hooks/` `*.sh` changed (the trees the gate lints) | **proposed** — cross with `/ci-gate approve shellcheck` |
 | `actionlint` | gating | a `.github/workflows/*.yml` changed | **proposed** — cross with `/ci-gate approve actionlint` |
 
 ## CLI

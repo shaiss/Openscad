@@ -140,6 +140,17 @@ def test_shellcheck_detector_silent_without_sh(repo: Path):
     assert not ap.applies
 
 
+def test_shellcheck_detector_fires_on_hooks(repo: Path):
+    assert applies("shellcheck", [".claude/hooks/session-start.sh"], repo).applies
+
+
+def test_shellcheck_detector_silent_on_sh_outside_lint_dirs(repo: Path):
+    # negative control: applicability must match what the gate lints (scripts/
+    # + .claude/hooks/), so a .sh elsewhere must NOT advertise the gate — the
+    # coverage-hole this scoping closes.
+    assert not applies("shellcheck", ["tools/foo/build.sh"], repo).applies
+
+
 def test_actionlint_detector_fires_on_workflow(repo: Path):
     assert applies("actionlint", [".github/workflows/new.yml"], repo).applies
 
