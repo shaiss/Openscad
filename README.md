@@ -147,6 +147,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
     `shots.conf`, path-traced from the design's own STL export
   - `lifestyle-shot.sh` — tier-2 AI lifestyle shots from `lifestyle.conf`
     via the Z.AI GLM-Image API (cosmetic, geometry-approximate, disclosed)
+  - `shot-spec.sh` — authors `shots.conf`/`lifestyle.conf` from a PM's
+    art-direction brief (named views/colors, freeze and disclosure enforced);
+    the mechanics behind the `/art-direction` skill
   - `lifestyle-clip.sh` — tier-2 AI motion clips from `motion.conf` via the
     Z.AI Vidu 2 image-to-video API, transcoded to a budgeted GIF (cosmetic,
     geometry-approximate, motion illustrative, disclosed)
