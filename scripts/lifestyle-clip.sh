@@ -97,6 +97,20 @@ trap 'rm -rf "$tmp"' EXIT
 # trim leading/trailing whitespace without touching interior spaces
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
 
+# Log-safe form of a download URL: scheme + host + path ONLY. The query string
+# routinely carries a signed, expiring access token, and userinfo is
+# credential-shaped by definition; everything printed here lands in public CI
+# logs — so no log line in this script may include either, the issue-#128
+# download diagnostics included.
+sanitize_url() {
+  local u="${1%%[?#]*}" scheme rest authority path=""
+  scheme="${u%%://*}"; rest="${u#*://}"
+  [[ "$rest" == "$u" ]] && { printf '%s' "$u"; return; }  # no scheme separator
+  authority="${rest%%/*}"
+  [[ "$rest" == */* ]] && path="/${rest#*/}"
+  printf '%s' "${scheme}://${authority##*@}${path}"       # drop any userinfo
+}
+
 # Encode the source video to a GIF at the given fps/width/colors. The -f pins
 # ffmpeg's input demuxer (the QuickTime/MP4 family's registered name is the
 # full comma list — a bare "mp4" is not a demuxer name) so it can't pick a
@@ -355,12 +369,40 @@ sys.stderr.write("unexpected task_status %r: %s\n" % (status, raw[:800])); sys.e
       host="${authority%%:*}"
       port="${authority##*:}"; [[ "$port" == "$authority" ]] && port=443
     fi
-    # Resolve + validate ONCE and capture the vetted IP, so curl connects to
-    # that exact address via --resolve rather than doing its own second DNS
-    # lookup — which a short-TTL rebind could swing to an internal host
-    # between the check and the fetch (TOCTOU). A literal IP host has no DNS
-    # lookup to rebind, so it's fetched directly once vetted.
-    vet="$(python3 - "$host" <<'PY'
+    # Download with a bounded retry (issue #128): the sibling image pipeline
+    # failed at exactly this step in two CI runs, identically — the generation
+    # call succeeded with a result URL, and the immediate GET of that URL
+    # 404'd, with no diagnostics (the old curl -f discarded the error body).
+    # Two hypotheses fit that shape, and the retry covers both: (a) eventual
+    # consistency — the object isn't visible at the CDN yet when the API hands
+    # out the URL, so waiting and re-fetching finds it; (b) pinned-IP skew —
+    # the --resolve pin below held the first vetted address for the whole
+    # fetch, and a FRESH getaddrinfo on the next attempt can rotate to a CDN
+    # edge that has the object. So every attempt re-runs resolve-and-vet from
+    # scratch, which also keeps the TOCTOU property: each connection is pinned
+    # to an address vetted in that same attempt, never a stale one.
+    #
+    # Policy: 404/408/425/429/5xx and curl transport errors retry — 5
+    # attempts with 3/6/12/24s sleeps between them (45s of sleep total,
+    # bounded well inside the workflow's 45-minute timeout even after the
+    # minutes-long generation poll above). A 3xx is refused immediately and
+    # permanently — following or retrying a redirect is the SSRF hole
+    # --max-redirs 0 exists to close. Any other 4xx (401/403 — a bad or
+    # expired credential) fails immediately with diagnostics, because
+    # retrying an auth failure only burns the clock.
+    dl_ok=0
+    for dl_attempt in 1 2 3 4 5; do
+      if (( dl_attempt > 1 )); then
+        sleep $(( 3 * (1 << (dl_attempt - 2)) ))   # 3, 6, 12, 24
+      fi
+      # Resolve + validate FRESH each attempt and capture the vetted IP, so
+      # curl connects to that exact address via --resolve rather than doing
+      # its own second DNS lookup — which a short-TTL rebind could swing to
+      # an internal host between the check and the fetch (TOCTOU). A literal
+      # IP host has no DNS lookup to rebind, so it's fetched directly once
+      # vetted. A vet refusal (unresolvable host, non-public address) is a
+      # security stop, not a transient: it exits and is never retried.
+      vet="$(python3 - "$host" <<'PY'
 import sys, socket, ipaddress
 host = sys.argv[1].strip("[]")
 try:
@@ -384,25 +426,62 @@ print("literal" if literal else "name")
 print(vetted)
 PY
 )" || exit 1
-    vetted_ip="${vet##*$'\n'}"
-    # Download hardening: --proto '=https' pins the scheme, --max-redirs 0 plus
-    # no -L means a redirect can't send curl to a fresh, unvetted host (a 3xx
-    # is refused below too), --connect-timeout/--max-time bound a stall, and
-    # --max-filesize caps an API-controlled payload before it hits ffmpeg
-    # (100 MB — generous for a 4s clip, whose real size the first live run
-    # will report).
-    dl_flags=(--proto '=https' --max-redirs 0 --connect-timeout 15 --max-time 600 --max-filesize 100000000)
-    if [[ "${vet%%$'\n'*}" == "name" ]]; then
-      resolve_host="${host#[}"; resolve_host="${resolve_host%]}"
-      dl_code="$(curl -fsS "${dl_flags[@]}" -o "$tmp/gen.mp4" -w '%{http_code}' \
-        --resolve "${resolve_host}:${port}:${vetted_ip}" "$value")" \
-        || { echo "video download failed" >&2; exit 1; }
-    else
-      dl_code="$(curl -fsS "${dl_flags[@]}" -o "$tmp/gen.mp4" -w '%{http_code}' "$value")" \
-        || { echo "video download failed" >&2; exit 1; }
-    fi
-    if [[ "$dl_code" == 3?? ]]; then
-      echo "refusing video URL: it returned a redirect (HTTP ${dl_code}); not following it (SSRF guard)" >&2
+      vetted_ip="${vet##*$'\n'}"
+      # Download hardening: --proto '=https' pins the scheme, --max-redirs 0
+      # plus no -L means a redirect can't send curl to a fresh, unvetted host
+      # (a 3xx is refused below too), --connect-timeout/--max-time bound a
+      # stall, and --max-filesize caps an API-controlled payload before it
+      # hits ffmpeg (100 MB — generous for a 4s clip, whose real size the
+      # first live run will report). No Authorization header here, ever: the
+      # signed URL is the credential, and the API key must not be handed to a
+      # third-party CDN.
+      dl_flags=(--proto '=https' --max-redirs 0 --connect-timeout 15 --max-time 600 --max-filesize 100000000)
+      resolve_args=()
+      if [[ "${vet%%$'\n'*}" == "name" ]]; then
+        resolve_host="${host#[}"; resolve_host="${resolve_host%]}"
+        resolve_args=(--resolve "${resolve_host}:${port}:${vetted_ip}")
+      fi
+      # No -f: -f discards the response body on an HTTP error, and that body
+      # is the diagnosis — a CDN names the real cause there (NoSuchKey vs
+      # AccessDenied vs an expired signature), exactly what the issue-#128
+      # logs were missing. Capture the body to the output file and branch on
+      # the status ourselves; the || keeps a failing curl from tripping
+      # set -e before it can be logged.
+      curl_rc=0
+      dl_meta="$(curl -sS "${dl_flags[@]}" "${resolve_args[@]}" \
+        -o "$tmp/gen.mp4" -w '%{http_code}\t%{content_type}' "$value")" || curl_rc=$?
+      if (( curl_rc != 0 )); then
+        echo "video download attempt ${dl_attempt}/5: curl transport error ${curl_rc} for $(sanitize_url "$value")" >&2
+        continue
+      fi
+      dl_code="${dl_meta%%$'\t'*}"
+      dl_ctype="${dl_meta#*$'\t'}"
+      if [[ "$dl_code" == 2?? && -s "$tmp/gen.mp4" ]]; then
+        dl_ok=1
+        break
+      fi
+      # Failed attempt: log the status, the sanitized URL (scheme + host +
+      # path — never the query string), the Content-Type, and the first
+      # ~300 bytes of the body (non-printables dotted so a binary partial
+      # can't garble the log) — enough for the CI log to name the cause.
+      # Token-length base64-ish runs in the body are masked: an S3-style
+      # SignatureDoesNotMatch error echoes the request's own signature back
+      # (SignatureProvided/StringToSign), and that must not land in a public
+      # log; short cause codes (NoSuchKey, AccessDenied) stay readable.
+      echo "video download attempt ${dl_attempt}/5: HTTP ${dl_code} from $(sanitize_url "$value") (Content-Type: ${dl_ctype:-unknown})" >&2
+      echo "  response body (first 300 bytes): $(head -c 300 "$tmp/gen.mp4" | tr -c '[:print:]' '.' | sed -E 's|[A-Za-z0-9+/=_-]{40,}|[masked]|g')" >&2
+      if [[ "$dl_code" == 3?? ]]; then
+        echo "refusing video URL: it returned a redirect (HTTP ${dl_code}); not following it (SSRF guard, never retried)" >&2
+        exit 1
+      fi
+      case "$dl_code" in
+        404|408|425|429|5??) continue ;;   # retryable — see the policy above
+        2??) continue ;;                   # 2xx but an EMPTY body: transient truncation, retry
+        *) echo "video download failed (HTTP ${dl_code} is not retryable)" >&2; exit 1 ;;
+      esac
+    done
+    if (( ! dl_ok )); then
+      echo "video download failed after 5 attempts — the per-attempt lines above carry the diagnosis (issue #128)" >&2
       exit 1
     fi
     # These bytes are API-controlled. The container is expected to be mp4
