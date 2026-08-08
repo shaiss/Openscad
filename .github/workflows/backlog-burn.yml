@@ -168,7 +168,9 @@ jobs:
 
       - name: Explain an empty selection
         if: steps.policy.outputs.enabled == 'true' && steps.select.outputs.issue == ''
-        run: echo "::notice::no issue is currently eligible (nothing carrying the opt-in label is unclaimed) — nothing to ship"
+        env:
+          LABEL: ${{ steps.policy.outputs.label }}
+        run: echo "::notice::no issue is currently eligible (nothing carrying the '${LABEL}' opt-in label is unclaimed) — nothing to ship"
 
       - name: Record the run outcome
         # Runs on success, failure or skip so the job summary always shows what

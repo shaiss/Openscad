@@ -85,8 +85,11 @@ def test_get_unknown_key_raises(tmp_path):
         cfg.get("cadence", path)
 
 
-def test_committed_repo_config_is_valid_and_on():
-    # The real committed file must parse and be the intended policy.
+def test_committed_repo_config_is_wellformed():
+    # The real committed file must parse and be well-formed — but deliberately
+    # do NOT pin its values: flipping `enabled` or renaming `label` in a
+    # reviewed PR is the intended toggle and must stay green, while a malformed
+    # file still fails loudly (the guards above).
     c = cfg.load(".github/backlog-burn.conf")
-    assert c.enabled is True
-    assert c.label == "autonomy-ok"
+    assert isinstance(c.enabled, bool)
+    assert isinstance(c.label, str) and c.label.strip()
