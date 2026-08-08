@@ -118,9 +118,14 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   `print-in-place.scad` (print-in-place slide rails, tabs, end-stops,
   sacrificial membranes and a teardrop-bore hinge, extracted from the
   archived sushi-battleship),
+  `printer-conf.scad` (the print-feedback profile a design reads to pre-fill
+  its tuned-fit tolerances),
   each with a `*-demo.scad` regression render, plus vendored
   [BOSL2](https://github.com/BelfrySCAD/BOSL2)
 - `build/` — generated STL/PNG outputs (gitignored)
+- `printer.conf` — your printer's measured profile (inert by default);
+  designs opt in to pre-fill tuned-fit tolerances. Part of the print-feedback
+  loop — see [docs/print-feedback.md](docs/print-feedback.md)
 - `scripts/` — the toolchain:
   - `render.sh` — STL + 4-view preview sheet; `--previews` re-renders a
     design's frozen review shots, `--sweep` renders tolerance-test strips
@@ -135,6 +140,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
     interference on the exported mesh. A demo cannot test this either — a
     render cannot measure itself, and echoing the clearance formula only
     proves it equals itself
+  - `printer-conf-check.sh` — proves the `printer.conf` mechanism reads the
+    generic default when nothing is measured and the profile's value when one
+    is, reaching the exported geometry (issue #101)
   - `gate.sh` — render printable parts and gate the STLs with printcheck;
     `--slice` adds a PrusaSlicer test-slice (this is what CI enforces)
   - `gate-summary.py` — turns a gate log into the CI results table
@@ -167,6 +175,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `regen-stamp.sh` — a design's regeneration input fingerprint; CI skips
     re-rendering previews/GIFs/product shots when it matches the committed
     stamp
+  - `field-test.sh` — appends a FIELD-TEST entry (one real print's result) to
+    a design's NOTES.md; the tested core of the "Log a print result" Action
+    (issue #101)
 - `site/` — the static product site built from the designs, styles and
   previews already committed here, and deployed on Vercel — see its
   [README](site/README.md)

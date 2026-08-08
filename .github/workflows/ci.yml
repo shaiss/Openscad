@@ -163,8 +163,12 @@ jobs:
                 # or a gate verdict, but a PR touching only it must still run
                 # the required geometry contexts to be mergeable at all (the
                 # PR #50 trap) — and its own pytest wiring below matches on it.
+                # printer.conf (the print-feedback profile, #101) is soft for
+                # the same reason: no gated design includes it today, so it
+                # cannot move a gated STL, but a printer.conf-only PR must still
+                # run the required contexts to be mergeable.
                 scripts/*|site/*|vercel.json|tools/photoshot/*|\
-                tools/backlog-burn/*|.github/workflows/*)
+                tools/backlog-burn/*|.github/workflows/*|printer.conf)
                   soft_infra=true ;;
               esac
               case "$f" in
@@ -247,7 +251,7 @@ jobs:
                 # context and has to RUN for such a PR to be mergeable at
                 # all.
                 designs/*|lib/*|templates/*|scripts/*|styles/*|site/*|\
-                vercel.json|tools/lineage/*|tools/photoshot/*|\
+                vercel.json|printer.conf|tools/lineage/*|tools/photoshot/*|\
                 tools/backlog-burn/*|.github/workflows/*|.github/actions/*)
                   scad=true ;;
               esac

@@ -1,0 +1,149 @@
+name: Log a print result
+
+# The UI-friendly entry point of the print-feedback loop (issue #101). A manual
+# form in the Actions tab turns "how did the print go?" into a committed
+# FIELD-TEST entry in a design's NOTES.md and opens a draft PR for review — so
+# logging a real print is a form, not a local ritual.
+#
+# Off by default, with one fast switch. The whole job runs, but does nothing
+# unless the repo variable PRINT_FEEDBACK_ENABLED == 'true' (mirroring
+# BACKLOG_BURN_ENABLED): when unset it emits a ::notice:: and stops. Set it in
+# Settings -> Secrets and variables -> Actions -> Variables. Nothing else in the
+# toolchain depends on this workflow, and printer.conf stays inert regardless.
+
+on:
+  workflow_dispatch:
+    inputs:
+      design:
+        description: 'Design name (the designs/<name>/ directory)'
+        required: true
+        type: string
+      printer:
+        description: 'Printer, e.g. "Bambu A1" or "Prusa MK4"'
+        required: true
+        type: string
+      result:
+        description: 'What fit, what did not, print-quality notes'
+        required: true
+        type: string
+      settings:
+        description: 'Slicer settings — profile / layer height / nozzle / material / infill / supports'
+        required: false
+        type: string
+      deviations:
+        description: 'Measured deviations, e.g. "slot 0.15 mm tight; M3 hole +0.1 mm loose"'
+        required: false
+        type: string
+      carry:
+        description: 'printer.conf value(s) to carry forward, or blank'
+        required: false
+        type: string
+      parts:
+        description: 'Which part(s) were printed (optional)'
+        required: false
+        type: string
+
+# Opens a draft PR: push a branch (contents) and create the PR (pull-requests).
+# Idle unless PRINT_FEEDBACK_ENABLED is set, so these grants sit unused until
+# the routine is deliberately switched on.
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  # Serialize per design so two logs for the same design cannot race the same
+  # NOTES.md; logs for different designs still run in parallel. Never cancel an
+  # in-flight log mid-commit.
+  group: log-print-result-${{ github.event.inputs.design }}
+  cancel-in-progress: false
+
+jobs:
+  log:
+    name: Append a FIELD-TEST entry and open a draft PR
+    runs-on: ubuntu-latest
+    env:
+      ENABLED: ${{ vars.PRINT_FEEDBACK_ENABLED }}
+    steps:
+      - name: Off switch (PRINT_FEEDBACK_ENABLED)
+        id: gate
+        run: |
+          set -euo pipefail
+          if [ "${ENABLED:-}" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::PRINT_FEEDBACK_ENABLED is not 'true' — the print-feedback Action is off. Set the repo variable to enable it."
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          # The push below supplies the token explicitly (regen's pattern), so
+          # nothing persists a write credential in .git/config. REGEN_TOKEN (a
+          # PAT) so the drafted PR triggers CI; falls back to GITHUB_TOKEN, and
+          # the step below says loudly what that costs.
+          persist-credentials: false
+          token: ${{ secrets.REGEN_TOKEN || github.token }}
+
+      - name: Append the FIELD-TEST entry
+        if: steps.gate.outputs.enabled == 'true'
+        # All inputs via env, never interpolated into the script, so a crafted
+        # form value cannot inject shell. field-test.sh validates the design
+        # name (path safety) and that the design exists.
+        env:
+          DESIGN: ${{ github.event.inputs.design }}
+          PRINTER: ${{ github.event.inputs.printer }}
+          RESULT: ${{ github.event.inputs.result }}
+          SETTINGS: ${{ github.event.inputs.settings }}
+          DEVIATIONS: ${{ github.event.inputs.deviations }}
+          CARRY: ${{ github.event.inputs.carry }}
+          PARTS: ${{ github.event.inputs.parts }}
+        run: |
+          set -euo pipefail
+          ./scripts/field-test.sh \
+            --design "$DESIGN" --printer "$PRINTER" --result "$RESULT" \
+            --settings "$SETTINGS" --deviations "$DEVIATIONS" \
+            --carry "$CARRY" --parts "$PARTS"
+
+      - name: Commit and open a draft PR
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          DESIGN: ${{ github.event.inputs.design }}
+          PRINTER: ${{ github.event.inputs.printer }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # Scoped to this step; Actions masks it. PAT if present (so the PR's
+          # CI runs), else GITHUB_TOKEN.
+          PUSH_TOKEN: ${{ secrets.REGEN_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.REGEN_TOKEN || github.token }}
+          HAVE_PAT: ${{ secrets.REGEN_TOKEN != '' }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          notes="designs/${DESIGN}/NOTES.md"
+          if git diff --quiet -- "$notes"; then
+            echo "::warning::field-test.sh made no change to ${notes} — nothing to open a PR for"
+            exit 0
+          fi
+          branch="print-feedback/${DESIGN}-${RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -- "$notes"
+          git commit \
+            -m "field-test: log a print result for ${DESIGN}" \
+            -m "Printer: ${PRINTER}. Appended a FIELD-TEST entry to ${notes} via the Log a print result Action (issue #101)."
+          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:${branch}"
+          # Unquoted heredoc: ${VAR} expands; backticks are escaped so they
+          # stay literal markdown rather than command substitution.
+          cat > pr-body.md <<EOF
+          Logged a real print of \`${DESIGN}\` on **${PRINTER}** via the *Log a print result* Action (issue #101).
+
+          This appends one FIELD-TEST entry to \`${notes}\` — a docs-only change. Review the entry; if a measured deviation is worth carrying across designs, copy it into \`printer.conf\`.
+          EOF
+          gh pr create --draft --base "$DEFAULT_BRANCH" --head "$branch" \
+            --title "field-test: ${DESIGN} print result (${PRINTER})" \
+            --body-file pr-body.md
+          if [ "$HAVE_PAT" != "true" ]; then
+            echo "::warning::REGEN_TOKEN is not set, so this PR was created with GITHUB_TOKEN and CI will not auto-run on it. Push any commit (or set REGEN_TOKEN — a fine-grained PAT with contents:write) to trigger the required checks."
+          fi
