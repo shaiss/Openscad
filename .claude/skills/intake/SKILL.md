@@ -15,9 +15,12 @@ needed to make the brief well-formed.
 
 This skill does **not** scaffold, model, or render. The hand-off is the
 issue; the next step is a design session running `/new-design` from it.
-And a brief is design work in `/ship-issue`'s sense — a human reacts to
-previews — so it is fuel for design sessions, never for an unattended
-issue burn.
+And turning a brief into a design is co-design work — a human reacts to
+previews — so a `design-brief` issue is not something plain `/ship-issue`
+turns into a code PR: building it would create a new `designs/<name>/`,
+which that skill declines by design. A brief is the input to a design
+session, or to the idea→PR pipeline this format is the first slice of,
+each of which keeps its own human-in-the-loop stop points.
 
 ## 1. Input
 

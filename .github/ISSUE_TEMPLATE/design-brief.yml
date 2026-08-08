@@ -38,13 +38,17 @@ body:
     id: printer-material
     attributes:
       label: Printer & material
-      description: Printer, nozzle, material, anything build-specific. "Don't care" is fine — the repo's FDM defaults apply.
+      description: Printer, nozzle, material, anything build-specific. "Don't care" is fine — the repo's FDM defaults apply — but say so, so a blank never reads as an oversight.
+    validations:
+      required: true
   - type: input
     id: style
     attributes:
       label: Style
       description: "A pack name from styles/ (see styles/README.md), `none`, or `new — lift from <reference> with /style-spec`."
       placeholder: none
+    validations:
+      required: true
   - type: textarea
     id: part-breakdown
     attributes:
