@@ -84,11 +84,14 @@ classify() {
     #   geo_infra — can change an exported STL or a gate verdict, so every
     #   design re-gates (designs=ALL): the shared libraries, the two scripts
     #   the render gate executes (gate.sh, and lineage.sh, which it sources),
-    #   printcheck (the analyzer that judges every STL), tools/lineage (the
-    #   resolver that decides which designs a change reaches at all — edit it
-    #   and every blast radius can move, including the one this step computes),
-    #   this workflow, and .github/actions (the composite action selecting the
-    #   OpenSCAD build five jobs render with).
+    #   THIS script (ci-classify.sh — it decides the gate scope itself, so a
+    #   bug here can under-scope verification; it must re-gate everything,
+    #   exactly as editing the inline classifier in ci.yml used to before the
+    #   logic was extracted here), printcheck (the analyzer that judges every
+    #   STL), tools/lineage (the resolver that decides which designs a change
+    #   reaches at all — edit it and every blast radius can move, including the
+    #   one this step computes), this workflow, and .github/actions (the
+    #   composite action selecting the OpenSCAD build five jobs render with).
     #
     #   soft_infra — everything else under scripts/, plus site/ and
     #   vercel.json, tools/photoshot, tools/backlog-burn, printer.conf,
@@ -108,9 +111,11 @@ classify() {
     if [ "${#files[@]}" -gt 0 ]; then
     for f in "${files[@]}"; do
       case "$f" in
-        lib/*|scripts/gate.sh|scripts/lineage.sh|\
+        lib/*|scripts/gate.sh|scripts/lineage.sh|scripts/ci-classify.sh|\
         tools/printcheck/*|tools/lineage/*|\
         .github/workflows/ci.yml|.github/actions/*)
+          # This alternation is matched before the scripts/* soft-infra case
+          # below, so ci-classify.sh lands here (gate ALL), not there.
           geo_infra=true ;;
         scripts/*|site/*|vercel.json|tools/photoshot/*|\
         tools/backlog-burn/*|.github/backlog-burn.conf|\
@@ -297,7 +302,15 @@ local_changed_files() {
   if ! git rev-parse --verify --quiet "$base" >/dev/null; then
     base="$DEFAULT_BRANCH"
   fi
-  merge="$(git merge-base "$base" HEAD 2>/dev/null || true)"
+  # Fail loud rather than open: a missing merge base (default branch not
+  # fetched, or no common ancestor) with `|| true` would leave $merge empty,
+  # skip the diff below, and emit only untracked files — silently dropping
+  # every tracked change and under-scoping the local mirror. Erroring tells the
+  # caller to fetch instead.
+  if ! merge="$(git merge-base "$base" HEAD 2>/dev/null)"; then
+    echo "ci-classify: no merge base between $base and HEAD — fetch the default branch (e.g. 'git fetch origin ${DEFAULT_BRANCH}') and retry, or pass --base <ref>" >&2
+    return 1
+  fi
   # `git diff <merge>` compares the merge base to the WORKING TREE, so it
   # already covers committed-since-base, staged and unstaged tracked changes in
   # one pass — only untracked files need a second command. Both emit one clean
@@ -307,7 +320,7 @@ local_changed_files() {
   # vanished old path is harmless (classify drops any name whose entry .scad no
   # longer exists), whereas missing the new one would under-scope.
   {
-    [ -n "$merge" ] && git diff --name-only --no-renames "$merge"
+    git diff --name-only --no-renames "$merge"
     git ls-files --others --exclude-standard
   } | sort -u | sed '/^$/d'
 }
@@ -361,6 +374,14 @@ selftest() {
   out="$(run "scripts/readme-gate.sh")"
   check "soft-infra" "$out" \
     "gate=true" "gate_designs=" "printcheck_tests=true" "scad=true"
+
+  # 4b. This script IS the scope decider, so editing it must gate ALL (geo-infra),
+  #     not fall through to the scripts/* soft-infra "gate nothing" — otherwise a
+  #     mis-scoping change to the classifier could ship unverified. Regression
+  #     guard for the ci.yml→ci-classify.sh extraction.
+  out="$(run "scripts/ci-classify.sh")"
+  check "self-is-geo-infra" "$out" \
+    "gate=true" "gate_designs=ALL" "printcheck_tests=true" "scad=true"
 
   # 5. A design path whose entry point does not exist is dropped — the guard
   #    against gating a deleted/renamed design under the wrong name.
@@ -425,16 +446,25 @@ selftest() {
   echo "ci-classify selftest: all cases passed"
 }
 
+# Compute the local file list FIRST and bail on failure, so a merge-base error
+# (local_changed_files → non-zero) never reaches classify and emits a
+# misleading all-false classification on stdout.
+classify_local() {
+  local changed
+  changed="$(local_changed_files)" || return 1
+  printf '%s\n' "$changed" | classify
+}
+
 main() {
   case "${1:-}" in
     --selftest) selftest ;;
     --local)
       shift
       if [ "${1:-}" = "--base" ]; then DEFAULT_BRANCH="${2:?--base needs a ref}"; fi
-      local_changed_files | classify ;;
+      classify_local ;;
     --base)
       DEFAULT_BRANCH="${2:?--base needs a ref}"
-      local_changed_files | classify ;;
+      classify_local ;;
     "" ) classify ;;
     * ) echo "usage: $0 [--local [--base <ref>]] | --selftest   (default: read paths on stdin)" >&2; exit 2 ;;
   esac
