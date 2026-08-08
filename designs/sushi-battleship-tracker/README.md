@@ -35,8 +35,9 @@ membranes, the whole game — is documented once, on the
 - `sushi-battleship-tracker-coupon` — single-cell "print this first" test
   piece for tuning `door_fit` and marker fit
 
-Markers are not printed parts: any ~6–9 mm roughly-spherical household
-object works (dried soybeans are on theme).
+Markers are not printed parts: any roughly-spherical 4–10 mm household
+object works — set `marker_d` to match yours (dried soybeans are on
+theme).
 
 ## The delta
 
