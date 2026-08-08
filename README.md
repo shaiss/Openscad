@@ -147,6 +147,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `gate.sh` — render printable parts and gate the STLs with printcheck;
     `--slice` adds a PrusaSlicer test-slice (this is what CI enforces)
   - `gate-summary.py` — turns a gate log into the CI results table
+  - `ci-classify.sh` — the single source of truth for which gates CI runs and
+    over which designs; `ci.yml`'s `changes` job pipes its diff to it and
+    `/preflight` runs it `--local`, so the local mirror can't drift
   - `lineage.sh` — who derives from whom: validates the `derives.conf`
     records, answers what a change has to re-gate, and re-proves the
     derivative gate can still fire (`selftest`)

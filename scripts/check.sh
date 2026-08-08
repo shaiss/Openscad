@@ -240,4 +240,16 @@ if ! ./scripts/telemetry.sh --selftest; then
   fail=1
 fi
 
+# ci-classify.sh is the extracted CI classifier — the one implementation
+# ci.yml's `changes` job and /preflight both run, so the local mirror can't
+# drift from the workflow. Its --selftest pins the classification with negative
+# controls (docs-only gates nothing, geo-infra gates ALL, a non-existent design
+# entry is dropped, an archived design pulled in only by a shared style is not
+# gated), because nothing else here would notice if a case silently stopped
+# classifying. Fast (no render), so it runs here with the other suites.
+echo "-- ci-classify selftest: scripts/ci-classify.sh --selftest"
+if ! ./scripts/ci-classify.sh --selftest; then
+  fail=1
+fi
+
 exit "$fail"
