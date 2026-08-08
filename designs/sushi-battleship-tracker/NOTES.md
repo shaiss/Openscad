@@ -64,9 +64,11 @@ marker seat (~30–45 min print). Before committing to the full board:
 
 1. Free the door (one firm push toward the arrow), punch the membrane, and
    check the slide — tune `door_fit` in ±0.1 steps exactly as on the parent.
-2. Sit your actual marker in the seat and tilt the coupon: the marker
-   should stay put at any angle a table reaches. If your markers are
-   smaller than 8 mm, set `marker_d` to match and reprint the coupon.
+2. Sit your actual marker in the seat and tilt the coupon to **20°** —
+   comfortably past anything a bumped dinner table reaches — and check the
+   marker stays seated; record the angle, `marker_d` and `seat_depth` in
+   the field-test entry. If your markers are smaller than 8 mm, set
+   `marker_d` to match and reprint the coupon.
 
 ## Field test log
 

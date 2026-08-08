@@ -26,6 +26,8 @@ marker_d = 8;
 seat_depth = 1.0;
 
 /* [Hidden] */
+assert(marker_d >= 4 && marker_d <= 10,
+       "marker_d outside the practical 4-10 mm range the seat is designed for (peppercorn to large soybean)");
 assert(seat_depth > 0 && seat_depth < marker_d/2,
        "seat_depth must be positive and shallower than the marker radius");
 assert(door_t - seat_depth >= 1.2,

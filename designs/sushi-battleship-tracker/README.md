@@ -10,7 +10,7 @@ lose track of called shots — which is everyone eating dinner off it.
 
 ![Product shot: sushi-battleship-tracker in satin crimson PLA](previews/product-hero.png)
 
-![Product shot: sushi-battleship-tracker in satin crimson PLA](previews/seat-detail.png)
+![Close-up: crimson shutter doors with the recessed miss-marker seats](previews/seat-detail.png)
 
 ![Assembled board, shutter D1 open](previews/assembly.png)
 
@@ -68,8 +68,8 @@ to touch:
 
 | Parameter | Default | What it does |
 |---|---|---|
-| `marker_d` | 8 mm | diameter of the marker the seat is dished for (soybean ~7–9, BB 6) |
-| `seat_depth` | 1.0 mm | how deep the seat is dished; asserts keep ≥ 1.2 mm of door floor |
+| `marker_d` | 8 mm | diameter of the marker the seat is dished for; asserted to the practical 4–10 mm range (peppercorn ~4–5, BB 6, soybean ~7–9) |
+| `seat_depth` | 1.0 mm | how deep the seat is dished; coupled to `marker_d` by asserts — it must stay below the marker radius, leave ≥ 1.2 mm of door floor, and keep the seat rim ≥ 0.8 mm clear of the engravings |
 | `door_fit` | 0 mm | inherited from the parent: door-only fit tuning in ±0.1 steps |
 
 Everything else — grid size, roll diameter, clearances — is the parent's
