@@ -247,6 +247,20 @@ def test_issue_branch_prefix_is_boundary_safe():
     assert select_issue(s)["selected"] == 60
 
 
+def test_malformed_issue_number_is_not_a_regex():
+    # A malformed snapshot number must be treated as a literal, never as a
+    # pattern: without re.escape, ".*" would match the unrelated #99 branch
+    # and PR and be wrongly excluded. Escaped, it matches neither and stays
+    # eligible.
+    evil = issue(".*", "2026-08-01T00:00:00Z")
+    s = snap(
+        [evil],
+        branches=["claude/issue-99-x"],
+        open_prs=[{"number": 1, "headRefName": "y", "body": "Closes #99"}],
+    )
+    assert select_issue(s)["selected"] == ".*"
+
+
 # --------------------------------------------------------------------------
 # The outcome record (AC4)
 # --------------------------------------------------------------------------

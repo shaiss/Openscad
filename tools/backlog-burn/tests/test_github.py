@@ -99,25 +99,36 @@ def test_gather_snapshot_normalizes_and_filters(monkeypatch):
     ]
     branches_payload = [{"name": "main"}, {"name": "claude/issue-5-x"}]
 
-    monkeypatch.setattr(github, "_get", _fake_get({
+    calls: list[str] = []
+    fake_get = _fake_get({
         "/issues?state=open": (issues_payload, {}),
         "/issues/5/comments": (comments_payload, {}),
         "/pulls?state=open": (pulls_payload, {}),
         "/branches": (branches_payload, {}),
-    }))
+    })
 
-    snap = github.gather_snapshot("owner/repo", token="t")
+    def tracked_get(url, token):
+        calls.append(url)
+        return fake_get(url, token)
+
+    monkeypatch.setattr(github, "_get", tracked_get)
+
+    snap = github.gather_snapshot("owner/repo", "t")
 
     # PRs dropped from the issues list; both real issues kept.
     assert [i["number"] for i in snap["issues"]] == [5, 7]
     issue5 = snap["issues"][0]
     assert issue5["labels"] == ["autonomy-ok", "enhancement"]
     assert issue5["createdAt"] == "2026-08-01T00:00:00Z"
-    # Only the SHIP-LOCK comment is kept, normalised to body/createdAt.
-    assert len(issue5["shipLockComments"]) == 1
-    assert issue5["shipLockComments"][0]["body"].startswith("🚢 SHIP-LOCK")
-    # A comment-free issue gets an empty lock list and no comments request.
+    # Only the SHIP-LOCK comment is kept, normalised to body/createdAt — the
+    # timestamp matters, it is what stale-lock handling dates.
+    assert issue5["shipLockComments"] == [
+        {"body": "🚢 SHIP-LOCK — claimed", "createdAt": "2026-08-04T00:00:00Z"},
+    ]
+    # A comment-free issue gets an empty lock list — and, the guard that keeps
+    # gather cheap, no comment request is made for it at all.
     assert snap["issues"][1]["shipLockComments"] == []
+    assert not any("/issues/7/comments" in url for url in calls)
     # PRs normalised to number/headRefName/body.
     assert snap["openPRs"] == [{"number": 20, "headRefName": "claude/issue-5-x", "body": "Closes #5"}]
     assert snap["branches"] == ["main", "claude/issue-5-x"]

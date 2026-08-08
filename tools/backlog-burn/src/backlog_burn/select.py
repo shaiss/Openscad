@@ -123,18 +123,26 @@ def _ship_lock_state(
 
 def _closes_issue(pr_body: str, number: int) -> bool:
     """True if ``pr_body`` closes issue ``number`` via any GitHub keyword."""
+    # re.escape so a malformed snapshot number (e.g. the string ".*") is
+    # matched as a literal, never interpolated as a pattern — for a real
+    # integer this is a no-op (digits escape to themselves).
+    num = re.escape(str(number))
     for kw in _CLOSING_KEYWORDS:
         # keyword, optional ':', whitespace, '#<number>', not glued to more
         # digits (so "#9" does not match issue 95).
-        pattern = rf"(?i)\b{kw}:?\s+#{number}\b"
+        pattern = rf"(?i)\b{kw}:?\s+#{num}\b"
         if re.search(pattern, pr_body or ""):
             return True
     return False
 
 
 def _issue_branch_re(number: int) -> re.Pattern[str]:
-    """Matcher for a ``claude/issue-<number>-*`` branch (boundary-safe)."""
-    return re.compile(rf"^claude/issue-{number}-")
+    """Matcher for a ``claude/issue-<number>-*`` branch (boundary-safe).
+
+    ``number`` is escaped for the same reason as in :func:`_closes_issue`: a
+    malformed value must be a literal, not a pattern.
+    """
+    return re.compile(rf"^claude/issue-{re.escape(str(number))}-")
 
 
 def _has_issue_branch(branches: list[str], number: int) -> bool:
