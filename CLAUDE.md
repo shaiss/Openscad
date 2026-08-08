@@ -68,18 +68,30 @@ The **auto-approve policy** is the tier: an **advisory** gate (cheap,
 non-blocking) is `on` by default and runs whenever it applies with no human
 step; a **gating** gate (can fail a PR) defaults to `proposed` and stays a
 proposal — surfaced in the comment — until a human crosses it, so a new blocking
-check never lands unannounced. A gate with no registry stanza falls back to its
-tier default, so adding an advisory detector needs no registry edit.
+check never lands unannounced. A gate is known to selection only if it has a
+stanza in the registry; within that stanza the `state` field is what may be
+omitted, and it falls back to the tier default — so a gate's decision can be
+left implicit, but the gate (tier, title, run) must be declared.
 
-Crossing a proposal is GitHub-native: a maintainer posts the PR comment
-**`ci-gate approve <id>`** (with the leading slash — or `decline <id>`, or
-`list`). The `ci-gate-approve.yml`
-workflow authorizes them by their real repository permission, flips the gate's
-`state` in the registry, and pushes that one-line change back to the PR branch
-with `REGEN_TOKEN` (same secret and reason as `regen` — a PAT push re-triggers
-CI so `smart-ci` runs the newly-enabled gate; a `GITHUB_TOKEN` push would not).
-Future runs then enforce it by construction, because the registry said so. From
-a fork (unpushable), the comment says to edit `registry.conf` in the PR instead.
+Crossing a proposal is GitHub-native: a maintainer posts a PR comment with the
+command (note the leading slash):
+
+```
+/ci-gate approve <id>      # wire the gate in for this and every future run
+/ci-gate decline <id>      # turn it off so it stops being proposed
+/ci-gate list              # show the current selection
+```
+
+The `ci-gate-approve.yml` workflow authorizes them by their real repository
+permission, flips the gate's `state` in the registry, and commits that one-line
+change to the PR branch **via the Contents API** with `REGEN_TOKEN` (same secret
+and reason as `regen` — a PAT-authored commit re-triggers CI so `smart-ci` runs
+the newly-enabled gate; a `GITHUB_TOKEN` commit would not). That workflow is
+privileged (`issue_comment` holds the secret), so it never checks out or runs
+the PR head's code — it edits the head branch's `registry.conf` as data with the
+base repo's trusted tooling. Future runs then enforce the gate by construction,
+because the registry said so. From a fork (uncommittable), the comment says to
+edit `registry.conf` in the PR instead.
 
 `smart-ci` runs on every PR and every push with no early skip (a skippable job
 can't satisfy branch protection — the same PR #50 reason `ci-ok` documents), and
@@ -232,7 +244,7 @@ Workflow skills (`.claude/skills/`):
 - `tools/photoshot/` — the STL → Blender/Cycles studio renderer behind `product-shot.sh`; has its own README. CI's `regen` job is what actually runs it — it installs `bpy` only when a design in the blast radius ships a `shots.conf` — and commits the PNGs. Installing `bpy` locally is optional, for judging framing before you push.
 - `tools/lineage/` — the resolver behind `scripts/lineage.sh`: parses `derives.conf`, answers who derives from whom, and validates each record against the include lines the entry `.scad` actually carries. Has its own README and pytest suite (CI runs it when the tool changes). Stdlib-only on purpose — CI's classifier job calls it to decide what to gate, before anything is installed. It never renders: proving an override took needs a mesh, so that half lives in `gate.sh`.
 - `tools/stylelift/` — measures how a mesh is *shaped* (edge softness, the rounding vocabulary, chamfer grammar, feature sizes, proportion) and turns that into a style pack; `stylelift check` holds a new part to one. Has its own README and pytest suite (CI runs it when the tool changes). It deliberately does not judge printability — that stays printcheck's job.
-- `tools/ci-gates/` — the **Smart CI** gate selector: the layer above the `changes` classifier. The classifier picks which *existing* gates run; this proposes gates that don't exist yet. From a PR's changed files it detects candidate checks (a new top-level dir the classifier doesn't cover, a shell script with no shellcheck gate, a workflow with no actionlint gate), runs the ones already approved, and posts a sticky comment proposing the rest with the one `ci-gate approve <id>` command (a /ci-gate PR comment) each takes to cross. The decision lives in `.github/ci-gates/registry.conf` — a committed, reproducible source of truth read every run — while GitHub supplies only the interaction and the authorization. Stdlib-only (CI runs it before installing anything, like `tools/lineage`), with its own README and pytest suite of negative controls. See "Smart CI" below.
+- `tools/ci-gates/` — the **Smart CI** gate selector: the layer above the `changes` classifier. The classifier picks which *existing* gates run; this proposes gates that don't exist yet. From a PR's changed files it detects candidate checks (a new top-level dir the classifier doesn't cover, a shell script with no shellcheck gate, a workflow with no actionlint gate), runs the ones already approved, and posts a sticky comment proposing the rest, each crossable with one PR comment — `ci-gate approve <id>`, posted with the leading slash. The decision lives in `.github/ci-gates/registry.conf` — a committed, reproducible source of truth read every run — while GitHub supplies only the interaction and the authorization. Stdlib-only (CI runs it before installing anything, like `tools/lineage`), with its own README and pytest suite of negative controls. See "Smart CI" below.
 - `site/` — the static **product site** built from what the repo already commits (product pages, previews, product shots, style specs) and deployed on Vercel; `vercel.json` at the repo root pins the install and build commands so the deploy runs the same generator `./scripts/site.sh` does. It publishes no content of its own, and a local reference that does not resolve fails the build rather than 404ing in production. See its [README](site/README.md).
 - `docs/` — repo-level research and reference notes: `oss-libraries-research.md` (the OSS-library evaluation behind the adoption backlog), `vercel-hosted-tooling.md` (the evaluation behind the site) and `derivative-designs.md` (what a derivative is here, the four silent failure modes of OpenSCAD's override mechanism with the measurements behind them, and what each gate proves) — read that last one before building on another design.
 - `audits/` — preserved before/after render comparisons from design review rounds (e.g. `audits/pr3/`). Review history: keep it, never treat it as disposable scratch.

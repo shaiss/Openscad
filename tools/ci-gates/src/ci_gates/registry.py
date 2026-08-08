@@ -1,11 +1,13 @@
 """Parse and mutate the committed gate registry (.github/ci-gates/registry.conf).
 
-The registry is INI (configparser): one section per candidate gate. It is the
-reproducible source of truth for what Smart CI does, so two properties matter
-and are tested:
+The registry is INI (configparser): one section per candidate gate, and a gate
+is known to selection only if it has a stanza here. It is the reproducible
+source of truth for what Smart CI does, so two properties matter and are tested:
 
-  * reading is total — a gate with no stanza still resolves, via the tier
-    default, so adding an advisory detector needs no registry edit; and
+  * within a stanza the `state` field is optional and falls back to the tier
+    default (advisory -> on, gating -> proposed) — so a gate's decision can be
+    left implicit, but the gate itself (its tier, title, run command) must be
+    declared; and
   * writing is minimal and idempotent — approving a gate rewrites exactly that
     gate's `state` and preserves comments/order elsewhere as far as configparser
     allows, so the diff a maintainer's /ci-gate command produces is legible.

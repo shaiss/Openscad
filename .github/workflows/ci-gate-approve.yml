@@ -3,15 +3,28 @@ name: Smart CI gate approval
 # The human half of Smart CI, driven entirely by GitHub-native signals: a
 # maintainer comments `/ci-gate approve <id>` (or decline / list) on a PR, and
 # this workflow authorizes them by their real repository permission, flips the
-# gate's state in the committed registry, and pushes that one-line change back
-# to the PR branch. The decision lives in git — reproducible, diffable, carried
-# by a clone — while GitHub supplies the interaction and the authorization.
+# gate's state in the committed registry, and commits that one-line change to
+# the PR branch. The decision lives in git — reproducible, diffable, carried by
+# a clone — while GitHub supplies the interaction and the authorization.
 #
-# Push uses REGEN_TOKEN (a fine-grained PAT with contents:write), the same
-# secret the regen job uses and for the same reason: a GITHUB_TOKEN push
-# triggers no workflow, so CI would never re-run against the newly-enabled
-# gate. With the PAT the registry commit re-triggers CI, and smart-ci runs the
-# gate the maintainer just crossed.
+# SECURITY — this is a privileged workflow. `issue_comment` runs in the base
+# repository's context with access to secrets (REGEN_TOKEN), so it must NEVER
+# check out or execute code from the PR head: a malicious PR could rewrite
+# `tools/ci-gates` and have a maintainer's `/ci-gate` comment run it with the
+# token (the "pwn request" / untrusted-checkout TOCTOU). So:
+#   * the only code this job runs is the TRUSTED tooling from the base repo
+#     (actions/checkout with no `ref` gets the default branch — for an
+#     issue_comment event the workflow itself is the default-branch copy);
+#   * the PR branch's registry.conf is read and written as DATA through the
+#     Contents API, never by checking the head out and running from it;
+#   * the comment body is only ever handled inside github-script as a JS
+#     string and validated against a strict pattern — never interpolated into
+#     a shell command.
+#
+# The registry commit is authored with REGEN_TOKEN (a fine-grained PAT with
+# contents:write), the same secret and reason as the regen job: a commit
+# authored by a PAT re-triggers CI so smart-ci runs the newly-enabled gate,
+# where a GITHUB_TOKEN-authored commit would not.
 
 on:
   issue_comment:
@@ -23,22 +36,20 @@ permissions:
   pull-requests: read
 
 concurrency:
-  # Serialize commands on one PR so two approvals cannot race the push.
+  # Serialize commands on one PR so two approvals cannot race the commit.
   group: ci-gate-approve-${{ github.event.issue.number }}
   cancel-in-progress: false
+
+env:
+  REGISTRY_PATH: .github/ci-gates/registry.conf
 
 jobs:
   approve:
     name: Apply a /ci-gate command
-    # Only PR comments that start with the command word. The heavy validation
-    # (permission, same-repo head, known gate) happens in the parse step so it
-    # can post a helpful reply rather than silently no-op.
     if: >-
       github.event.issue.pull_request &&
       startsWith(github.event.comment.body, '/ci-gate')
     runs-on: ubuntu-latest
-    env:
-      PYTHONPATH: ${{ github.workspace }}/tools/ci-gates/src
     steps:
       - name: Authorize and parse the command
         id: parse
@@ -46,7 +57,9 @@ jobs:
         with:
           script: |
             const body = context.payload.comment.body.trim();
-            const m = body.match(/^\/ci-gate\s+(approve|decline|list)(?:\s+(\S+))?\s*$/);
+            // Gate ids are kebab-case; the strict pattern also keeps anything
+            // shell-hostile out of the values that flow into later env vars.
+            const m = body.match(/^\/ci-gate\s+(approve|decline|list)(?:\s+([a-z0-9][a-z0-9-]*))?\s*$/);
             const react = (content) => github.rest.reactions.createForIssueComment({
               ...context.repo, comment_id: context.payload.comment.id, content,
             });
@@ -85,16 +98,19 @@ jobs:
               core.setOutput('valid', 'false');
               return;
             }
-            // The PR head branch we must edit and push. A fork head is
-            // unpushable, so decline approve/decline there (list is fine).
+            // The registry lives on the PR head branch. We edit it via the
+            // Contents API, so the head repo must be this repo (a fork's branch
+            // isn't ours to commit to). list is unaffected by that limit but is
+            // held to the same bar for simplicity.
             const { data: pr } = await github.rest.pulls.get({
               ...context.repo, pull_number: context.issue.number,
             });
-            const sameRepo = pr.head.repo && pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`;
-            if (action !== 'list' && !sameRepo) {
+            const sameRepo = pr.head.repo
+              && pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`;
+            if (!sameRepo) {
               await react('-1');
               await reply(
-                'This PR is from a fork, so CI cannot push the registry change to its '
+                'This PR is from a fork, so CI cannot commit the registry change to its '
                 + 'branch. Edit `.github/ci-gates/registry.conf` in the PR to cross the gate instead.'
               );
               core.setOutput('valid', 'false');
@@ -105,78 +121,110 @@ jobs:
             core.setOutput('action', action);
             core.setOutput('gate_id', gateId || '');
             core.setOutput('head_ref', pr.head.ref);
-            core.setOutput('head_repo', pr.head.repo.full_name);
 
-      - name: Check out the PR branch
+      # TRUSTED tooling only: no `ref`, so this is the base repo's default
+      # branch — the code this workflow was launched from. The PR head is never
+      # checked out.
+      - name: Check out trusted tooling
         if: steps.parse.outputs.valid == 'true'
         uses: actions/checkout@v5
         with:
-          ref: ${{ steps.parse.outputs.head_ref }}
-          # PAT so the registry commit re-triggers CI (see the header note).
-          token: ${{ secrets.REGEN_TOKEN || github.token }}
-          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@v6
         if: steps.parse.outputs.valid == 'true'
         with:
           python-version: '3.12'
 
-      - name: List gates
-        id: list
-        if: steps.parse.outputs.valid == 'true' && steps.parse.outputs.action == 'list'
-        run: |
-          {
-            echo 'summary<<EOF'
-            python -m ci_gates list
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
+      - name: Fetch the PR branch's registry (as data)
+        id: fetch
+        if: steps.parse.outputs.valid == 'true'
+        uses: actions/github-script@v8
+        env:
+          HEAD_REF: ${{ steps.parse.outputs.head_ref }}
+        with:
+          script: |
+            const { data } = await github.rest.repos.getContent({
+              ...context.repo, path: process.env.REGISTRY_PATH, ref: process.env.HEAD_REF,
+            });
+            require('fs').writeFileSync('pr-registry.conf', Buffer.from(data.content, 'base64'));
+            core.setOutput('sha', data.sha);
 
-      - name: Apply approve / decline
+      - name: Edit the registry with trusted code
         id: apply
         if: >-
           steps.parse.outputs.valid == 'true' &&
           steps.parse.outputs.action != 'list'
         env:
+          PYTHONPATH: ${{ github.workspace }}/tools/ci-gates/src
           ACTION: ${{ steps.parse.outputs.action }}
           GATE_ID: ${{ steps.parse.outputs.gate_id }}
-          HEAD_REF: ${{ steps.parse.outputs.head_ref }}
-          HAVE_PAT: ${{ secrets.REGEN_TOKEN != '' }}
         run: |
           set -euo pipefail
-          # Mutate the registry. A non-zero exit here (unknown gate, advisory
-          # parked as proposed) is reported to the commenter by the reply step.
-          if ! out="$(python -m ci_gates "$ACTION" "$GATE_ID" 2>&1)"; then
-            echo "result<<EOF" >> "$GITHUB_OUTPUT"
-            printf '%s\n' "$out" >> "$GITHUB_OUTPUT"
-            echo EOF >> "$GITHUB_OUTPUT"
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          cp pr-registry.conf pr-registry.orig
+          # Trusted ci_gates edits the PR's registry FILE (data); it never runs
+          # anything from the PR. A non-zero exit (unknown gate, advisory parked
+          # as proposed) is reported to the commenter by the reply step.
+          if out="$(python -m ci_gates "$ACTION" "$GATE_ID" --registry pr-registry.conf 2>&1)"; then
+            ok=true
+          else
+            ok=false
           fi
-          echo "$out"
-          if git diff --quiet -- .github/ci-gates/registry.conf; then
-            # No change (already in that state) — nothing to push.
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-            echo "pushed=false" >> "$GITHUB_OUTPUT"
-            { echo "result<<EOF"; printf '%s\n' "$out"; echo EOF; } >> "$GITHUB_OUTPUT"
-            exit 0
+          changed=false
+          if [ "$ok" = true ] && ! cmp -s pr-registry.orig pr-registry.conf; then
+            changed=true
           fi
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .github/ci-gates/registry.conf
-          git commit -m "ci-gate: ${ACTION} ${GATE_ID}"
-          # Push to the PR head branch from the parse step — NOT
-          # $GITHUB_REF_NAME, which on an issue_comment event is the default
-          # branch, not the PR's branch.
-          n=0
-          until git push origin "HEAD:refs/heads/${HEAD_REF}"; do
-            n=$((n+1)); [ "$n" -ge 4 ] && { echo "push failed after retries"; exit 1; }
-            sleep $((2 ** n))
-          done
-          echo "ok=true" >> "$GITHUB_OUTPUT"
-          echo "pushed=true" >> "$GITHUB_OUTPUT"
-          { echo "result<<EOF"; printf '%s\n' "$out"; echo EOF; } >> "$GITHUB_OUTPUT"
-          if [ "$HAVE_PAT" != "true" ]; then
-            echo "no_pat=true" >> "$GITHUB_OUTPUT"
-          fi
+          {
+            echo "ok=$ok"
+            echo "changed=$changed"
+            echo "result<<EOF"
+            printf '%s\n' "$out"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: List gates
+        id: list
+        if: >-
+          steps.parse.outputs.valid == 'true' &&
+          steps.parse.outputs.action == 'list'
+        env:
+          PYTHONPATH: ${{ github.workspace }}/tools/ci-gates/src
+        run: |
+          set -euo pipefail
+          {
+            echo 'summary<<EOF'
+            python -m ci_gates list --registry pr-registry.conf
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Commit the registry change to the PR branch
+        id: commit
+        if: >-
+          steps.parse.outputs.valid == 'true' &&
+          steps.apply.outputs.ok == 'true' &&
+          steps.apply.outputs.changed == 'true'
+        uses: actions/github-script@v8
+        env:
+          # PAT so the registry commit re-triggers CI (see the header note).
+          # Falls back to GITHUB_TOKEN, which commits but does not re-trigger.
+          HEAD_REF: ${{ steps.parse.outputs.head_ref }}
+          FILE_SHA: ${{ steps.fetch.outputs.sha }}
+          ACTION: ${{ steps.parse.outputs.action }}
+          GATE_ID: ${{ steps.parse.outputs.gate_id }}
+          HAVE_PAT: ${{ secrets.REGEN_TOKEN != '' }}
+        with:
+          github-token: ${{ secrets.REGEN_TOKEN || github.token }}
+          script: |
+            const content = require('fs').readFileSync('pr-registry.conf');
+            await github.rest.repos.createOrUpdateFileContents({
+              ...context.repo,
+              path: process.env.REGISTRY_PATH,
+              message: `ci-gate: ${process.env.ACTION} ${process.env.GATE_ID}`,
+              content: content.toString('base64'),
+              sha: process.env.FILE_SHA,
+              branch: process.env.HEAD_REF,
+            });
+            core.setOutput('pushed', 'true');
+            core.setOutput('no_pat', process.env.HAVE_PAT === 'true' ? 'false' : 'true');
 
       - name: Reply with the result
         if: steps.parse.outputs.valid == 'true' && !cancelled()
@@ -187,11 +235,12 @@ jobs:
           LIST: ${{ steps.list.outputs.summary }}
           RESULT: ${{ steps.apply.outputs.result }}
           OK: ${{ steps.apply.outputs.ok }}
-          PUSHED: ${{ steps.apply.outputs.pushed }}
-          NO_PAT: ${{ steps.apply.outputs.no_pat }}
+          CHANGED: ${{ steps.apply.outputs.changed }}
+          PUSHED: ${{ steps.commit.outputs.pushed }}
+          NO_PAT: ${{ steps.commit.outputs.no_pat }}
         with:
           script: |
-            const { ACTION, GATE_ID, LIST, RESULT, OK, PUSHED, NO_PAT } = process.env;
+            const { ACTION, GATE_ID, LIST, RESULT, OK, CHANGED, PUSHED, NO_PAT } = process.env;
             const footer = '\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_';
             const react = (content) => github.rest.reactions.createForIssueComment({
               ...context.repo, comment_id: context.payload.comment.id, content,
@@ -200,18 +249,21 @@ jobs:
             if (ACTION === 'list') {
               body = `**Smart CI gate registry**\n\n\`\`\`\n${LIST || '(empty)'}\n\`\`\``;
               await react('+1');
-            } else if (OK === 'false') {
-              body = `Could not \`${ACTION}\` \`${GATE_ID}\`:\n\n\`\`\`\n${RESULT || 'unknown error'}\n\`\`\``;
+            } else if (OK !== 'true') {
+              body = `Could not \`${ACTION}\` \`${GATE_ID}\`:\n\n\`\`\`\n${(RESULT || 'unknown error').trim()}\n\`\`\``;
               await react('-1');
-            } else {
-              const pushed = PUSHED === 'true'
-                ? 'Pushed the registry change to this branch; CI will re-run and enforce the new selection.'
-                : 'No change — the gate was already in that state.';
-              const patWarn = NO_PAT === 'true'
-                ? '\n\n> ⚠️ REGEN_TOKEN is not set, so this push used GITHUB_TOKEN and will **not** re-trigger CI. Push any commit to re-run.'
-                : '';
-              body = `\`${GATE_ID}\`: ${RESULT ? RESULT.trim() : ACTION}. ${pushed}${patWarn}`;
+            } else if (CHANGED !== 'true') {
+              body = `\`${GATE_ID}\`: ${(RESULT || ACTION).trim()} — no change, the gate was already in that state.`;
               await react('+1');
+            } else if (PUSHED === 'true') {
+              const patWarn = NO_PAT === 'true'
+                ? '\n\n> ⚠️ REGEN_TOKEN is not set, so this commit used GITHUB_TOKEN and will **not** re-trigger CI. Push any commit to re-run.'
+                : '';
+              body = `\`${GATE_ID}\`: ${(RESULT || ACTION).trim()}. Committed to this branch; CI will re-run and enforce the new selection.${patWarn}`;
+              await react('+1');
+            } else {
+              body = `\`${GATE_ID}\`: ${ACTION} computed but the commit step did not complete — check the workflow run.`;
+              await react('confused');
             }
             await github.rest.issues.createComment({
               ...context.repo, issue_number: context.issue.number, body: body + footer,

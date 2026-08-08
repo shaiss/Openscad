@@ -31,8 +31,10 @@ comment) and the *authorization* (the commenter's real repo permission).
   (default state `proposed`), so a new blocking check never lands unannounced.
 
 `default_state()` in `registry.py` is where that policy lives: advisory → `on`,
-gating → `proposed`. A gate with no stanza in the registry falls back to its
-tier default, so adding an advisory detector needs no registry edit.
+gating → `proposed`. A gate is known to selection only if it has a stanza in
+the registry; within that stanza the `state` field is what may be omitted, and
+it falls back to the tier default — so a gate's *decision* can be left implicit,
+but the gate itself (tier, title, run) must be declared.
 
 ## Seeded gates
 
