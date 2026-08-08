@@ -37,20 +37,22 @@
 #      resolves to designs/<name>/designs/<parent>/ and 404s, and gating in a
 #      dead link is worse than gating in none.
 #   9. if the design ships one or more previews/lifestyle-*.png (an
-#      AI-restyled lifestyle shot — cosmetic, and assumed geometrically
-#      approximate, so it is never regenerated or geometry-checked): each must
-#      be within the size budget and disclosed in CANONICAL form — embedded
-#      ONLY as inline markdown images, every embed carrying an "AI-styled
-#      scene" alt label and a "geometry is approximate" caption in the
-#      paragraph directly below it (alt text is not shown on the rendered
-#      page). Canonical, not prose-judged: a fixed phrase an author copies
-#      from product-shots/SKILL.md, so a negated caption can't pass and the
+#      AI-restyled lifestyle shot) or previews/lifestyle-*.gif (an AI motion
+#      clip, issue #75 — cosmetic, and assumed geometrically approximate, so
+#      neither is ever regenerated or geometry-checked): each must be within
+#      its size budget (PNG: the product-shot budget; GIF: the animation-GIF
+#      budget) and disclosed in CANONICAL form — embedded ONLY as inline
+#      markdown images, every embed carrying an "AI-styled scene" alt label
+#      and a "geometry is approximate" caption in the paragraph directly
+#      below it (alt text is not shown on the rendered page). Canonical, not
+#      prose-judged: a fixed phrase an author copies from
+#      product-shots/SKILL.md, so a negated caption can't pass and the
 #      disclosure can't hide in an <img> tag beside a compliant decoy. Unlike
-#      the GIF and product-shot checks there is no manifest — the committed PNG
-#      is the trigger, since an AI restyle cannot be regenerated from source.
-#      The trigger is the filename, so an AI image committed under some other
-#      name is out of this gate's reach; naming that masquerade is the
-#      /jane-review and /drik-review disclosure rules' job, not bash's.
+#      the GIF and product-shot checks there is no manifest — the committed
+#      file is the trigger, since an AI restyle cannot be regenerated from
+#      source. The trigger is the filename, so an AI image committed under
+#      some other name is out of this gate's reach; naming that masquerade is
+#      the /jane-review and /drik-review disclosure rules' job, not bash's.
 #
 # Fenced code blocks and HTML comments are ignored throughout: an example
 # snippet or commented-out line is not page content, so it neither
@@ -376,14 +378,17 @@ check_one() {
     done <<<"$parents"
   fi
 
-  # 9. Lifestyle (AI-styled) shots. Manifest-less on purpose: the presence of a
-  #    committed previews/lifestyle-*.png IS the trigger, because an AI restyle
-  #    cannot be regenerated from source. It is cosmetic and assumed
-  #    geometrically approximate, so the gate never checks geometry — it checks
-  #    the DISCLOSURE, in canonical form, that keeps a cosmetic image off the
-  #    page passing as a photo of the real print: in budget, embedded ONLY as
-  #    inline markdown images, each carrying an "AI-styled scene" alt label and
-  #    a "geometry is approximate" caption directly below it. See
+  # 9. Lifestyle (AI-styled) shots and motion clips. Manifest-less on purpose:
+  #    the presence of a committed previews/lifestyle-*.png (still) or
+  #    previews/lifestyle-*.gif (motion clip, issue #75) IS the trigger,
+  #    because an AI restyle cannot be regenerated from source. Both are
+  #    cosmetic and assumed geometrically approximate, so the gate never
+  #    checks geometry — it checks the DISCLOSURE, in canonical form, that
+  #    keeps a cosmetic image off the page passing as a photo (or a working
+  #    demo) of the real print: in budget (per format — a still against the
+  #    product-shot budget, a clip against the animation-GIF budget), embedded
+  #    ONLY as inline markdown images, each carrying an "AI-styled scene" alt
+  #    label and a "geometry is approximate" caption directly below it. See
   #    product-shots/SKILL.md, tier 2.
   #
   #    Scope limit, stated honestly: the trigger is the FILENAME. An AI image
@@ -392,14 +397,22 @@ check_one() {
   #    its pixels. That masquerade is exactly what the /jane-review and
   #    /drik-review disclosure rules exist to catch; the gate closes the
   #    honest-author failure modes, the reviewers close the adversarial one.
-  local lf lrel lbytes verdict
+  local lf lrel lbytes budget verdict
   # -iname: case-insensitive, so a stray .PNG can't slip the lowercase glob.
   while IFS= read -r lf; do
     [[ -n "$lf" ]] || continue
     lrel="previews/$(basename "$lf")"
     lbytes="$(stat -c %s "$lf")"
-    if (( lbytes > MAX_SHOT_BYTES )); then
-      err "$name" "${lrel} is $(( (lbytes + 1023) / 1024 )) KiB, over the $((MAX_SHOT_BYTES / 1024 / 1024)) MiB budget — use a smaller image"
+    # Budget per format: a motion clip is judged against the animation-GIF
+    # budget (same ceiling as the deterministic turntables it sits beside),
+    # a still against the product-shot budget. Lowercased so the .GIF the
+    # -iname above admits gets the GIF budget, not the PNG one.
+    case "$(basename "$lf" | tr '[:upper:]' '[:lower:]')" in
+      *.gif) budget="$MAX_GIF_BYTES" ;;
+      *)     budget="$MAX_SHOT_BYTES" ;;
+    esac
+    if (( lbytes > budget )); then
+      err "$name" "${lrel} is $(( (lbytes + 1023) / 1024 )) KiB, over the $((budget / 1024 / 1024)) MiB budget — use a smaller image or clip"
       ok=0
     fi
     verdict="$(lifestyle_disclosure "$lrel" <<<"$cleaned")"
@@ -409,16 +422,17 @@ check_one() {
         err "$name" "commits ${lrel} but the README never shows it — embed it as an inline markdown image with the \"AI-styled scene\" label and a \"geometry is approximate\" caption, or drop the file"
         ok=0 ;;
       EXTRA_REF)
-        err "$name" "${lrel} is referenced outside an inline markdown image (an <img> tag, a reference-style link, or a bare link) — a lifestyle shot must appear ONLY as \`![AI-styled scene ...](${lrel})\` so an undisclosed copy can't hide beside a disclosed one"
+        err "$name" "${lrel} is referenced outside an inline markdown image (an <img> tag, a reference-style link, or a bare link) — a lifestyle shot or clip must appear ONLY as \`![AI-styled scene ...](${lrel})\` so an undisclosed copy can't hide beside a disclosed one"
         ok=0 ;;
       MISSING_LABEL)
-        err "$name" "an embed of ${lrel} is missing the \"AI-styled scene\" alt label — every inline embed of a lifestyle shot must carry it, so no copy reads as a photo of the print"
+        err "$name" "an embed of ${lrel} is missing the \"AI-styled scene\" alt label — every inline embed of a lifestyle shot or clip must carry it, so no copy reads as a photo or demo of the print"
         ok=0 ;;
       MISSING_NOTE)
         err "$name" "an embed of ${lrel} has no \"geometry is approximate\" caption directly below it — alt text isn't shown on the rendered page, so add the canonical disclosure line (see product-shots/SKILL.md)"
         ok=0 ;;
     esac
-  done < <(find "${dir}/previews" -maxdepth 1 -type f -iname 'lifestyle-*.png' 2>/dev/null | sort)
+  done < <(find "${dir}/previews" -maxdepth 1 -type f \
+             \( -iname 'lifestyle-*.png' -o -iname 'lifestyle-*.gif' \) 2>/dev/null | sort)
 
   if [[ "$ok" == 1 ]]; then
     echo "ok    ${name}"
@@ -429,9 +443,10 @@ check_one() {
 # throwaway design tree, points the gate at it via READMEGATE_DESIGNS_DIR, and
 # asserts the verdict on a good fixture and one fixture per failure mode. This
 # is the half the per-design gate on the real tree cannot cover: no
-# lifestyle-*.png exists in designs/ yet, so without these fixtures the whole
-# check could be weakened or deleted and every gate in the repo stays green.
-# Mirrors scripts/lineage.sh selftest and scripts/guard-check.sh.
+# lifestyle-*.png or lifestyle-*.gif exists in designs/ yet, so without these
+# fixtures the whole check could be weakened or deleted and every gate in the
+# repo stays green. Mirrors scripts/lineage.sh selftest and
+# scripts/guard-check.sh.
 run_selftest() {
   local tmp
   tmp="$(mktemp -d)"
@@ -564,6 +579,77 @@ run_selftest() {
     printf 'Ready to install straight off the bed.\n'
   } >>"$d/README.md"
   _check uppercase-ext 1 "AI-styled scene"
+
+  # --- Motion clips (previews/lifestyle-*.gif, issue #75). Same disclosure
+  # machinery, so one fixture per failure mode proves the .gif trigger and the
+  # per-format budget dispatch — without these the whole motion extension
+  # could be reverted and every gate in the repo would stay green.
+
+  # motion-good: a disclosed clip -> passes
+  d="$(_fixture motion-good)"; : >"$d/previews/lifestyle-turntable.gif"
+  _disclosed "$d" previews/lifestyle-turntable.gif
+  _check motion-good 0 ""
+
+  # motion-missing-embed: committed clip, never referenced -> MISSING_EMBED
+  d="$(_fixture motion-missing-embed)"; : >"$d/previews/lifestyle-turntable.gif"
+  _check motion-missing-embed 1 "never shows it"
+
+  # motion-over-budget: disclosed, but the clip exceeds MAX_GIF_BYTES
+  d="$(_fixture motion-over-budget)"
+  truncate -s "$((MAX_GIF_BYTES + 1))" "$d/previews/lifestyle-turntable.gif"
+  _disclosed "$d" previews/lifestyle-turntable.gif
+  _check motion-over-budget 1 "over the"
+
+  # motion-gif-budget-not-png: a clip sized over the PNG budget but under the
+  # GIF budget must PASS — the one fixture that pins the per-format budget
+  # dispatch (a regression to a single MAX_SHOT_BYTES check fails here).
+  d="$(_fixture motion-gif-budget-not-png)"
+  truncate -s "$((MAX_SHOT_BYTES + 1))" "$d/previews/lifestyle-turntable.gif"
+  _disclosed "$d" previews/lifestyle-turntable.gif
+  _check motion-gif-budget-not-png 0 ""
+
+  # motion-missing-label: caption present, no "AI-styled scene" label
+  d="$(_fixture motion-missing-label)"; : >"$d/previews/lifestyle-turntable.gif"
+  {
+    printf '\n![The shutter in motion](previews/lifestyle-turntable.gif)\n\n'
+    printf '*AI-generated — geometry is approximate and may not match the print.*\n'
+  } >>"$d/README.md"
+  _check motion-missing-label 1 "AI-styled scene"
+
+  # motion-missing-note: labeled clip, caption lacks the canonical phrase
+  d="$(_fixture motion-missing-note)"; : >"$d/previews/lifestyle-turntable.gif"
+  {
+    printf '\n![AI-styled scene: the part in motion](previews/lifestyle-turntable.gif)\n\n'
+    printf 'Watch it glide.\n'
+  } >>"$d/README.md"
+  _check motion-missing-note 1 "geometry is approximate"
+
+  # motion-html-hero: an <img> clip beside a compliant markdown decoy -> EXTRA_REF
+  d="$(_fixture motion-html-hero)"; : >"$d/previews/lifestyle-turntable.gif"
+  {
+    printf '\n<img src="previews/lifestyle-turntable.gif" width="900" alt="in motion">\n\n'
+    printf 'See it work.\n\n'
+    printf '## Details\n\n![AI-styled scene: in motion](previews/lifestyle-turntable.gif)\n\n'
+    printf '*AI-generated — geometry is approximate and may not match the print.*\n'
+  } >>"$d/README.md"
+  _check motion-html-hero 1 "referenced outside an inline markdown image"
+
+  # motion-uppercase-ext: an undisclosed .GIF must still be caught
+  d="$(_fixture motion-uppercase-ext)"; : >"$d/previews/lifestyle-turntable.GIF"
+  {
+    printf '\n![The part in motion](previews/lifestyle-turntable.GIF)\n\n'
+    printf 'Straight off the printer.\n'
+  } >>"$d/README.md"
+  _check motion-uppercase-ext 1 "AI-styled scene"
+
+  # motion-uppercase-gif-budget: a disclosed .GIF over the PNG budget but
+  # under the GIF budget must PASS — pins the lowercasing that routes an
+  # uppercase extension to the GIF budget (dropping it would judge this
+  # file against MAX_SHOT_BYTES and fail it).
+  d="$(_fixture motion-uppercase-gif-budget)"
+  truncate -s "$((MAX_SHOT_BYTES + 1))" "$d/previews/lifestyle-turntable.GIF"
+  _disclosed "$d" previews/lifestyle-turntable.GIF
+  _check motion-uppercase-gif-budget 0 ""
 
   if [[ "$pass" == 1 ]]; then
     echo "ok    readme-gate --selftest: every lifestyle-disclosure guard fires"
