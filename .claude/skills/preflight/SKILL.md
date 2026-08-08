@@ -8,45 +8,52 @@ description: Answer "would CI pass?" before pushing — run the exact checks CI 
 Mirror `.github/workflows/ci.yml` on the working tree, so a push never
 discovers a failure CI could have told you about locally. The contract:
 **what you run here is what CI runs there** — same scripts, same scoping
-rules. If this skill and the workflow ever disagree, the workflow is right;
-follow it and fix this skill.
+rules. This is now literal, not aspirational: the scoping decision is one
+script, `scripts/ci-classify.sh`, that both this skill and the workflow's
+`changes` job run — so they cannot drift. If a *check* (the run list in §2)
+ever disagrees with the workflow, the workflow is right; follow it and fix
+this skill.
 
 ## 1. Scope — what changed?
 
-Diff against the merge base with the default branch
-(`git diff --name-only $(git merge-base origin/<default-branch> HEAD)` plus
-uncommitted changes; `git status --porcelain` catches unstaged work).
-Classify exactly like CI's `changes` job:
+Don't reason about scope by hand — **run the classifier CI runs**:
 
-- **Infra changed** (`lib/`, `scripts/`, `tools/printcheck/`,
-  `tools/lineage/`, the CI workflow) → everything below runs, gate **all**
-  designs. `tools/lineage/` counts because it decides which designs a change
-  reaches at all — edit the resolver and every blast radius can move,
-  including the one you would be scoping with.
-- **`styles/`, `tools/stylelift/`, `lib/`, `scripts/style-*.sh` or a
-  `designs/*/style.conf` changed** → run the style gate. So does a change to
-  a design that *declares* a style: the claim is about geometry that just
-  moved.
-- **`designs/<name>/...` changed** (and no infra) → gate just those designs
-  (skip names whose `designs/<name>/<name>.scad` no longer exists).
-- **A changed design has derivatives** → gate them too. A derivative
-  `include`s its parent's `.scad`, so the parent's geometry moves inside it
-  with no file under the derivative's own directory in the diff. Expand the
-  list the same way CI does — `./scripts/lineage.sh blast-radius
-  <changed-names...>` — and never soften a non-zero exit from it: it fails on
-  a cycle or an unreadable `derives.conf` rather than answering short.
-- **A `styles/<style>/` file changed** → also gate every design whose
-  `style.conf` names that style. Its tokens are compiled into the design, so
-  editing them moves the design's geometry even though no file under
-  `designs/` changed.
-- **`templates/` changed** → run `check.sh` (templates are echo-checked),
-  no gate.
-- **Only docs/skills/audits changed** → the lint step below still applies
-  if `.claude/hooks/` changed; otherwise only the readme-gate below runs.
+```bash
+./scripts/ci-classify.sh --local
+```
 
-CI runs the `design-docs` job (readme-gate) on **every** PR regardless of
-scope — it needs no installs and takes seconds, so it is never skipped
-here either.
+It computes the same diff this section used to describe (merge-base with the
+default branch, plus uncommitted work via `git status --porcelain`) and prints
+CI's decision as `key=value` lines. It is the *same* `scripts/ci-classify.sh`
+that ci.yml's `changes` job pipes its diff to on the server — so what it says
+here is what CI does there, by construction rather than by a prose copy that
+drifts. Read the outputs and run §2 accordingly:
+
+| output | when `true`, run |
+|---|---|
+| `gate` | the render gate (§2), scoped to `gate_designs` — a space-separated list, `ALL` for the whole catalog, or empty for "run but gate nothing" |
+| `scad` | `check.sh` |
+| `styles` | `style-check.sh` |
+| `printcheck_tests` | `pytest tools/printcheck/tests` |
+| `stylelift_tests` | `pytest tools/stylelift/tests` |
+| `lineage_tests` | `pytest tools/lineage/tests` |
+| `backlog_burn_tests` | `pytest tools/backlog-burn/tests` |
+| `telemetry_tests` | `pytest tools/telemetry/tests` |
+| `ci_gates_tests` | `pytest tools/ci-gates/tests` |
+
+The classifier already applies everything this section used to spell out by
+hand — the geo/soft-infra split, blast radius (a changed design drags in its
+derivatives), the style-conf reverse map, and the archived-design skip — so
+`gate_designs` is already the exact set CI would gate. It prints the
+changed-file list it classified to stderr if you want to see why it chose a
+scope.
+
+Two outputs are *not* in the table. `regen`/`regen_designs` name what CI
+**regenerates** (previews, shots, gallery) — §3 explains that is CI's job, not
+yours, so you run nothing for them. And `readme-gate.sh` is missing on purpose:
+CI runs it on **every** PR regardless of scope (the `design-docs` job needs no
+installs and takes seconds), so it is always in the §2 run list, never
+conditional.
 
 ## 2. Run (in this order — fastest failure first)
 
@@ -56,14 +63,20 @@ shellcheck --severity=warning scripts/*.sh .claude/hooks/*.sh
 actionlint .github/workflows/*.yml   # if missing: install pinned, same as ci.yml's lint job
 
 ./scripts/readme-gate.sh                             # product pages + committed GIFs + configured product shots (every PR)
-./scripts/check.sh                                   # syntax/eval of every .scad (runs lineage check)
+./scripts/check.sh                                   # if scad=true
 ./scripts/lineage.sh selftest                        # before any gate run: proves the derivative check still fires
-./scripts/gate.sh --slice <changed-names...>         # blast radius included; or no args when infra changed
-./scripts/style-check.sh                             # if styles/, stylelift or a style.conf changed
-python -m pytest tools/printcheck/tests -q           # if tools/printcheck or the workflow changed
-python -m pytest tools/stylelift/tests -q            # if tools/stylelift or the workflow changed
-python -m pytest tools/lineage/tests -q              # if tools/lineage or the workflow changed
+./scripts/gate.sh --slice <gate_designs...>          # if gate=true; pass the gate_designs list, or no args when it is ALL
+./scripts/style-check.sh                             # if styles=true
+python -m pytest tools/printcheck/tests -q           # if printcheck_tests=true
+python -m pytest tools/stylelift/tests -q            # if stylelift_tests=true
+python -m pytest tools/lineage/tests -q              # if lineage_tests=true
+python -m pytest tools/backlog-burn/tests -q         # if backlog_burn_tests=true
+python -m pytest tools/telemetry/tests -q            # if telemetry_tests=true
+python -m pytest tools/ci-gates/tests -q             # if ci_gates_tests=true
 ```
+
+The `if <output>=true` conditions above are exactly §1's table — read them off
+`./scripts/ci-classify.sh --local`, don't re-derive them from the diff.
 
 Missing tools (openscad, prusa-slicer, printcheck, stylelift) mean the SessionStart
 hook hasn't run — run `.claude/hooks/session-start.sh` first, don't skip
