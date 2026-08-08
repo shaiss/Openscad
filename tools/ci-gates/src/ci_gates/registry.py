@@ -66,6 +66,10 @@ class Registry:
     def __init__(self, gates: dict[str, Gate], path: Path | None = None):
         self._gates = gates
         self.path = path
+        # Gate ids whose state was explicitly changed since load. save() rewrites
+        # only these, so approving one gate never normalizes a `state`-less
+        # stanza (one relying on its tier default) by injecting a line into it.
+        self._dirty: set[str] = set()
 
     # -- construction ------------------------------------------------------
 
@@ -119,16 +123,19 @@ class Registry:
                 "(use 'on' or 'off')"
             )
         self._gates[gate_id] = _replace_state(gate, state)
+        self._dirty.add(gate_id)
 
     def save(self, path: Path | None = None) -> None:
-        """Write the registry back, editing only the `state` lines in place so
-        the diff stays to the states that changed and the comments survive."""
+        """Write the registry back, editing only the `state` lines of gates whose
+        state actually changed — so the diff stays to those states, comments
+        survive, and a stanza that omitted `state` is left untouched unless it
+        was the one changed."""
         target = Path(path) if path else self.path
         if target is None:
             raise ValueError("no path to save to")
         text = target.read_text(encoding="utf-8")
-        for gate in self._gates.values():
-            text = _rewrite_state_line(text, gate.id, gate.state)
+        for gate_id in self._dirty:
+            text = _rewrite_state_line(text, gate_id, self._gates[gate_id].state)
         target.write_text(text, encoding="utf-8")
 
 
@@ -143,7 +150,18 @@ def _parser() -> configparser.ConfigParser:
     return parser
 
 
+_ALLOWED_OPTIONS = {"tier", "state", "title", "run", "cross", "setup"}
+
+
 def _gate_from_section(gate_id: str, section) -> Gate:
+    # A typo'd field must fail loudly, not disable a control silently: `setpu`
+    # instead of `setup` would drop a gate's install step with no error.
+    unknown = set(section) - _ALLOWED_OPTIONS
+    if unknown:
+        raise ValueError(
+            f"gate {gate_id!r}: unknown option(s) {', '.join(sorted(unknown))}; "
+            f"allowed: {', '.join(sorted(_ALLOWED_OPTIONS))}"
+        )
     tier = section.get("tier", "").strip()
     if tier not in TIERS:
         raise ValueError(
@@ -164,13 +182,22 @@ def _gate_from_section(gate_id: str, section) -> Gate:
         raise ValueError(f"gate {gate_id!r}: missing title")
     if not run:
         raise ValueError(f"gate {gate_id!r}: missing run command")
+    cross = section.get("cross", "").strip()
+    # A gating gate is surfaced as a proposal with the command to cross it, so
+    # it must carry one. An advisory gate is auto-on and never proposed, so its
+    # cross is an optional hint (e.g. "add a case arm").
+    if tier == "gating" and not cross:
+        raise ValueError(
+            f"gate {gate_id!r}: a gating gate needs a `cross` command "
+            "(how a maintainer approves it)"
+        )
     return Gate(
         id=gate_id,
         tier=tier,
         state=state,
         title=title,
         run=run,
-        cross=section.get("cross", "").strip(),
+        cross=cross,
         setup=section.get("setup", "").strip(),
     )
 

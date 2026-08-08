@@ -77,7 +77,7 @@ left implicit, but the gate (tier, title, run) must be declared.
 Crossing a proposal is GitHub-native: a maintainer posts a PR comment with the
 command (note the leading slash):
 
-```
+```text
 /ci-gate approve <id>      # wire the gate in for this and every future run
 /ci-gate decline <id>      # turn it off so it stops being proposed
 /ci-gate list              # show the current selection

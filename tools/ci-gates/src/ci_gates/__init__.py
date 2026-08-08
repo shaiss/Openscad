@@ -26,8 +26,8 @@ from .select import Selection, Selected, select
 __all__ = [
     "Gate",
     "Registry",
-    "Selection",
     "Selected",
+    "Selection",
     "default_state",
     "select",
 ]

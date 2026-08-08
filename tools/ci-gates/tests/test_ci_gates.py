@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from ci_gates import comment as comment_mod
+from ci_gates.cli import main as cli_main
 from ci_gates.detectors import applies
 from ci_gates.registry import Gate, Registry, default_state
 from ci_gates.select import select
@@ -37,7 +39,7 @@ REGISTRY_TEXT = textwrap.dedent(
     tier  = gating
     state = proposed
     title = Lint shell scripts with shellcheck
-    run   = shellcheck -x scripts/*.sh
+    run   = shellcheck -x scripts/*.sh .claude/hooks/*.sh
     cross = /ci-gate approve shellcheck
 
     [actionlint]
@@ -250,10 +252,11 @@ def test_save_only_touches_the_changed_state_line(repo: Path):
     reg.set_state("actionlint", "off")
     reg.save()
     after = path.read_text()
-    # exactly one line differs
+    # exactly one line differs — strict=True so an added/removed trailing line
+    # (save() growing or shrinking the file) is caught, not truncated away
     diff = [
         (b, a)
-        for b, a in zip(before.splitlines(), after.splitlines())
+        for b, a in zip(before.splitlines(), after.splitlines(), strict=True)
         if b != a
     ]
     assert diff == [("state = proposed", "state = off")]
@@ -267,3 +270,131 @@ def test_cannot_approve_unknown_gate(registry: Registry):
 def test_cannot_park_advisory_as_proposed(registry: Registry):
     with pytest.raises(ValueError):
         registry.set_state("classifier-coverage", "proposed")
+
+
+def test_save_leaves_a_stateless_stanza_untouched(tmp_path: Path):
+    # A gating stanza that omits `state` relies on its tier default (proposed).
+    # Approving an UNRELATED gate must not inject a state line into it.
+    p = tmp_path / "r.conf"
+    p.write_text(textwrap.dedent(
+        """\
+        [a]
+        tier  = gating
+        title = A
+        run   = ra
+        cross = /ci-gate approve a
+
+        [b]
+        tier  = gating
+        state = proposed
+        title = B
+        run   = rb
+        cross = /ci-gate approve b
+        """
+    ))
+    before = p.read_text()
+    reg = Registry.load(p)
+    assert reg.get("a").state == "proposed"  # from the tier default
+    reg.set_state("b", "on")
+    reg.save()
+    after = p.read_text()
+    diff = [
+        (x, y)
+        for x, y in zip(before.splitlines(), after.splitlines(), strict=True)
+        if x != y
+    ]
+    assert diff == [("state = proposed", "state = on")]  # only b's line
+    assert "[a]\ntier  = gating\ntitle = A" in after  # a stayed stateless
+
+
+# --------------------------------------------------------------------------
+# stanza validation — a malformed registry must fail to load
+# --------------------------------------------------------------------------
+
+def test_registry_rejects_unknown_option(tmp_path: Path):
+    # a typo'd field (setpu) must fail, not silently disable setup
+    p = tmp_path / "r.conf"
+    p.write_text("[x]\ntier = gating\ntitle = t\nrun = r\ncross = c\nsetpu = oops\n")
+    with pytest.raises(ValueError):
+        Registry.load(p)
+
+
+def test_registry_requires_cross_for_gating(tmp_path: Path):
+    p = tmp_path / "r.conf"
+    p.write_text("[x]\ntier = gating\ntitle = t\nrun = r\n")
+    with pytest.raises(ValueError):
+        Registry.load(p)
+
+
+def test_registry_allows_advisory_without_cross(tmp_path: Path):
+    # an advisory gate is auto-on and never proposed, so cross is optional
+    p = tmp_path / "r.conf"
+    p.write_text("[x]\ntier = advisory\ntitle = t\nrun = r\n")
+    reg = Registry.load(p)
+    assert reg.get("x").cross == ""
+
+
+# --------------------------------------------------------------------------
+# comment rendering
+# --------------------------------------------------------------------------
+
+def test_comment_lists_active_and_proposed(registry: Registry, repo: Path):
+    sel = select(registry, ["scripts/foo.sh", "firmware/main.c"], repo)
+    body = comment_mod.render(sel, sha="abc1234")
+    assert body.startswith(comment_mod.MARKER)
+    assert "classifier-coverage" in body  # active advisory
+    assert "shellcheck" in body           # proposed gating
+    assert "/ci-gate approve shellcheck" in body  # the crossing command
+    assert "abc1234" in body
+
+
+def test_comment_when_nothing_applies(registry: Registry, repo: Path):
+    sel = select(registry, ["README.md"], repo)
+    body = comment_mod.render(sel)
+    assert comment_mod.MARKER in body
+    assert "No gates are active" in body
+
+
+# --------------------------------------------------------------------------
+# CLI: run-plan enforces the gating/advisory contract
+# --------------------------------------------------------------------------
+
+def _plan(tmp_path: Path, gates) -> Path:
+    import json
+    p = tmp_path / "plan.json"
+    p.write_text(json.dumps({"active": gates}))
+    return p
+
+
+def test_run_plan_blocks_on_gating_failure(tmp_path: Path):
+    plan = _plan(tmp_path, [
+        {"id": "g", "tier": "gating", "blocking": True, "setup": "", "run": "exit 1", "why": ""},
+    ])
+    assert cli_main(["run-plan", str(plan)]) == 1
+
+
+def test_run_plan_passes_when_advisory_fails(tmp_path: Path):
+    # an advisory gate that "finds" something (non-zero) must NOT fail the job
+    plan = _plan(tmp_path, [
+        {"id": "a", "tier": "advisory", "blocking": False, "setup": "", "run": "exit 7", "why": ""},
+    ])
+    assert cli_main(["run-plan", str(plan)]) == 0
+
+
+def test_run_plan_runs_setup_before_run(tmp_path: Path):
+    # setup failure on a blocking gate blocks; the run never needs to pass
+    plan = _plan(tmp_path, [
+        {"id": "g", "tier": "gating", "blocking": True, "setup": "exit 1", "run": "true", "why": ""},
+    ])
+    assert cli_main(["run-plan", str(plan)]) == 1
+
+
+def test_cli_approve_persists_via_registry_flag(repo: Path):
+    path = repo / ".github" / "ci-gates" / "registry.conf"
+    assert cli_main(["approve", "shellcheck", "--registry", str(path)]) == 0
+    assert Registry.load(path).get("shellcheck").state == "on"
+
+
+def test_cli_approve_unknown_gate_errors(repo: Path):
+    path = repo / ".github" / "ci-gates" / "registry.conf"
+    assert cli_main(["approve", "ghost", "--registry", str(path)]) == 2
