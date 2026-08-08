@@ -56,18 +56,101 @@ backlog-burn select --input snapshot.json
 GH_TOKEN=... backlog-burn gather --repo owner/name
 
 # What the workflow runs: gather then select
-GH_TOKEN=... backlog-burn run --repo owner/name
+GH_TOKEN=... backlog-burn run --repo owner/name --label autonomy-ok
+
+# Read the committed policy (what the workflow gates on)
+backlog-burn config --get enabled      # -> true|false
+backlog-burn config --get label        # -> autonomy-ok
+backlog-burn config --get cadence      # -> 4x  (preset name)
+
+# Update a config key (what the backlog-burn-config workflow calls)
+backlog-burn config set enabled false
+backlog-burn config set label my-label
+backlog-burn config set cadence weekly   # preset names: 4x, 2x, daily, weekly
+backlog-burn config set cadence '17 0,6,12,18 * * *'  # raw cron also accepted
 ```
+
+The `/backlog-burn set` GitHub Actions command (see
+`.github/workflows/backlog-burn-config.yml`) is the human interface for the
+same operations without a full PR:
+
+```
+/backlog-burn set enabled true|false
+/backlog-burn set label <label-name>
+/backlog-burn set provider anthropic|zai
+/backlog-burn set cadence 4x|2x|daily|weekly|<raw-cron>
+```
+
+Post the comment (with the leading `/`) on any PR or issue to which you have
+write access, or trigger the workflow manually from the Actions tab.  A
+`REGEN_TOKEN` PAT with `contents:write` is required to commit the change;
+without it the workflow validates the change and tells you what file to edit
+by hand.  For `cadence`, both `.github/backlog-burn.conf` **and** the `cron:`
+literal in `.github/workflows/backlog-burn.yml` are patched in a single
+atomic commit.
 
 `select` and `run` also honour `$GITHUB_OUTPUT` (writes `issue=<n>`, empty
 when nothing was selected) and `$GITHUB_STEP_SUMMARY` (a markdown outcome
 block), so the workflow stays a few lines of glue.
 
+## Config: where the on/off, label, provider, and cadence live
+
+`.github/backlog-burn.conf` is the **git-tracked source of truth** for the
+routine's policy — the same idea as `.github/ci-gates/registry.conf`:
+
+```
+enabled: true
+label:   autonomy-ok
+provider: anthropic   # or: zai
+cadence: 4x           # preset: 4x | 2x | daily | weekly, or a raw 5-field cron
+```
+
+`config.py` parses it strictly (a typo'd key, bad value, or unknown provider
+fails loudly, so the routine never runs on a policy nobody wrote). The workflow
+reads `enabled`, `label`, `provider`, and `cadence` from it.
+
+**Cadence** is stored both in this file (as a human-readable preset name or raw
+cron) and as the `cron:` literal in `backlog-burn.yml` (GitHub Actions cannot
+read a file or variable for `on.schedule`).  The `/backlog-burn set cadence`
+command keeps both in sync.  Preset names:
+
+| Preset | Cron | Fires |
+|--------|------|-------|
+| `4x` | `17 0,6,12,18 * * *` | Every 6 hours (default) |
+| `2x` | `17 6,18 * * *` | Twice daily |
+| `daily` | `17 6 * * *` | Once a day |
+| `weekly` | `17 6 * * 1` | Mondays 06:17 UTC |
+
+The routine acts only when **both** the committed `enabled: true` **and** the
+`BACKLOG_BURN_ENABLED` repo variable agree — the committed file is the
+reproducible intent (change it in a reviewed PR or via `/backlog-burn set`);
+the variable is the fast, human-only arming/kill switch (not in git on
+purpose).
+
+### Choosing the LLM provider
+
+`provider:` selects which model runs `/ship-issue`. Each known provider
+(`KNOWN_PROVIDERS`) has an explicit ship step in the workflow — a provider is a
+reviewed, git-tracked step because GitHub Actions can only reference a secret
+by its literal name, so a runtime label can't pick the secret on its own:
+
+- `anthropic` — Claude via `api.anthropic.com`, secret `ANTHROPIC_API_KEY` (default).
+- `zai` — Z.AI GLM via its Anthropic-compatible endpoint
+  (`ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic`, `--model glm-4.6`),
+  secret `ZAI_KEY`.
+
+Switching is this one line in the config. Adding a new provider is a new ship
+step in the workflow plus its label in `KNOWN_PROVIDERS`. Note: `/ship-issue`
+is a Claude Code skill and Anthropic doesn't officially support routing Claude
+Code to non-Claude models, so non-`anthropic` providers are best-effort and
+quality may vary.
+
 ## Layout
 
 - `src/backlog_burn/select.py` — the pure policy (tested)
 - `src/backlog_burn/github.py` — the thin live GitHub read (stdlib `urllib`)
-- `src/backlog_burn/cli.py` — `select` / `gather` / `run`
+- `src/backlog_burn/config.py` — the committed-policy parser (tested)
+- `src/backlog_burn/cli.py` — `select` / `gather` / `run` / `config`
 - `tests/` — pytest; CI runs it when the tool changes
 
 Stdlib-only on purpose (empty `dependencies` in `pyproject.toml`): the
