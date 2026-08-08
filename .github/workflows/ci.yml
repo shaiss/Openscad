@@ -46,8 +46,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Read-only by default; the one exception is render-gate's job-level
-# pull-requests:write, used only to upsert the sticky printcheck comment.
+# Read-only by default; the exceptions are job-level on render-gate:
+# pull-requests:write to upsert the sticky printcheck comment, and
+# contents:write for the telemetry roll-up commit on default-branch pushes.
 permissions:
   contents: read
 
@@ -61,6 +62,7 @@ jobs:
       stylelift_tests: ${{ steps.filter.outputs.stylelift_tests }}
       lineage_tests: ${{ steps.filter.outputs.lineage_tests }}
       backlog_burn_tests: ${{ steps.filter.outputs.backlog_burn_tests }}
+      telemetry_tests: ${{ steps.filter.outputs.telemetry_tests }}
       ci_gates_tests: ${{ steps.filter.outputs.ci_gates_tests }}
       styles: ${{ steps.filter.outputs.styles }}
       gate: ${{ steps.filter.outputs.gate }}
@@ -80,6 +82,7 @@ jobs:
           set -euo pipefail
           scad=false; ptests=false; stests=false; ltests=false; styles=false
           bbtests=false
+          tmtests=false
           cgtests=false
           gate=false; designs=""
           regen=false; regen_designs=""
@@ -88,6 +91,7 @@ jobs:
             # design.
             scad=true; ptests=true; stests=true; ltests=true; styles=true
             bbtests=true
+            tmtests=true
             cgtests=true
             gate=true; designs=ALL
             regen=true; regen_designs=ALL
@@ -167,9 +171,15 @@ jobs:
                 # the same reason: no gated design includes it today, so it
                 # cannot move a gated STL, but a printer.conf-only PR must still
                 # run the required contexts to be mergeable.
+                # telemetry/ (the committed self-measurement log and report,
+                # #93) and tools/telemetry (the capture/report engine) are
+                # soft for the same reason again: telemetry records what runs
+                # concluded, it can never move a mesh or a verdict, but a
+                # telemetry-only PR must still run the required contexts.
                 scripts/*|site/*|vercel.json|tools/photoshot/*|\
                 tools/backlog-burn/*|.github/backlog-burn.conf|\
-                .github/workflows/*|printer.conf)
+                .github/workflows/*|printer.conf|\
+                telemetry/*|tools/telemetry/*)
                   soft_infra=true ;;
               esac
               case "$f" in
@@ -231,6 +241,9 @@ jobs:
                 .github/workflows/ci.yml) bbtests=true ;;
               esac
               case "$f" in
+                tools/telemetry/*|.github/workflows/ci.yml) tmtests=true ;;
+              esac
+              case "$f" in
                 # The smart-ci selector's own unit tests. The registry is data
                 # the selector reads, so a registry edit re-runs them too — it
                 # is the file a malformed stanza would break.
@@ -255,6 +268,7 @@ jobs:
                 designs/*|lib/*|templates/*|scripts/*|styles/*|site/*|\
                 vercel.json|printer.conf|tools/lineage/*|tools/photoshot/*|\
                 tools/backlog-burn/*|.github/backlog-burn.conf|\
+                telemetry/*|tools/telemetry/*|\
                 .github/workflows/*|.github/actions/*)
                   scad=true ;;
               esac
@@ -368,6 +382,7 @@ jobs:
             echo "stylelift_tests=$stests"
             echo "lineage_tests=$ltests"
             echo "backlog_burn_tests=$bbtests"
+            echo "telemetry_tests=$tmtests"
             echo "ci_gates_tests=$cgtests"
             echo "styles=$styles"
             echo "gate=$gate"
@@ -896,6 +911,26 @@ jobs:
       - name: Run tests
         run: python -m pytest tools/backlog-burn/tests -q
 
+  telemetry-tests:
+    name: telemetry unit tests
+    needs: changes
+    if: needs.changes.outputs.telemetry_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install telemetry
+        # Stdlib-only like lineage — the [test] extra is just pytest, since
+        # capture runs inside the render-gate job with no install of its own.
+        run: pip install -e 'tools/telemetry[test]'
+      - name: Run tests
+        run: python -m pytest tools/telemetry/tests -q
+
   ci-gates-tests:
     name: smart-ci selector unit tests
     needs: changes
@@ -1099,7 +1134,11 @@ jobs:
     if: needs.changes.outputs.gate == 'true'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # contents:write only for the telemetry roll-up on default-branch
+      # pushes (the checkout itself is persist-credentials: false, so the
+      # gate scripts never hold the token; the push step is handed it via
+      # env). pull-requests:write is for the sticky printcheck comment.
+      contents: write
       pull-requests: write
     steps:
       - uses: actions/checkout@v5
@@ -1189,6 +1228,80 @@ jobs:
           python3 scripts/gate-summary.py gate.log > gate-summary.md \
             || echo '_no gate output captured_' > gate-summary.md
           cat gate-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Capture telemetry record
+        # One JSON line per gate run (issue #93): scores, per-design wall
+        # time, budget headroom, what was skipped. always(): a failed gate is
+        # telemetry too — the outcome is exactly what the record is for.
+        if: always() && needs.changes.outputs.gate_designs != ''
+        env:
+          GATE_DESIGNS: ${{ needs.changes.outputs.gate_designs }}
+        run: |
+          set -euo pipefail
+          if [ ! -f gate.log ]; then
+            echo "no gate.log — the run died before the gate step, nothing to capture"
+            exit 0
+          fi
+          ./scripts/telemetry.sh capture --gate-log gate.log \
+            --out telemetry-record.ndjson \
+            --meta "event=$GITHUB_EVENT_NAME" \
+            --meta "run_id=$GITHUB_RUN_ID" \
+            --meta "sha=$GITHUB_SHA" \
+            --meta "designs=$GATE_DESIGNS"
+          cat telemetry-record.ndjson
+      - name: Upload telemetry record
+        # Every run's record is inspectable as an artifact; only default-
+        # branch pushes also land in the committed log below, so PR noise
+        # never accumulates in history.
+        if: always() && needs.changes.outputs.gate_designs != ''
+        continue-on-error: true
+        uses: actions/upload-artifact@v5
+        with:
+          name: telemetry-record
+          path: telemetry-record.ndjson
+          if-no-files-found: warn
+      - name: Roll the record into the committed telemetry log
+        # Default-branch pushes only, and pushed with GITHUB_TOKEN ON
+        # PURPOSE — the opposite of the regen job's REGEN_TOKEN rule, for
+        # the same underlying fact: a GITHUB_TOKEN push triggers no
+        # workflow. Here that is the feature, not the trap. A telemetry
+        # commit that re-triggered CI would gate the whole catalog again,
+        # capture a new record, and commit forever; and unlike regen's PR
+        # commits, nothing needs checks to attach to a main commit after
+        # the fact. The retry loop covers the one same-run race: regen can
+        # push its own commit to main while this job runs.
+        if: >-
+          always() && github.event_name == 'push' &&
+          needs.changes.outputs.gate_designs != ''
+        env:
+          # Scoped to this step alone — see persist-credentials on the
+          # checkout. Actions masks it in the log.
+          PUSH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -f telemetry-record.ndjson ]; then
+            echo "no record captured — nothing to roll up"
+            exit 0
+          fi
+          cat telemetry-record.ndjson >> telemetry/log.ndjson
+          ./scripts/telemetry.sh report --out telemetry/REPORT.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add telemetry/log.ndjson telemetry/REPORT.md
+          git commit -m "Telemetry: record gate run ${GITHUB_RUN_ID}"
+          for attempt in 1 2 3; do
+            if git push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+                "HEAD:${GITHUB_REF_NAME}"; then
+              exit 0
+            fi
+            echo "push rejected (attempt ${attempt}) — the branch moved, rebasing"
+            git fetch origin "$GITHUB_REF_NAME"
+            git rebase "origin/${GITHUB_REF_NAME}"
+          done
+          # Non-fatal by design: the record survives as the artifact above,
+          # and the next default-branch run appends its own record anyway —
+          # failing the required gate context over bookkeeping would be
+          # backwards.
+          echo "::warning::could not push the telemetry record after 3 attempts — it is still available in the telemetry-record artifact"
       - name: Upsert sticky PR comment
         # Same-repo PRs only: fork PR tokens are read-only and the comment
         # would fail; this repo's PRs all come from session branches anyway.
@@ -1655,6 +1768,7 @@ jobs:
       - stylelift-tests
       - lineage-tests
       - backlog-burn-tests
+      - telemetry-tests
       - ci-gates-tests
       - style-gate
       - design-docs

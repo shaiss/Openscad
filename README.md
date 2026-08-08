@@ -178,12 +178,19 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   - `field-test.sh` — appends a FIELD-TEST entry (one real print's result) to
     a design's NOTES.md; the tested core of the "Log a print result" Action
     (issue #101)
+  - `telemetry.sh` — the repo measures itself (issue #93): `capture` turns
+    one gate run into one JSON record (scores, per-design gate wall time,
+    preview budget headroom, what was skipped); `report` renders the
+    committed log into `telemetry/REPORT.md`
 - `site/` — the static product site built from the designs, styles and
   previews already committed here, and deployed on Vercel — see its
   [README](site/README.md)
 - `styles/` — design languages lifted from reference models: the spec, the
   tokens a design builds from, and the rules CI checks parts against
 - `templates/` — starting points for a new design and its product page
+- `telemetry/` — the committed self-measurement log (`log.ndjson`, one JSON
+  record per default-branch gate run, appended by CI) and the report
+  generated from it (`REPORT.md`) — never hand-edited
 - `docs/` — repo-level research and reference notes
 - `tools/printcheck/` — STL printability analyzer; scores rendered models
   for watertightness, overhangs, thin walls, and bed adhesion before
@@ -199,6 +206,9 @@ merges. The full workflow and conventions live in [CLAUDE.md](CLAUDE.md).
   burn (`.github/workflows/backlog-burn.yml`): picks one unclaimed,
   `autonomy-ok`-labelled issue for a nightly unattended `/ship-issue` run —
   see its [README](tools/backlog-burn/README.md)
+- `tools/telemetry/` — the capture/report engine behind `telemetry.sh`:
+  parses a gate log into a telemetry record and renders the committed log
+  into the report — see its [README](tools/telemetry/README.md)
 - `tools/stylelift/` — measures how a model is *shaped* (edge treatment,
   rounding vocabulary, proportion) and turns it into a checkable style
   spec — see its [README](tools/stylelift/README.md)
