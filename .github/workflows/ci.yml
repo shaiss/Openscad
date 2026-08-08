@@ -164,7 +164,8 @@ jobs:
                 # the required geometry contexts to be mergeable at all (the
                 # PR #50 trap) — and its own pytest wiring below matches on it.
                 scripts/*|site/*|vercel.json|tools/photoshot/*|\
-                tools/backlog-burn/*|.github/workflows/*)
+                tools/backlog-burn/*|.github/backlog-burn.conf|\
+                .github/workflows/*)
                   soft_infra=true ;;
               esac
               case "$f" in
@@ -222,7 +223,8 @@ jobs:
                 tools/lineage/*|.github/workflows/ci.yml) ltests=true ;;
               esac
               case "$f" in
-                tools/backlog-burn/*|.github/workflows/ci.yml) bbtests=true ;;
+                tools/backlog-burn/*|.github/backlog-burn.conf|\
+                .github/workflows/ci.yml) bbtests=true ;;
               esac
               case "$f" in
                 # The smart-ci selector's own unit tests. The registry is data
@@ -248,7 +250,8 @@ jobs:
                 # all.
                 designs/*|lib/*|templates/*|scripts/*|styles/*|site/*|\
                 vercel.json|tools/lineage/*|tools/photoshot/*|\
-                tools/backlog-burn/*|.github/workflows/*|.github/actions/*)
+                tools/backlog-burn/*|.github/backlog-burn.conf|\
+                .github/workflows/*|.github/actions/*)
                   scad=true ;;
               esac
             done

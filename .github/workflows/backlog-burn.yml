@@ -1,35 +1,48 @@
 name: Backlog burn (scheduled /ship-issue)
 
-# The scheduled heartbeat for /ship-issue (issue #95). Nightly it picks ONE
+# The scheduled heartbeat for /ship-issue (issue #95). Weekly it picks ONE
 # open issue and runs /ship-issue on it unattended, leaving a draft PR for
 # human review. The skill already runs the same attended or unattended and
 # declines when an issue needs a human's taste — this workflow just gives it
 # a cadence.
 #
-# Three deliberate safety properties:
+# WHERE THE CONFIG LIVES (deliberate split):
+#   * Policy → committed, git-tracked: .github/backlog-burn.conf holds
+#     `enabled` and the opt-in `label`, the reproducible source of truth (the
+#     same idea as .github/ci-gates/registry.conf). Change it with a reviewed
+#     one-line PR; a clone carries it.
+#   * Live arming / kill switch → the BACKLOG_BURN_ENABLED repo variable, a
+#     fast human-only toggle (Settings → Secrets and variables → Actions →
+#     Variables, or `gh variable set`). Not in git on purpose: arming an agent
+#     that opens PRs should be a conscious act a fresh clone/fork can't
+#     inherit, and flipping it off halts the routine in seconds without a PR.
+#   * Cadence → the `cron` literal below. Actions cannot read a file or
+#     variable for `on.schedule`, so the schedule must be literal here — still
+#     git-tracked, so changing it is a one-line PR.
 #
-#   * Off by default. The whole job is gated on the repo variable
-#     BACKLOG_BURN_ENABLED; unset (or anything but 'true') pauses the routine
-#     without deleting it. Set it in Settings → Secrets and variables →
-#     Actions → Variables.
-#
-#   * Opt-in per issue. The selector (tools/backlog-burn) only ever picks an
-#     issue labelled `autonomy-ok`, so nothing ships until a human curates the
-#     backlog — the routine selects nothing on the day it lands.
-#
-#   * One issue per firing. A hard cap in the selector means a bad night costs
+# Safety properties:
+#   * TWO keys must agree to run: committed `enabled: true` AND
+#     BACKLOG_BURN_ENABLED == 'true'. Either off → inert.
+#   * Opt-in per issue: the selector only picks an issue carrying the `label`
+#     from the config, so nothing ships until a human curates the backlog.
+#   * One issue per firing: a hard cap in the selector means a bad night costs
 #     one PR, not five.
 #
-# The agentic run degrades gracefully: with no CLAUDE_CODE_OAUTH_TOKEN secret
-# the job still selects and logs its pick, then emits a ::notice:: and stops
-# — exactly how ci.yml skips product-page drafting when ANTHROPIC_API_KEY is
-# unset. So this workflow is useful (and testable) before any secret exists.
+# Auth: the agentic run uses the existing ANTHROPIC_API_KEY secret (a plain
+# API key is the right fit for an unattended bot — pay-per-token, no
+# subscription seat). With that secret unset the job still selects and logs
+# its pick, then emits a ::notice:: and stops — exactly how ci.yml skips
+# product-page drafting without the key. So this workflow is useful (and
+# testable) before any secret exists.
 
 on:
   schedule:
-    # Nightly at 06:17 UTC. An off-peak minute, not on the hour, to avoid the
-    # Actions scheduler's :00 congestion.
-    - cron: '17 6 * * *'
+    # Weekly, Mondays 06:17 UTC. An off-peak minute (not :00) to avoid the
+    # Actions scheduler's on-the-hour congestion. Cron must be a literal —
+    # Actions evaluates no variables here — so change the cadence by editing
+    # this line in a PR (e.g. daily '17 6 * * *', or twice weekly
+    # '17 6 * * 1,4').
+    - cron: '17 6 * * 1'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -41,10 +54,10 @@ on:
 # branch (contents:write) and opens a draft PR (pull-requests:write), and
 # posts its SHIP-LOCK claim and outcome (issues:write). Selection alone only
 # needs reads, but permissions are per-job not per-step, and this single job
-# both selects and ships. The job is off unless BACKLOG_BURN_ENABLED is set,
-# and the writing step is skipped entirely without the CLAUDE_CODE_OAUTH_TOKEN
-# secret, so these grants sit idle until the routine is deliberately switched
-# on.
+# both selects and ships. The job is off unless BACKLOG_BURN_ENABLED is set
+# AND the committed config says enabled, and the writing step is skipped
+# entirely without the ANTHROPIC_API_KEY secret, so these grants sit idle
+# until the routine is deliberately switched on.
 permissions:
   contents: write
   issues: write
@@ -60,13 +73,15 @@ concurrency:
 jobs:
   burn:
     name: Pick one issue and run /ship-issue
-    # The off-switch. Unset/false pauses the routine without deleting it.
+    # Key 1 of 2: the live arming / kill switch (repo variable). Unset or
+    # anything but 'true' pauses the whole job in seconds without a commit.
+    # Key 2 (committed `enabled: true`) is checked in the "Read policy" step.
     if: vars.BACKLOG_BURN_ENABLED == 'true'
     runs-on: ubuntu-latest
     env:
       # Secrets cannot be read in a step `if:` directly, so surface presence
       # as a plain string here and gate on it below.
-      HAS_CLAUDE_SECRET: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+      HAS_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -79,45 +94,67 @@ jobs:
       - name: Install the selector
         run: pip install -e tools/backlog-burn
 
-      - name: Select one autonomy-ok issue
+      - name: Read policy (.github/backlog-burn.conf)
+        id: policy
+        # Key 2 of 2: the committed, git-tracked source of truth. A malformed
+        # or typo'd config fails this step loudly rather than running on a
+        # policy nobody wrote.
+        run: |
+          set -euo pipefail
+          {
+            echo "enabled=$(backlog-burn config --get enabled)"
+            echo "label=$(backlog-burn config --get label)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Note when disabled by committed policy
+        if: steps.policy.outputs.enabled != 'true'
+        run: echo "::notice::.github/backlog-burn.conf has enabled != true — the routine is armed (repo variable) but paused in git; nothing to do"
+
+      - name: Select one eligible issue
         id: select
+        if: steps.policy.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          LABEL: ${{ steps.policy.outputs.label }}
         run: |
           set -euo pipefail
           # `run` gathers the live snapshot (open issues + their SHIP-LOCK
           # comments, open PRs, remote branches) and applies the policy. It
           # writes `issue=<n>` (empty when nothing is eligible) to
           # $GITHUB_OUTPUT and a markdown block to $GITHUB_STEP_SUMMARY.
-          backlog-burn run --repo "$GITHUB_REPOSITORY"
+          backlog-burn run --repo "$GITHUB_REPOSITORY" --label "$LABEL"
 
       - name: Ship the selected issue (unattended /ship-issue)
         id: ship
         if: >-
-          steps.select.outputs.issue != ''
-          && env.HAS_CLAUDE_SECRET == 'true'
+          steps.policy.outputs.enabled == 'true'
+          && steps.select.outputs.issue != ''
+          && env.HAS_ANTHROPIC_KEY == 'true'
           && github.event.inputs.dry_run != 'true'
         # Pinned to the immutable commit behind the v1 tag, not the mutable
-        # tag: this step receives write permissions and the OAuth secret, so a
+        # tag: this step receives write permissions and the API secret, so a
         # moved tag must not silently change what runs. (Re-pin deliberately to
-        # adopt a new release.) The action authenticates its own git push and
-        # PR creation from `github_token` below — the checkout above keeps
-        # persist-credentials:false because this step does not use the
-        # workflow's checked-out remote. NOTE for enabling: a PR opened with
-        # the default GITHUB_TOKEN does not itself trigger CI (the same reason
-        # regen uses REGEN_TOKEN); to have the drafted PR's checks run
-        # automatically, pass a PAT as github_token here when switching the
-        # routine on.
+        # adopt a new release.) Auth is the existing ANTHROPIC_API_KEY secret
+        # (a plain API key, pay-per-token — the right fit for an unattended
+        # bot; no OAuth token / subscription seat needed). The action
+        # authenticates its own git push and PR creation from `github_token`
+        # below — the checkout above keeps persist-credentials:false because
+        # this step does not use the workflow's checked-out remote. NOTE for
+        # enabling: a PR opened with the default GITHUB_TOKEN does not itself
+        # trigger CI (the same reason regen uses REGEN_TOKEN); to have the
+        # drafted PR's checks run automatically, pass a PAT as github_token
+        # here when switching the routine on.
         uses: anthropics/claude-code-action@7ff6806c8ebd129a7043b947af920074d3819dc8  # v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ github.token }}
           prompt: "/ship-issue ${{ steps.select.outputs.issue }}"
 
       - name: Explain a skipped agentic run
         if: >-
-          steps.select.outputs.issue != ''
-          && (env.HAS_CLAUDE_SECRET != 'true'
+          steps.policy.outputs.enabled == 'true'
+          && steps.select.outputs.issue != ''
+          && (env.HAS_ANTHROPIC_KEY != 'true'
               || github.event.inputs.dry_run == 'true')
         env:
           ISSUE: ${{ steps.select.outputs.issue }}
@@ -126,12 +163,12 @@ jobs:
           if [ "$DRY_RUN" = "true" ]; then
             echo "::notice::dry run — selected #${ISSUE} but did not invoke /ship-issue"
           else
-            echo "::notice::CLAUDE_CODE_OAUTH_TOKEN is not set — selected #${ISSUE} but skipping the unattended /ship-issue run"
+            echo "::notice::ANTHROPIC_API_KEY is not set — selected #${ISSUE} but skipping the unattended /ship-issue run"
           fi
 
       - name: Explain an empty selection
-        if: steps.select.outputs.issue == ''
-        run: echo "::notice::no issue is currently eligible (nothing labelled autonomy-ok is unclaimed) — nothing to ship"
+        if: steps.policy.outputs.enabled == 'true' && steps.select.outputs.issue == ''
+        run: echo "::notice::no issue is currently eligible (nothing carrying the opt-in label is unclaimed) — nothing to ship"
 
       - name: Record the run outcome
         # Runs on success, failure or skip so the job summary always shows what

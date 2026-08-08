@@ -56,18 +56,42 @@ backlog-burn select --input snapshot.json
 GH_TOKEN=... backlog-burn gather --repo owner/name
 
 # What the workflow runs: gather then select
-GH_TOKEN=... backlog-burn run --repo owner/name
+GH_TOKEN=... backlog-burn run --repo owner/name --label autonomy-ok
+
+# Read the committed policy (what the workflow gates on)
+backlog-burn config --get enabled      # -> true|false
+backlog-burn config --get label        # -> autonomy-ok
 ```
 
 `select` and `run` also honour `$GITHUB_OUTPUT` (writes `issue=<n>`, empty
 when nothing was selected) and `$GITHUB_STEP_SUMMARY` (a markdown outcome
 block), so the workflow stays a few lines of glue.
 
+## Config: where the on/off and label live
+
+`.github/backlog-burn.conf` is the **git-tracked source of truth** for the
+routine's policy — the same idea as `.github/ci-gates/registry.conf`:
+
+```
+enabled: true
+label: autonomy-ok
+```
+
+`config.py` parses it strictly (a typo'd key or bad value fails loudly, so the
+routine never runs on a policy nobody wrote). The workflow reads `enabled` and
+`label` from it, and the routine acts only when **both** the committed
+`enabled: true` **and** the `BACKLOG_BURN_ENABLED` repo variable agree — the
+committed file is the reproducible intent (change it in a reviewed PR); the
+variable is the fast, human-only arming/kill switch (not in git on purpose).
+Cadence is the `cron` literal in the workflow, since Actions can't read a file
+or variable for `on.schedule`.
+
 ## Layout
 
 - `src/backlog_burn/select.py` — the pure policy (tested)
 - `src/backlog_burn/github.py` — the thin live GitHub read (stdlib `urllib`)
-- `src/backlog_burn/cli.py` — `select` / `gather` / `run`
+- `src/backlog_burn/config.py` — the committed-policy parser (tested)
+- `src/backlog_burn/cli.py` — `select` / `gather` / `run` / `config`
 - `tests/` — pytest; CI runs it when the tool changes
 
 Stdlib-only on purpose (empty `dependencies` in `pyproject.toml`): the

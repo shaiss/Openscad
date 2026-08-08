@@ -88,6 +88,19 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_config(args: argparse.Namespace) -> int:
+    """`config`: print one value from the committed policy file.
+
+    The workflow reads `enabled` and `label` from `.github/backlog-burn.conf`
+    this way, so the policy lives in git rather than in the YAML.
+    """
+    from . import config as config_mod
+
+    path = args.path or config_mod.DEFAULT_PATH
+    sys.stdout.write(config_mod.get(args.get, path=path) + "\n")
+    return 0
+
+
 def _add_output_flags(p: argparse.ArgumentParser) -> None:
     """Attach the shared ``--gh-output`` / ``--summary`` / ``--label`` flags."""
     p.add_argument("--gh-output", help="path to append `issue=` (defaults to $GITHUB_OUTPUT)")
@@ -114,6 +127,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--repo", required=True, help="owner/name")
     _add_output_flags(p_run)
     p_run.set_defaults(func=cmd_run)
+
+    p_config = sub.add_parser("config", help="read the committed policy file")
+    p_config.add_argument("--get", required=True, choices=["enabled", "label"],
+                          help="which config value to print")
+    p_config.add_argument("--path", default=None,
+                          help="config file (default: .github/backlog-burn.conf)")
+    p_config.set_defaults(func=cmd_config)
 
     return parser
 
