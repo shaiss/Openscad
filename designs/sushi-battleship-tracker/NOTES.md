@@ -13,7 +13,13 @@ leaves **misses** to memory, and "did we already call B3?" is the real
 failure mode of a leisurely dinner game. The refit adds a shallow spherical
 **miss-marker seat** to the top face of every print-in-place shutter door:
 park any small round marker (dried soybean, 6 mm airsoft BB, peppercorn) on
-a called cell and nobody re-calls it. Product charter: [PM.md](PM.md).
+a called cell and nobody re-calls it. The product charter lives in PM.md
+beside this file.
+
+<!-- No markdown links in the Goal paragraph above, on purpose: gallery.sh
+     scrapes it verbatim into the repo-root README gallery row, where a
+     design-relative link like [PM.md](PM.md) resolves against the repo
+     root and 404s. -->
 
 ## The delta, and only the delta
 
@@ -30,6 +36,15 @@ parent (OpenSCAD has no way to extend a module); the parent is frozen at
 v0.1, so the restatement cannot drift. Fit surfaces — tab/lip dimensions and
 every clearance — are untouched (PM.md N1): a `door_fit` tuned on the
 parent's coupon transfers unchanged.
+
+## Given / assumed measurements
+
+- Markers are household objects, assumed roughly spherical, 4–10 mm
+  (peppercorn ~4–5, airsoft BB 6, dried soybean 7–9); the range is asserted
+  in the `.scad` and `marker_d` defaults to 8.
+- Everything else — cell pitch 58, lid 250 × 250, door 47.6 × 50 × 2.4,
+  every clearance — is inherited from the frozen parent unchanged; see the
+  parent's NOTES.md for those derivations.
 
 ## Seat derivation
 
@@ -50,7 +65,23 @@ parent's coupon transfers unchanged.
   print-in-place scheme, zero added height (the grip bar still clears the
   rails by 0.3 mm).
 
-## Print orientation and settings
+## Key decisions
+
+- Contribute as a **derivative**, not an in-place edit: the parent is
+  ARCHIVED at v0.1 and its marker names the derivative route as the revival
+  path.
+- The seat is a **cut, not a raised feature**: zero added height (grip
+  still clears the rails by 0.3 mm), no new overhangs, no change to the
+  sliding envelope.
+- Claim only `top` and `door` in `replaces:` — the tray is inherited
+  unchanged, and a claimed part whose mesh matches the parent's reads as a
+  typo'd override and fails the gate.
+- No printed marker pegs (PM.md, out of scope): the frozen parent's
+  part-selection else-branch draws the assembled preview for any unknown
+  `part` value, so a clean `-D part=peg` render needs machinery this refit
+  doesn't want to invent.
+
+## Print settings
 
 Identical to the parent: both parts flat, no supports, top prints with all
 doors captive. See the parent's NOTES.md for the membrane/bridge scheme —
