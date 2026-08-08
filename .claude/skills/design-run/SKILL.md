@@ -51,12 +51,20 @@ so the two never collide on the same issue.
      nine closing keywords, case-insensitive), don't grep the body.
    - a remote branch `claude/issue-<N>-*` already exists.
 4. **Claim it** by posting the §2 contract as a comment led by `🚢 SHIP-LOCK`,
-   **before you scaffold a single part**. One per issue, ever. The timestamp is
-   the proof the contract predates the diff.
+   **before you scaffold a single part**. Keep **one active claim** per issue at
+   a time — never delete a claim comment (the timestamps are the record),
+   withdraw it instead. The timestamp is the proof the contract predates the
+   diff.
 5. **Re-read after claiming.** Check-then-post is not atomic. Re-read the
    comments; if another *active* claim predates yours, withdraw (edit your
    comment so its first line reads `🚢 SHIP-LOCK WITHDRAWN` — never delete it)
    and stop. Last writer yields.
+6. **Release on a terminal stop.** If you stop for any reason *before* a
+   `claude/issue-<N>-*` branch or an open closing PR exists — a §1 decline, a
+   §4 non-convergence, any §8 stop — **withdraw your claim** the same way (edit
+   the first line to `🚢 SHIP-LOCK WITHDRAWN`). A run that claimed then walked
+   away must not leave the brief frozen until it ages into a stale takeover; the
+   branch/PR is what carries the claim forward once real work exists.
 
 If the issue is taken, say so and stop. Never work two.
 
@@ -133,7 +141,9 @@ Run `/new-design <name>` — entry `.scad` from `templates/design.scad`,
 `NOTES.md` recording the brief's goal / given measurements / print orientation,
 `README.md` from `templates/README.md`, and `ci.parts` / `printcheck.args` when
 the design has distinct printable parts. If the brief names a style, wire it in
-now (`designs/<name>/style.conf` + `include <styles/<name>/style.scad>`) —
+now (`designs/<name>/style.conf` + `include <styles/<style-name>/style.scad>`,
+where `<style-name>` is the pack the brief named — independent of the design
+name) —
 retrofitting a look later means redoing the geometry (CLAUDE.md, co-design
 step 1). Record the brief's given numbers as parametric variables with units.
 
@@ -147,15 +157,28 @@ Each iteration:
    bed-contact problems, and check the shape against the brief's numbers.
 2. `gate.sh --slice <name>` for the printable parts.
 3. **Capture the iteration as telemetry** (this is the #93 consumer #96
-   anticipated — it turns "is this converging?" from a vibe into a reading):
+   anticipated — it turns "is this converging?" from a vibe into a reading).
+   Pick a fresh per-run log path once (`RUN_NDJSON=$(mktemp)`, reused every
+   iteration so the records accumulate in order) and a per-iteration gate log,
+   and **fail closed** — `pipefail` so a `gate.sh` failure isn't masked by the
+   `tee`, and a capture failure stops the run rather than letting convergence
+   read stale data:
    ```bash
-   ./scripts/gate.sh --slice <name> 2>&1 | tee "$ITER_LOG"
+   set -o pipefail
+   ITER_LOG=$(mktemp)                       # one per iteration
+   # RUN_NDJSON set once at the start of the run: RUN_NDJSON=$(mktemp)
+   ./scripts/gate.sh --slice <name> 2>&1 | tee "$ITER_LOG"; gate_status=${PIPESTATUS[0]}
    ./scripts/telemetry.sh capture --gate-log "$ITER_LOG" \
-     --out "$RUN_NDJSON" --meta event=design-run --meta iter=<n> --meta design=<name>
+     --out "$RUN_NDJSON" --meta event=design-run --meta iter=<n> --meta design=<name> \
+     || { echo "telemetry capture failed — stop, don't trust the trend"; exit 1; }
    ```
-   Read the trend across records — `gate.parts[].score` rising and `criticals` /
-   `fail_lines` falling is **progress**; the same failure reproduced with no
-   score movement is **thrashing**.
+   A non-zero `gate_status` is a failing gate (expected while iterating — it is
+   the signal you're converging on), not an error to abort on; a failed
+   *capture* is, because the convergence rule below would then read missing or
+   stale telemetry. Read the trend across the accumulated records —
+   `gate.parts[].score` rising and `criticals` / `fail_lines` falling is
+   **progress**; the same failure reproduced with no score movement is
+   **thrashing**.
 4. Adjust the `.scad` and go again.
 
 **Convergence — bounded so a bad run costs one stalled PR, not an infinite
@@ -182,6 +205,19 @@ telemetry, rather than forcing green.
   preview. Declare the hero shot in `shots.conf` and the frozen previews in
   `previews/cameras.conf` — **CI renders and commits the images**; you own the
   manifest and the embed, not the pixels (CLAUDE.md: "what CI generates").
+  - **The regen handoff (read this unattended).** "CI renders the images" only
+    holds if the pushed branch actually triggers CI. The scheduled
+    `design-run.yml` runs the agent with the default `github.token`, and a push
+    or PR authored by `github.token` **does not trigger `ci.yml`** (the same
+    reason `regen` itself uses `REGEN_TOKEN` — see CLAUDE.md). So unless the
+    routine is configured with a PAT as `github_token`, `regen` will *not* fire
+    on your draft PR: the previews won't be generated, and `readme-gate.sh`
+    would fail on the PR for a missing embedded image. Do not pretend CI ran.
+    Either the operator wires a PAT (recommended for this pipeline, since a
+    design's page *requires* the regenerated previews), **or** you state plainly
+    in the PR body that the previews are pending a manual CI trigger (a
+    maintainer reopening/pushing the PR), so the handoff is honest rather than a
+    silently image-less page. Never hand-commit product shots to fake the regen.
 - **`/pm` checkpoint.** Run `/pm <name>` against the brief before you push:
   scope not crept past the brief's parts, the named non-negotiables honoured.
   Cheap, and it catches the design drifting off the brief.

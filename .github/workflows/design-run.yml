@@ -80,9 +80,19 @@ permissions:
   issues: write
   pull-requests: write
 
-# Never run two design runs at once, and never race the backlog burn for an
-# issue: both share the one-claim SHIP-LOCK protocol, but a shared concurrency
-# group is a second belt. Do not cancel an in-flight run — it may be mid-ship.
+# Never run two design runs at once — this group serializes THIS workflow with
+# itself. It deliberately does NOT serialize against the backlog burn: GitHub
+# concurrency is shared across workflows only when the group STRING matches, and
+# backlog-burn uses `group: backlog-burn`, so the names differ on purpose —
+# serializing a heavy daily design run with a 4×/day burn (cancel-in-progress
+# off) would queue burns behind a long design run for no benefit here. The one
+# case where the two could collide is an issue carrying BOTH opt-in labels
+# (`design-brief` and `autonomy-ok`), which both selectors read from a snapshot.
+# That race is closed where it must be — at the claim, not the schedule: both
+# skills post a `🚢 SHIP-LOCK` and then RE-READ (design-run §0.5 / ship-issue
+# §0.5), and the later timestamp yields, so at most one proceeds to real work
+# regardless of interleaving. Coupling the schedules would add nothing the
+# re-read doesn't already guarantee. Do not cancel an in-flight run — mid-ship.
 concurrency:
   group: design-run
   cancel-in-progress: false
@@ -93,7 +103,14 @@ jobs:
     # Key 1 of 2: the live arming / kill switch (repo variable). Unset or
     # anything but 'true' pauses the whole job in seconds without a commit.
     # Key 2 (committed `enabled: true`) is checked in the "Read policy" step.
-    if: vars.DESIGN_RUN_ENABLED == 'true'
+    # Also pin the run to the DEFAULT BRANCH: this job carries write scopes and
+    # a secret, and `workflow_dispatch` can target any in-repo branch — so a
+    # dispatch against a PR branch must not run that branch's skill/selector
+    # code with the secret. On `schedule` github.ref_name is already the default
+    # branch, so this only ever blocks a hand-dispatch against a non-default ref.
+    if: >-
+      vars.DESIGN_RUN_ENABLED == 'true'
+      && github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     env:
       # Secrets cannot be read in a step `if:` directly, so surface each
@@ -106,6 +123,10 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          # Belt-and-braces with the job `if:` above: always check out the
+          # default branch, so the secret-bearing agent runs the reviewed,
+          # merged skill + selector — never a dispatched branch's version.
+          ref: ${{ github.event.repository.default_branch }}
 
       - uses: actions/setup-python@v6
         with:
@@ -167,10 +188,16 @@ jobs:
       # committed `provider:` label picks which one runs; adding a provider is a
       # new step here. Both share the pin, the write permissions, the
       # `github_token` that authenticates the action's own git push / PR
-      # creation, and the same /design-run prompt. NOTE for enabling: a PR
-      # opened with the default GITHUB_TOKEN does not itself trigger CI (the
-      # reason regen uses REGEN_TOKEN); pass a PAT as github_token to have the
-      # drafted PR's checks run automatically.
+      # creation, and the same /design-run prompt. NOTE for enabling — and it
+      # matters MORE here than for the backlog burn: a PR opened with the
+      # default GITHUB_TOKEN does not itself trigger CI (the reason regen uses
+      # REGEN_TOKEN), so `regen` will not fire and the design's previews won't
+      # be generated — and a design page WITHOUT its previews fails
+      # readme-gate.sh. So for this pipeline a PAT as `github_token` is
+      # effectively required, not just nice-to-have, if the draft PR is to reach
+      # a mergeable state unattended. Without one, /design-run says in the PR
+      # body that previews are pending a manual CI trigger (see its §5 regen
+      # handoff) rather than shipping a silently image-less page.
       #
       # The pin is the immutable commit behind the v1 tag; a moved tag must not
       # silently change what runs with write perms + a secret. Re-pin
