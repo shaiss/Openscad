@@ -147,8 +147,16 @@ jobs:
                 # tools/photoshot is soft: it renders product shots FROM
                 # exported STLs and can change a pixel but never a mesh.
                 # Before it had a rule here a photoshot-only PR ran no
-                # required context at all and could never merge.
-                scripts/*|site/*|vercel.json|tools/photoshot/*)
+                # required context at all and could never merge. Non-ci.yml
+                # workflows (lifestyle-shot.yml, lifestyle-clip.yml) are soft
+                # for the same reason: they cannot move geometry, but
+                # docs-check lints every .github/workflows/*.yml (the
+                # cache-apt allowlist, check 9), so a workflow-only PR must
+                # run the job that runs it — without this rule the lint would
+                # only fire one push late, on the next full-catalog run
+                # (ci.yml matched the geo tier above already).
+                scripts/*|site/*|vercel.json|tools/photoshot/*|\
+                .github/workflows/*)
                   soft_infra=true ;;
               esac
               case "$f" in
@@ -229,7 +237,7 @@ jobs:
                 # all.
                 designs/*|lib/*|templates/*|scripts/*|styles/*|site/*|\
                 vercel.json|tools/lineage/*|tools/photoshot/*|\
-                .github/workflows/ci.yml|.github/actions/*)
+                .github/workflows/*|.github/actions/*)
                   scad=true ;;
               esac
             done
@@ -935,11 +943,12 @@ jobs:
         # instead of waiting out the regen job (see the note at the top of
         # this file).
         run: ./scripts/docs-check.sh --gallery-only
-      - name: Lifestyle-shot disclosure guards still fire
-        # No lifestyle-*.png exists in the tree yet, so the per-design gate
-        # above never exercises requirement 9. The selftest builds throwaway
-        # fixtures and proves each disclosure guard (missing embed / label /
-        # note / over-budget) still refuses what it exists to refuse.
+      - name: Lifestyle disclosure guards still fire
+        # No lifestyle-*.png or lifestyle-*.gif exists in the tree yet, so the
+        # per-design gate above never exercises requirement 9. The selftest
+        # builds throwaway fixtures and proves each disclosure guard (missing
+        # embed / label / note / over-budget, for stills and motion clips
+        # alike) still refuses what it exists to refuse.
         run: ./scripts/readme-gate.sh --selftest
 
   site-build:
