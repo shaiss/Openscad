@@ -45,7 +45,7 @@ Frozen once reviewed — add a row, never repurpose one.
 | Shot | What it sells | View | Look (color / finish) | Pose (`-D`, if any) |
 |---|---|---|---|---|
 | product-hero | the printed part, at a glance | hero (low ¾) | orange / satin | — |
-| size-marker | the self-labeling top face — the whole point | high ¾, top-down (`18,58,0.92`) | orange / satin | — |
+| size-marker | the self-labeling top face — the whole point | high ¾, elevated (`18,58,0.92`) | orange / satin | — |
 
 **Lifestyle scenes — tier 2 (AI, cosmetic, disclosed).** Describe the setting.
 
@@ -76,5 +76,5 @@ Frozen once reviewed — add a row, never repurpose one.
 
 | Date | Decision | Reason |
 |---|---|---|
-| 2026-08-08 | Add a top-down `size-marker` studio shot beside the hero | The hero shows the engraved size edge-on; the marker is the product's one trick and deserves a shot that makes it the subject |
+| 2026-08-08 | Add a high three-quarter `size-marker` studio shot beside the hero | The hero shows the engraved size edge-on; the marker is the product's one trick and deserves a shot that makes it the subject |
 | 2026-08-08 | Add a `bench-calipers` tier-2 lifestyle scene | A cube-with-calipers scene reinforces the calibration use case; cosmetic and disclosed |
