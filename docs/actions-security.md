@@ -1,0 +1,61 @@
+# GitHub Actions security posture: dispatch-selects-branch
+
+This is the tracked decision for [issue #113](https://github.com/shaiss/print-bench/issues/113) — a follow-up from the CodeRabbit review on [#112](https://github.com/shaiss/print-bench/pull/112#discussion_r3740564181), which agreed the property belonged in its own record rather than a PR thread. It documents a property of GitHub Actions, the workflows in this repo it touches, and the posture we have accepted toward it. It changes no workflow, because the property cannot be fixed inside a workflow — see below.
+
+## The property
+
+A `workflow_dispatch` run **executes the workflow YAML from the ref (branch or tag) the dispatcher selected**, not from the default branch. The same is true of a `push`-triggered run: it executes the pushed branch's copy of the YAML. So for any manually-dispatchable (or push-triggered) workflow that
+
+- grants **write** permissions (`contents`, `issues`, `pull-requests`), and
+- exposes a **secret** (e.g. `REGEN_TOKEN`, `ANTHROPIC_API_KEY`, `ZAI_KEY`), and
+- runs **inline shell or an action** with those grants,
+
+a user who dispatches a **branch on which they have rewritten that workflow file** runs *their* steps with those grants and that secret. The rewritten steps are whatever they authored.
+
+### Why no in-YAML guard closes it
+
+Pinning `actions/checkout` to the default branch — as [#112](https://github.com/shaiss/print-bench/pull/112) did for `log-print-result.yml` (`ref: ${{ github.event.repository.default_branch }}`) — protects the **working-tree scripts** the job runs: it guarantees the checked-out `scripts/`, `tools/`, etc. are the trusted default-branch copies, not the dispatch ref's. It does **not** protect the **workflow definition itself**. The `steps:` that decide *what runs at all*, which secrets are wired into which step, and what permissions the job holds are read from the selected ref's YAML **before** any checkout step executes. No guard written inside the file can help, because a dispatcher who controls the file simply deletes the guard along with everything else. The checkout pin and this property are orthogonal: a pinned-checkout workflow is still fully subject to the definition vector on dispatch.
+
+## Scope of the risk (bounded)
+
+`workflow_dispatch` **requires repository write access.** Only an already-trusted collaborator can trigger one, and such an actor already has equivalent avenues (they can push to branches, open PRs that run CI, and — for `contents: write` secrets like `REGEN_TOKEN` — already operate inside the trust boundary those secrets assume). This is a **defense-in-depth / least-privilege** consideration, not an external-attacker vector. It is **not reachable from a fork**: a fork PR's `GITHUB_TOKEN` is read-only **by default** (the repository setting *Send write tokens to workflows from pull requests* can grant fork runs a write-capable token — this doc assumes it off, its default) and repo secrets are not exposed to fork-triggered runs, so none of the write+secret combinations below are available to an untrusted contributor. Even were that setting on, the `regen` push stays gated by its same-repo `head.repo` check (below), so a fork still cannot push. Hence: tracked, not urgent.
+
+## Inventory — write-scoped, manually-dispatchable workflows
+
+Every workflow in `.github/workflows/` that has a `workflow_dispatch` trigger **and** a write grant **and** a secret. Audited from the tree (the set has grown since #113 was filed, which named only the first two).
+
+| Workflow | Triggers | Write grants | Secret(s) | Off-by-default gate | `checkout` ref |
+|---|---|---|---|---|---|
+| `log-print-result.yml` | `workflow_dispatch` | contents, pull-requests | `REGEN_TOKEN` | `PRINT_FEEDBACK_ENABLED` | pinned to `default_branch` |
+| `backlog-burn.yml` | schedule, `workflow_dispatch` | contents, issues, pull-requests | `ANTHROPIC_API_KEY`, `ZAI_KEY` | `BACKLOG_BURN_ENABLED` + committed `enabled:` | unpinned (selected ref); `persist-credentials: false` |
+| `design-run.yml` | schedule, `workflow_dispatch` | contents, issues, pull-requests | `CLAUDE_KEY`, `GH_TOKEN`, `ZAI_KEY` | `DESIGN_RUN_ENABLED` + committed `enabled:` | pinned to `default_branch` |
+| `lifestyle-shot.yml` | push (`designs/*/lifestyle.conf`), `workflow_dispatch` | contents, pull-requests | `GITHUB_TOKEN`, `ZAI_KEY` | none — gated on `ZAI_KEY` presence | unpinned |
+| `lifestyle-clip.yml` | push (`designs/*/motion.conf`), `workflow_dispatch` | contents, pull-requests (job-level) | `GITHUB_TOKEN`, `ZAI_KEY` | none — gated on `ZAI_KEY` presence | unpinned |
+| `backlog-burn-config.yml` | `issue_comment`, `workflow_dispatch` | issues, pull-requests | `REGEN_TOKEN` | none | trusted base-branch tooling only (see note) |
+
+Notes:
+
+- The **`checkout` ref** column describes only the working-tree-script mitigation. As established above, it is orthogonal to the definition vector — a `default_branch`-pinned row is still subject to the property on dispatch. The pin remains worthwhile: it closes the separate script-substitution path #112 was about.
+- The **off-by-default gates** are the more material mitigation for the two autonomy routines and the print-feedback logger: with `PRINT_FEEDBACK_ENABLED` / `BACKLOG_BURN_ENABLED` / `DESIGN_RUN_ENABLED` unset (the default clone/fork state), those workflows halt early with a `::notice::` and never reach their write steps. That reduces exposure but does not eliminate the property, since a dispatcher rewriting the YAML can also delete the gate check.
+- **`backlog-burn-config.yml` is listed for its `workflow_dispatch` trigger only.** Its `issue_comment` path is *not* subject to the property (see the next section); but because it *also* carries a `workflow_dispatch` trigger, that path runs the selected ref's YAML with `REGEN_TOKEN` like the others. Its by-design safety (Contents-API-only writes, never checking out the PR head) is a property of its *steps*, which a dispatch-ref rewrite replaces.
+
+## Related-but-distinct vectors
+
+The dispatch property is one member of a family "the trigger runs *that ref's* YAML." Two neighbours the issue flagged, confirmed here:
+
+- **`ci.yml`'s `regen` job.** `ci.yml` triggers on `push` to `main` and on `pull_request` — a *feature-branch* push does **not** trigger it, so the branch-selection vector here is a **same-repo pull request**, not an arbitrary push. For a `pull_request` event the workflow definition is taken from the PR's **merge ref** (the PR's changes merged onto the base), so a collaborator whose PR rewrites `ci.yml` runs their `regen` steps; `regen` holds `contents: write` (job-level) with `REGEN_TOKEN` and checks out the PR **head branch** (`head.ref`, not the merge ref — a merge ref cannot be pushed back to) for its working tree. Same risk class as dispatch, same bound — and enforced in the job: `regen` pushes with `REGEN_TOKEN` **only when the head repo is this repo** (`github.event.pull_request.head.repo.full_name == github.repository`); a fork PR receives no secrets and a read-only `GITHUB_TOKEN`, and the job fails with the file list instead of pushing. So the PAT-write path is reachable only from trusted, same-repo branches.
+- **`issue_comment`-triggered privileged workflows.** `ci-gate-approve.yml` (and `backlog-burn-config.yml`'s `issue_comment` path) run in the **base repository's context from the default branch by GitHub's design** — an `issue_comment` event always uses the default-branch copy of the workflow, regardless of the PR's head branch. **Assumption confirmed.** They are therefore *not* subject to the dispatch-selects-branch property on that trigger. Both reinforce it structurally: they never check out or execute the PR head, and treat the registry / config files as **data through the Contents API**, so even a malicious PR head cannot inject code into the privileged run. (`ci-gate-approve.yml` has no `workflow_dispatch` trigger at all; `backlog-burn-config.yml` does, which is why it appears in the inventory above for that path.)
+
+## The decision
+
+**Accept and document the current posture** (Option 2 of the two #113 listed). Rationale: write-access ⇒ already-trusted actor; not reachable from a fork; the two heaviest routines are off by default; and the property is intrinsic to `workflow_dispatch` — no file in the repo can neutralize it.
+
+**Option 1 — a repo/org Actions policy or ruleset restricting who may dispatch or from which ref — is not a mergeable change.** It is a GitHub settings/admin action, and GitHub exposes no native file-based "dispatch from the default branch only" toggle. It is recorded here as the available lever, not applied:
+
+- **Restrict who and what can trigger.** GitHub's org/repo **Actions policies and rulesets** are the settings-level surface for constraining *which actors* and *which events* (including `workflow_dispatch`) may trigger workflows. Because these are evaluated by GitHub from repository/organization settings — not from the selectable workflow file — a dispatch-ref rewrite cannot edit them away, which is exactly what an in-YAML guard cannot claim. GitHub's trigger-control policies have expanded over time; confirm the current capabilities in the Actions-policy settings for this repo/org, since that is where they live.
+- **Gate the sensitive job with an Environment — backed by an environment secret.** Moving a write-scoped job behind a GitHub **Environment** with **required reviewers** makes a run pause for approval before its write steps. This is rewrite-resistant **only when the credential is stored as an _environment_ secret**, and that condition is load-bearing: an environment secret is readable solely by a job that *references* the environment, and referencing the environment is what triggers the reviewer gate — so an attacker who strips the `environment:` key to skip the gate also loses the secret. With a *repository*-level secret the gate is bypassable (drop `environment:`, keep `secrets.X`, keep the write permission). So required reviewers alone are **not** rewrite-proof; treat the Environment as defense-in-depth and pair it with an environment secret to make it bite. Two limits bound even that: it gates only an **external** credential placed in the environment (`REGEN_TOKEN`, `ZAI_KEY`, `ANTHROPIC_API_KEY`, `CLAUDE_KEY`) — it does **not** constrain the ambient `GITHUB_TOKEN`, whose write scope is set by the job's `permissions:` block and which a rewrite can freely re-grant; and for the two workflows whose write path *is* the `GITHUB_TOKEN` (`lifestyle-shot`, `lifestyle-clip`) there is no external write credential to gate, so an Environment protects only their `ZAI_KEY`, not the repo write. That `GITHUB_TOKEN` write path is not really the asset, though: it merely re-grants the repo write the triggering collaborator already holds — it is the external secrets that carry value beyond that, and those are what the Environment lever protects.
+- **Restrict the ref.** Because a dispatch can select a **tag** as well as a branch (per the property above), **rulesets** covering **both branches and tags** are what limit which refs a rewritten workflow could run from — constraining who may create or push the `claude/*` branches, feature branches, and tags a dispatch would select.
+
+If a future maintainer wants to move from "documented" to "enforced," the native levers are GitHub's Actions trigger policies plus the write-scoped *external* secrets re-homed as **environment secrets** on Environments with required reviewers — and, for any job that writes via the ambient `GITHUB_TOKEN`, its job `permissions:` minimized so no write path survives the gate. That is a settings change *and* per-job YAML changes, done together so the gate actually binds (any half alone leaves a bypass) — a separate, deliberate piece of work, filed as its own issue.
+
+This document is the record #113 asked for. It is intentionally descriptive: it does not change any workflow, because the issue is explicit that an in-YAML guard is ineffective and the effective lever lives in repository settings.
